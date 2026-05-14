@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+
+# DB
+*.db
+
+# Node/Angular
+node_modules/
+dist/
+.angular/
+
+# VS Code
+.vscode/

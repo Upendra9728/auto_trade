@@ -1,0 +1,67 @@
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-7 col-lg-6">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="h4 mb-2">Create Account</h1>
+          <p class="text-muted mb-3">Register with your name, Gmail and phone number.</p>
+
+          <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
+            {{ alert.message }}
+          </div>
+
+          <form (ngSubmit)="register()" class="vstack gap-3">
+            <div>
+              <label class="form-label" for="name">Full Name</label>
+              <input id="name" name="name" class="form-control" [(ngModel)]="name" required />
+            </div>
+            <div>
+              <label class="form-label" for="email">Gmail</label>
+              <input id="email" name="email" class="form-control" [(ngModel)]="email" required />
+            </div>
+            <div>
+              <label class="form-label" for="phoneNumber">Phone Number</label>
+              <input
+                id="phoneNumber"
+                name="phoneNumber"
+                class="form-control"
+                [(ngModel)]="phone_number"
+                required
+              />
+            </div>
+            <div>
+              <label class="form-label" for="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                class="form-control"
+                [(ngModel)]="password"
+                required
+              />
+            </div>
+            <div>
+              <label class="form-label" for="confirmPassword">Confirm Password</label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                class="form-control"
+                [(ngModel)]="confirmPassword"
+                required
+              />
+            </div>
+
+            <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+              {{ isSaving ? 'Creating...' : 'Register' }}
+            </button>
+          </form>
+
+          <div class="mt-3">
+            Already have an account? <a routerLink="/login">Login</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

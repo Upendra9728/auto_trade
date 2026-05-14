@@ -1,0 +1,243 @@
+<div class="container py-4">
+  <div class="row justify-content-center" *ngIf="!isAuthed; else adminPanel">
+    <div class="col-12 col-md-6 col-lg-5">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="h5 mb-2">Admin Login</h1>
+          <p class="text-muted mb-3">Enter the admin secret to manage client tokens.</p>
+
+          <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
+            {{ alert.message }}
+          </div>
+
+          <label class="form-label" for="adminSecret">Admin Secret</label>
+          <input
+            id="adminSecret"
+            name="adminSecret"
+            class="form-control mb-3"
+            [(ngModel)]="adminSecret"
+            autocomplete="off"
+          />
+
+          <button type="button" class="btn btn-primary w-100" (click)="login()" [disabled]="isLoading">
+            {{ isLoading ? 'Signing in…' : 'Sign in' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ng-template #adminPanel>
+    <div class="row">
+      <div class="col-12 d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+          <h1 class="h4 mb-0">Admin Console</h1>
+          <div class="text-muted">Manage client tokens and consent</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-secondary" type="button" (click)="load()" [disabled]="isLoading">
+            {{ isLoading ? 'Refreshing…' : 'Refresh' }}
+          </button>
+          <button class="btn btn-outline-danger" type="button" (click)="logout()">Logout</button>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
+          {{ alert.message }}
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-12 col-lg-8">
+        <div class="card">
+          <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <h2 class="h6 mb-0">Clients</h2>
+              <button type="button" class="btn btn-sm btn-primary" (click)="openAddModal()">
+                Add Client
+              </button>
+            </div>
+
+            <div class="table-responsive" *ngIf="tokens.length; else empty">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Client ID</th>
+                    <th>Consent</th>
+                    <th>Updated</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let t of tokens" [class.table-active]="t.client_id === selectedClientId">
+                    <td class="text-nowrap">{{ t.client_id }}</td>
+                    <td>
+                      <span class="badge" [ngClass]="t.consent ? 'text-bg-success' : 'text-bg-secondary'">
+                        {{ t.consent ? 'Yes' : 'No' }}
+                      </span>
+                    </td>
+                    <td class="text-nowrap">{{ t.updated_at }}</td>
+                    <td class="text-end">
+                      <button type="button" class="btn btn-sm btn-outline-primary" (click)="openEditModal(t.client_id)">
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <ng-template #empty>
+              <div class="text-muted">No clients loaded yet.</div>
+            </ng-template>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-4">
+        <div class="card">
+          <div class="card-body">
+            <h2 class="h6 mb-2">Actions</h2>
+            <p class="text-muted mb-3">Add new clients or edit existing ones.</p>
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-primary" (click)="openAddModal()">Add Client</button>
+              <button
+                type="button"
+                class="btn btn-outline-primary"
+                [disabled]="!selectedClientId"
+                (click)="selectedClientId ? openEditModal(selectedClientId) : null"
+              >
+                Edit Selected
+              </button>
+            </div>
+            <div class="mt-3 text-muted" *ngIf="selectedClientId">
+              Selected: <strong>{{ selectedClientId }}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-template>
+</div>
+
+<div
+  class="app-modal-backdrop"
+  *ngIf="showAddModal"
+  (click)="closeAddModal()"
+  role="dialog"
+  aria-modal="true"
+>
+  <div class="app-modal" (click)="$event.stopPropagation()">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h2 class="h6 mb-0">Add Client</h2>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="closeAddModal()">Close</button>
+    </div>
+
+    <form (ngSubmit)="createOrUpsert()" class="vstack gap-3">
+      <div>
+        <label class="form-label" for="newClientId">Client ID</label>
+        <input
+          id="newClientId"
+          name="newClientId"
+          class="form-control"
+          [(ngModel)]="newClientId"
+          required
+          autocomplete="off"
+        />
+      </div>
+      <div>
+        <label class="form-label" for="newAccessToken">Access Token</label>
+        <input
+          id="newAccessToken"
+          name="newAccessToken"
+          class="form-control"
+          [(ngModel)]="newAccessToken"
+          required
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="form-check">
+        <input
+          id="newConsent"
+          type="checkbox"
+          class="form-check-input"
+          name="newConsent"
+          [(ngModel)]="newConsent"
+        />
+        <label class="form-check-label" for="newConsent">Consent enabled</label>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+          {{ isSaving ? 'Saving…' : 'Add Client' }}
+        </button>
+        <button type="button" class="btn btn-outline-secondary" (click)="closeAddModal()" [disabled]="isSaving">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div
+  class="app-modal-backdrop"
+  *ngIf="showEditModal"
+  (click)="closeEditModal()"
+  role="dialog"
+  aria-modal="true"
+>
+  <div class="app-modal" (click)="$event.stopPropagation()">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <h2 class="h6 mb-0">Edit Client</h2>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="closeEditModal()">Close</button>
+    </div>
+
+    <div *ngIf="selectedClientId; else noClientSelected">
+      <div class="mb-2">Client ID: <strong>{{ selectedClientId }}</strong></div>
+
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label" for="editConsent">Consent</label>
+          <select id="editConsent" class="form-select" name="editConsent" [(ngModel)]="editConsent">
+            <option [ngValue]="true">Enabled</option>
+            <option [ngValue]="false">Disabled</option>
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="editAccessToken">New Access Token (optional)</label>
+          <input
+            id="editAccessToken"
+            name="editAccessToken"
+            class="form-control"
+            [(ngModel)]="editAccessToken"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mt-3">
+        <button type="button" class="btn btn-primary" (click)="updateSelected()" [disabled]="isSaving">
+          {{ isSaving ? 'Updating…' : 'Update' }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-danger"
+          (click)="deleteSelected()"
+          [disabled]="isDeleting"
+        >
+          {{ isDeleting ? 'Deleting…' : 'Delete' }}
+        </button>
+        <button type="button" class="btn btn-outline-secondary" (click)="closeEditModal()" [disabled]="isSaving">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <ng-template #noClientSelected>
+      <div class="text-muted">Select a client from the list to edit.</div>
+    </ng-template>
+  </div>
+</div>

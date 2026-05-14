@@ -1,0 +1,73 @@
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+export interface TokenUpsertRequest {
+  client_id: string;
+  access_token: string;
+  consent: boolean;
+}
+
+export interface TokenResponse {
+  client_id: string;
+  consent: boolean;
+  updated_at: string;
+}
+
+export interface TokenAdminUpdateRequest {
+  access_token?: string;
+  consent?: boolean;
+}
+
+export interface UserTokenStatusResponse {
+  has_token: boolean;
+  token: TokenResponse | null;
+}
+
+@Injectable({ providedIn: 'root' })
+export class TokenService {
+  constructor(private readonly http: HttpClient) {}
+
+  listTokensAdmin(adminSecret: string): Observable<TokenResponse[]> {
+    return this.http.get<TokenResponse[]>('/api/tokens', {
+      headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+    });
+  }
+
+  updateTokenAdmin(
+    adminSecret: string,
+    clientId: string,
+    req: TokenAdminUpdateRequest
+  ): Observable<TokenResponse> {
+    return this.http.patch<TokenResponse>(`/api/tokens/${encodeURIComponent(clientId)}`, req, {
+      headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+    });
+  }
+
+  deleteTokenAdmin(adminSecret: string, clientId: string): Observable<{ status: string; client_id: string }> {
+    return this.http.delete<{ status: string; client_id: string }>(
+      `/api/tokens/${encodeURIComponent(clientId)}`,
+      {
+        headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+      }
+    );
+  }
+
+  upsertToken(req: TokenUpsertRequest): Observable<TokenResponse> {
+    throw new Error('Use upsertTokenAdmin or upsertUserToken');
+  }
+
+  upsertTokenAdmin(adminSecret: string, req: TokenUpsertRequest): Observable<TokenResponse> {
+    return this.http.post<TokenResponse>('/api/tokens', req, {
+      headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+    });
+  }
+
+  getUserTokenStatus(): Observable<UserTokenStatusResponse> {
+    return this.http.get<UserTokenStatusResponse>('/api/user/token');
+  }
+
+  upsertUserToken(req: { access_token: string; consent: boolean }): Observable<TokenResponse> {
+    return this.http.put<TokenResponse>('/api/user/token', req);
+  }
+}

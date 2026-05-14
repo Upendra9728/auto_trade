@@ -1,0 +1,71 @@
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="h4 mb-1">User Token</h1>
+          <p class="text-muted mb-3">
+            Logged in as <strong>{{ auth.getCurrentUser()?.email }}</strong>
+          </p>
+
+          <div class="alert alert-info" role="alert" *ngIf="isLoading">
+            Loading token status...
+          </div>
+
+          <div class="alert alert-secondary" role="alert" *ngIf="!isLoading">
+            <div *ngIf="hasToken; else createMode">
+              Existing token found. You can update it below.
+              <span *ngIf="lastUpdatedAt">Last updated: {{ lastUpdatedAt }}</span>
+            </div>
+            <ng-template #createMode>
+              No token found for this account. Please create a new token.
+            </ng-template>
+          </div>
+
+          <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
+            {{ alert.message }}
+          </div>
+
+          <form (ngSubmit)="save()" class="vstack gap-3">
+            <div>
+              <label class="form-label" for="accessToken">Upstox Access Token</label>
+              <input
+                id="accessToken"
+                name="accessToken"
+                class="form-control"
+                [(ngModel)]="accessToken"
+                required
+                autocomplete="off"
+              />
+              <div class="form-text">
+                Token is stored encrypted in the backend database.
+              </div>
+            </div>
+
+            <div class="form-check">
+              <input
+                id="consent"
+                type="checkbox"
+                class="form-check-input"
+                name="consent"
+                [(ngModel)]="consent"
+              />
+              <label class="form-check-label" for="consent">
+                I provide consent for automated order placement
+              </label>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+                {{ isSaving ? 'Saving...' : (hasToken ? 'Update Token' : 'Create Token') }}
+              </button>
+              <button type="button" class="btn btn-outline-secondary" (click)="accessToken=''" [disabled]="isSaving">
+                Clear Token
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
