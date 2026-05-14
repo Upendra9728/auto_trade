@@ -560,6 +560,30 @@ Kill the process or change the port in the systemd service and rebuild.
 
 ---
 
+## Optional Step 12: Enable GitHub CI/CD
+
+This repository includes:
+
+1. `.github/workflows/ci.yml` for backend, bot, and webapp checks.
+2. `.github/workflows/cd-hostinger.yml` for deploy on push to `main`.
+3. `scripts/deploy.sh` to pull latest code, rebuild, restart services, and run health checks.
+
+Before using CD, add these GitHub repository secrets:
+
+1. `VPS_HOST` (server IP)
+2. `VPS_USER` (for example `root`)
+3. `VPS_SSH_KEY` (private SSH key content)
+4. `VPS_PORT` (optional; default `22`)
+5. `VPS_APP_DIR` (optional; default `/var/www/automate_trading`)
+6. `DEPLOY_BOT` (optional; `true` or `false`)
+
+After secrets are set:
+
+1. Push to `main` to trigger deployment automatically.
+2. Or run the `CD Hostinger` workflow manually from GitHub Actions.
+
+---
+
 ## Support
 
 If anything fails, check:
