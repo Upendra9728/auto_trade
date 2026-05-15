@@ -19,7 +19,15 @@ class Settings(BaseSettings):
     admin_secret: str = "change-me"
 
     upstox_base_url: str = "https://api.upstox.com"
+    # OAuth endpoints live on the v2 host
+    upstox_oauth_base_url: str = "https://api-v2.upstox.com"
     upstox_x_algo_name: str | None = None
+    # Upstox OAuth config (optional, used for server-side token exchange)
+    upstox_client_id: str | None = None
+    upstox_client_secret: str | None = None
+    upstox_redirect_uri: str | None = None
+    # Optional: URL of the frontend webapp to redirect users back after OAuth
+    webapp_base_url: str | None = None
 
     auth_session_hours: int = 24 * 7
     otp_expiry_minutes: int = 10

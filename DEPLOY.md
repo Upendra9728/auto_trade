@@ -101,7 +101,7 @@ Replace `YOUR_POSTGRES_PASSWORD` with a strong password. Save it.
 Go to the backend folder:
 
 ```bash
-cd /var/www/automate_trading/backend
+cd /var/www/auto_trade/backend
 ```
 
 Create a virtual environment:

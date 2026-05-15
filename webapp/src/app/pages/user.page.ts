@@ -21,8 +21,14 @@ export class UserPage {
   hasToken = false;
   lastUpdatedAt = '';
 
+  appClientId = '';
+  appClientSecret = '';
+  hasApp = false;
+  appUpdatedAt = '';
+
   isLoading = false;
   isSaving = false;
+  isSavingApp = false;
   alert: { type: AlertType; message: string } | null = null;
 
   constructor(
@@ -31,6 +37,53 @@ export class UserPage {
     private readonly cdr: ChangeDetectorRef
   ) {
     this.loadTokenStatus();
+    this.loadUpstoxAppStatus();
+  }
+
+  connectUpstox(): void {
+    this.alert = null;
+    this.tokensApi.getUpstoxAuthUrl().subscribe({
+      next: (res) => {
+        if (res?.url) {
+          // Open in a new tab so the callback can redirect back to the webapp
+          window.open(res.url, '_blank');
+        } else {
+          this.alert = { type: 'danger', message: 'No auth URL returned from backend' };
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err) => {
+        const detail = err?.error?.detail;
+        const msg = detail ? `${detail}` : `${err?.message ?? err}`;
+        this.alert = { type: 'danger', message: `Could not start OAuth: ${msg}` };
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  loadUpstoxAppStatus(): void {
+    this.tokensApi
+      .getUserUpstoxApp()
+      .pipe(
+        timeout(15000),
+        catchError((err) => {
+          if (err?.name === 'TimeoutError') {
+            return throwError(() => new Error('Request timed out. Check backend or proxy.'));
+          }
+          return throwError(() => err);
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          this.hasApp = res.has_app;
+          this.appClientId = res.client_id ?? '';
+          this.appUpdatedAt = res.updated_at ?? '';
+          this.cdr.detectChanges();
+        },
+        error: () => {
+          // non-fatal, keep silent to avoid noisy UI
+        },
+      });
   }
 
   loadTokenStatus(): void {
@@ -60,6 +113,58 @@ export class UserPage {
         },
         error: (err) => {
           this.alert = { type: 'danger', message: `Unable to load token status: ${formatHttpError(err)}` };
+          this.cdr.detectChanges();
+        },
+      });
+  }
+
+  saveUpstoxApp(): void {
+    this.alert = null;
+
+    const client_id = this.appClientId.trim();
+    const client_secret = this.appClientSecret.trim();
+
+    if (!client_id || !client_secret) {
+      this.alert = {
+        type: 'danger',
+        message: 'Client ID and Client Secret are required.',
+      };
+      return;
+    }
+
+    this.isSavingApp = true;
+    this.tokensApi
+      .upsertUserUpstoxApp({ client_id, client_secret })
+      .pipe(
+        timeout(15000),
+        catchError((err) => {
+          if (err?.name === 'TimeoutError') {
+            return throwError(() => new Error('Request timed out. Check backend or proxy.'));
+          }
+          return throwError(() => err);
+        }),
+        finalize(() => {
+          this.isSavingApp = false;
+          this.cdr.detectChanges();
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          this.hasApp = res.has_app;
+          this.appClientId = res.client_id ?? client_id;
+          this.appUpdatedAt = res.updated_at ?? '';
+          this.appClientSecret = '';
+          this.alert = {
+            type: 'success',
+            message: 'Upstox app credentials saved.',
+          };
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          this.alert = {
+            type: 'danger',
+            message: `Save failed: ${formatHttpError(err)}`,
+          };
           this.cdr.detectChanges();
         },
       });

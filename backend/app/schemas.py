@@ -67,6 +67,17 @@ class UserTokenStatusResponse(BaseModel):
     token: TokenResponse | None = None
 
 
+class UserUpstoxAppUpsertRequest(BaseModel):
+    client_id: str = Field(min_length=3, max_length=128)
+    client_secret: str = Field(min_length=6, max_length=256)
+
+
+class UserUpstoxAppStatusResponse(BaseModel):
+    has_app: bool
+    client_id: str | None = None
+    updated_at: str | None = None
+
+
 class GttRule(BaseModel):
     strategy: Literal["ENTRY", "TARGET", "STOPLOSS"]
     trigger_type: Literal["BELOW", "ABOVE", "IMMEDIATE"]

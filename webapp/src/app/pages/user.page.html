@@ -8,6 +8,61 @@
             Logged in as <strong>{{ auth.getCurrentUser()?.email }}</strong>
           </p>
 
+          <div class="alert alert-secondary" role="alert">
+            <div *ngIf="hasApp; else noApp">
+              Upstox app credentials saved for this account.
+              <span *ngIf="appUpdatedAt">Last updated: {{ appUpdatedAt }}</span>
+            </div>
+            <ng-template #noApp>
+              Add your Upstox app credentials to enable OAuth flow.
+            </ng-template>
+          </div>
+
+          <form (ngSubmit)="saveUpstoxApp()" class="vstack gap-3 mb-4">
+            <div>
+              <label class="form-label" for="appClientId">Upstox Client ID</label>
+              <input
+                id="appClientId"
+                name="appClientId"
+                class="form-control"
+                [(ngModel)]="appClientId"
+                required
+                autocomplete="off"
+              />
+            </div>
+
+            <div>
+              <label class="form-label" for="appClientSecret">Upstox Client Secret</label>
+              <input
+                id="appClientSecret"
+                name="appClientSecret"
+                type="password"
+                class="form-control"
+                [(ngModel)]="appClientSecret"
+                required
+                autocomplete="off"
+              />
+              <div class="form-text">Stored encrypted in the backend database.</div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-outline-primary" [disabled]="isSavingApp">
+                {{ isSavingApp ? 'Saving...' : (hasApp ? 'Update App Credentials' : 'Save App Credentials') }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                (click)="appClientSecret=''"
+                [disabled]="isSavingApp"
+              >
+                Clear Secret
+              </button>
+              <button type="button" class="btn btn-primary" (click)="connectUpstox()">
+                Connect Upstox (OAuth)
+              </button>
+            </div>
+          </form>
+
           <div class="alert alert-info" role="alert" *ngIf="isLoading">
             Loading token status...
           </div>

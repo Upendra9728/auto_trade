@@ -24,6 +24,12 @@ export interface UserTokenStatusResponse {
   token: TokenResponse | null;
 }
 
+export interface UserUpstoxAppStatusResponse {
+  has_app: boolean;
+  client_id: string | null;
+  updated_at: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TokenService {
   constructor(private readonly http: HttpClient) {}
@@ -65,6 +71,18 @@ export class TokenService {
 
   getUserTokenStatus(): Observable<UserTokenStatusResponse> {
     return this.http.get<UserTokenStatusResponse>('/api/user/token');
+  }
+
+  getUpstoxAuthUrl(): Observable<{ url: string }> {
+    return this.http.get<{ url: string }>('/api/upstox/auth-url');
+  }
+
+  getUserUpstoxApp(): Observable<UserUpstoxAppStatusResponse> {
+    return this.http.get<UserUpstoxAppStatusResponse>('/api/user/upstox-app');
+  }
+
+  upsertUserUpstoxApp(req: { client_id: string; client_secret: string }): Observable<UserUpstoxAppStatusResponse> {
+    return this.http.put<UserUpstoxAppStatusResponse>('/api/user/upstox-app', req);
   }
 
   upsertUserToken(req: { access_token: string; consent: boolean }): Observable<TokenResponse> {

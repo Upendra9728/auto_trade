@@ -31,6 +31,19 @@ class User(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
 
+class UserUpstoxApp(Base):
+    __tablename__ = "user_upstox_apps"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_upstox_app"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    client_id: Mapped[str] = mapped_column(String(128))
+    client_secret_encrypted: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+
+    user: Mapped[User] = relationship()
+
+
 class UserSession(Base):
     __tablename__ = "user_sessions"
 

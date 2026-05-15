@@ -8,6 +8,7 @@ import datetime as dt
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -23,7 +24,7 @@ from .config import settings
 from .crypto import encrypt_token
 from .db import SessionLocal, init_db
 from .mailer import send_password_reset_email
-from .models import ClientToken, OrderBatch, PasswordResetOtp, User, UserSession
+from .models import ClientToken, OrderBatch, PasswordResetOtp, User, UserSession, UserUpstoxApp
 from .order_service import place_gtt_for_all_clients
 from .schemas import (
     BatchPlaceResponse,
@@ -42,8 +43,11 @@ from .schemas import (
     UserRegistrationRequest,
     UserTokenStatusResponse,
     UserTokenUpsertRequest,
+    UserUpstoxAppStatusResponse,
+    UserUpstoxAppUpsertRequest,
 )
 from .telegram_parser import parse_telegram_message_to_gtt
+from .upstox_oauth import build_authorize_url, exchange_code_and_store
 
 app = FastAPI(title="Automate Trading (Upstox GTT)")
 
@@ -436,6 +440,78 @@ def get_user_token_status(
         has_token=True,
         token=TokenResponse(client_id=token.client_id, consent=token.consent, updated_at=token.updated_at.isoformat()),
     )
+
+
+@app.get("/api/upstox/auth-url")
+def get_upstox_auth_url(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Return a URL the frontend can open to start the Upstox OAuth flow for the current user."""
+    app = db.query(UserUpstoxApp).filter(UserUpstoxApp.user_id == user.id).one_or_none()
+    url = build_authorize_url(user.email, client_id=app.client_id if app else None)
+    return {"url": url}
+
+
+@app.get("/api/user/upstox-app", response_model=UserUpstoxAppStatusResponse)
+def get_user_upstox_app(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserUpstoxAppStatusResponse:
+    app = db.query(UserUpstoxApp).filter(UserUpstoxApp.user_id == user.id).one_or_none()
+    if app is None:
+        return UserUpstoxAppStatusResponse(has_app=False)
+    return UserUpstoxAppStatusResponse(
+        has_app=True,
+        client_id=app.client_id,
+        updated_at=app.updated_at.isoformat(),
+    )
+
+
+@app.put("/api/user/upstox-app", response_model=UserUpstoxAppStatusResponse)
+def upsert_user_upstox_app(
+    req: UserUpstoxAppUpsertRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserUpstoxAppStatusResponse:
+    app = db.query(UserUpstoxApp).filter(UserUpstoxApp.user_id == user.id).one_or_none()
+    encrypted_secret = encrypt_token(req.client_secret)
+
+    if app is None:
+        app = UserUpstoxApp(
+            user_id=user.id,
+            client_id=req.client_id.strip(),
+            client_secret_encrypted=encrypted_secret,
+        )
+        db.add(app)
+    else:
+        app.client_id = req.client_id.strip()
+        app.client_secret_encrypted = encrypted_secret
+
+    db.commit()
+    db.refresh(app)
+    return UserUpstoxAppStatusResponse(
+        has_app=True,
+        client_id=app.client_id,
+        updated_at=app.updated_at.isoformat(),
+    )
+
+
+@app.get("/api/upstox/callback")
+async def upstox_callback(code: str | None = None, state: str | None = None) -> RedirectResponse:
+    """OAuth callback endpoint used by Upstox to redirect back with `code` and `state`.
+
+    The endpoint exchanges the code for an access token and stores it encrypted for the user
+    referenced in the signed `state`. After success the user is redirected back to the webapp.
+    """
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    await exchange_code_and_store(code=code, state=state)
+
+    redirect_base = settings.webapp_base_url or (settings.cors_origins.split(",")[0] if settings.cors_origins else "http://localhost:4200")
+    redirect_url = redirect_base.rstrip("/") + "/?upstox_connected=1"
+    return RedirectResponse(redirect_url)
 
 
 @app.put("/api/user/token", response_model=TokenResponse)

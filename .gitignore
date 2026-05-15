@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+bot/venv/
+bot/.venv/
 .env
 .pytest_cache/
 .mypy_cache/
