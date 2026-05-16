@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from functools import lru_cache
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 import re
 
@@ -23,6 +24,7 @@ _PRICE_ABOVE_RE = re.compile(r"^PRICE\s*:\s*ABOVE\s+(\d+(?:\.\d+)?)\s*$", re.IGN
 _PRICE_EXACT_RE = re.compile(r"^PRICE\s*:\s*(\d+(?:\.\d+)?)\s*$", re.IGNORECASE)
 _TARGETS_RE = re.compile(r"^TARGETS\s*:\s*(.+?)\s*$", re.IGNORECASE)
 _STOPLOSS_RE = re.compile(r"^STOPLOSS\s*:\s*(\d+(?:\.\d+)?)\s*$", re.IGNORECASE)
+_QTY_RE = re.compile(r"^(QTY|QUANTITY)\s*:\s*(\d+)\s*$", re.IGNORECASE)
 
 
 def _parse_price(value: str) -> float:
@@ -55,6 +57,16 @@ def _normalize_expiry(value: str) -> str:
     raise ValueError(f"Unsupported EXPIRY format: {value}")
 
 
+def _round_to_tick(value: float, tick_size: float) -> float:
+    if tick_size <= 0:
+        return value
+    tick = Decimal(str(tick_size))
+    val = Decimal(str(value))
+    steps = (val / tick).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    rounded = (steps * tick).quantize(tick)
+    return float(rounded)
+
+
 @lru_cache(maxsize=1)
 def _load_instruments() -> list[dict[str, str]]:
     if not _CSV_PATH.exists():
@@ -64,7 +76,7 @@ def _load_instruments() -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _resolve_instrument_token(symbol: str, expiry: str) -> str:
+def _resolve_instrument_row(symbol: str, expiry: str) -> dict[str, str]:
     symbol_match = _SYMBOL_RE.match(f"SYMBOL: {symbol}")
     if not symbol_match:
         raise ValueError(
@@ -95,11 +107,23 @@ def _resolve_instrument_token(symbol: str, expiry: str) -> str:
         ):
             instrument_key = (row.get("instrument_key") or "").strip()
             if instrument_key:
-                return instrument_key
+                return row
 
     raise ValueError(
         f"Could not resolve instrument_token for SYMBOL '{symbol}' with EXPIRY '{expiry}'"
     )
+
+
+def _resolve_instrument_token(symbol: str, expiry: str) -> str:
+    return (_resolve_instrument_row(symbol, expiry).get("instrument_key") or "").strip()
+
+
+def _find_instrument_row_by_token(instrument_token: str) -> dict[str, str] | None:
+    token = instrument_token.strip()
+    for row in _load_instruments():
+        if (row.get("instrument_key") or "").strip() == token:
+            return row
+    return None
 
 
 def parse_telegram_message_to_gtt(text: str) -> GttPlaceRequest:
@@ -109,6 +133,7 @@ def parse_telegram_message_to_gtt(text: str) -> GttPlaceRequest:
     entry_price: float | None = None
     targets: list[float] = []
     stoploss: float | None = None
+    quantity: int | None = None
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -155,12 +180,21 @@ def parse_telegram_message_to_gtt(text: str) -> GttPlaceRequest:
             stoploss = float(m.group(1))
             continue
 
+        m = _QTY_RE.match(line)
+        if m:
+            quantity = int(m.group(2))
+            continue
+
+    row: dict[str, str] | None = None
     if not instrument_token:
         if not symbol:
             raise ValueError("SYMBOL is required")
         if not expiry:
             raise ValueError("EXPIRY is required")
-        instrument_token = _resolve_instrument_token(symbol=symbol, expiry=expiry)
+        row = _resolve_instrument_row(symbol=symbol, expiry=expiry)
+        instrument_token = (row.get("instrument_key") or "").strip()
+    else:
+        row = _find_instrument_row_by_token(instrument_token)
     if entry_price is None:
         raise ValueError("PRICE is required")
     if not targets:
@@ -168,9 +202,32 @@ def parse_telegram_message_to_gtt(text: str) -> GttPlaceRequest:
     if stoploss is None:
         raise ValueError("STOPLOSS is required")
 
+    lot_size = 1
+    tick_size = 0.0
+    if row:
+        try:
+            lot_size = int(float(row.get("lot_size") or 1))
+        except ValueError:
+            lot_size = 1
+        try:
+            tick_size = float(row.get("tick_size") or 0)
+        except ValueError:
+            tick_size = 0.0
+
+    if quantity is None:
+        quantity = lot_size if lot_size > 0 else 1
+
+    if lot_size > 0 and quantity % lot_size != 0:
+        raise ValueError(f"QTY must be a multiple of lot size {lot_size}")
+
+    if tick_size > 0:
+        entry_price = _round_to_tick(entry_price, tick_size)
+        targets = [_round_to_tick(t, tick_size) for t in targets]
+        stoploss = _round_to_tick(stoploss, tick_size)
+
     obj = {
         "type": "MULTIPLE",
-        "quantity": 1,
+        "quantity": quantity,
         "product": "D",
         "instrument_token": instrument_token,
         "transaction_type": "BUY",
