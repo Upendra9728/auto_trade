@@ -36,6 +36,8 @@ jobs:
             fi
 
             cd "${APP_DIR}"
+            git reset --hard HEAD
+            git clean -fd
             git fetch origin "${BRANCH}"
             git checkout "${BRANCH}"
             git pull --ff-only origin "${BRANCH}"
