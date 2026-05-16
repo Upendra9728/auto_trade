@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     upstox_base_url: str = "https://api.upstox.com"
     # OAuth endpoints live on the v2 host
     upstox_oauth_base_url: str = "https://api-v2.upstox.com"
+    # Force IPv4 for Upstox HTTP calls when IPv6 causes IP mismatch issues
+    upstox_force_ipv4: bool = False
     upstox_x_algo_name: str | None = None
     # Upstox OAuth config (optional, used for server-side token exchange)
     upstox_client_id: str | None = None

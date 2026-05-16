@@ -25,7 +25,11 @@ class UpstoxClient:
         if settings.upstox_x_algo_name:
             headers["X-Algo-Name"] = settings.upstox_x_algo_name
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        transport = None
+        if settings.upstox_force_ipv4:
+            transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0")
+
+        async with httpx.AsyncClient(timeout=30, transport=transport) as client:
             resp = await client.post(url, headers=headers, json=payload)
 
         try:

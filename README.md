@@ -5,6 +5,42 @@ This repo contains:
 - `bot/`: Telegram bot that reads messages from a group and triggers batch GTT placement via the backend.
 - `webapp/`: Angular app where users submit/update their Upstox access token (with consent).
 
+## Server (VPS) quick commands
+
+Basic service control (systemd):
+
+```bash
+sudo systemctl restart automate-backend
+sudo systemctl restart automate-webapp
+sudo systemctl restart automate-bot
+
+sudo systemctl status automate-backend --no-pager
+sudo systemctl status automate-webapp --no-pager
+sudo systemctl status automate-bot --no-pager
+
+sudo journalctl -u automate-backend -n 50
+sudo journalctl -u automate-webapp -n 50
+sudo journalctl -u automate-bot -n 50
+```
+
+Edit backend env on the server:
+
+```bash
+cd /var/www/automate_trading/backend
+nano .env
+sudo systemctl restart automate-backend
+```
+
+Edit bot env on the server:
+
+```bash
+cd /var/www/automate_trading/bot
+nano .env
+sudo systemctl restart automate-bot
+```
+
+Full VPS setup steps are in `DEPLOY.md`.
+
 ## 1) Backend (FastAPI)
 
 ### Setup (Windows PowerShell)
