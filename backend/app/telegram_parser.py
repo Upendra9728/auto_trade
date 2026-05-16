@@ -202,6 +202,9 @@ def parse_telegram_message_to_gtt(text: str) -> GttPlaceRequest:
     if stoploss is None:
         raise ValueError("STOPLOSS is required")
 
+    if len(targets) > 1:
+        targets = [targets[0]]
+
     lot_size = 1
     tick_size = 0.0
     if row:
