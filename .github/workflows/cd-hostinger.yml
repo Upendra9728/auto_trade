@@ -26,7 +26,7 @@ jobs:
           envs: APP_DIR,BRANCH,DEPLOY_BOT
           script: |
             set -euo pipefail
-            export APP_DIR="${{ secrets.VPS_APP_DIR || '/var/www/automate_trading' }}"
+            export APP_DIR="${{ secrets.VPS_APP_DIR || '/var/www/auto_trade' }}"
             export BRANCH="main"
             export DEPLOY_BOT="${{ secrets.DEPLOY_BOT || 'false' }}"
 

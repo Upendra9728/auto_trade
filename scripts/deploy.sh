@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/var/www/automate_trading}"
+APP_DIR="${APP_DIR:-/var/www/auto_trade}"
 BRANCH="${BRANCH:-main}"
 DEPLOY_BOT="${DEPLOY_BOT:-false}"
 
