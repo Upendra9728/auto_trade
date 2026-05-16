@@ -55,15 +55,28 @@ log "Running health checks"
 python3 - <<'PY'
 import sys
 import urllib.request
+import time
 
-for url in ["http://127.0.0.1:8000/health", "http://127.0.0.1/"]:
+
+def wait_for(url: str, attempts: int = 15, delay: float = 2.0) -> None:
+  last_exc = None
+  for _ in range(attempts):
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            if resp.status >= 400:
-                raise RuntimeError(f"Bad status {resp.status} from {url}")
+      with urllib.request.urlopen(url, timeout=10) as resp:
+        if resp.status >= 400:
+          raise RuntimeError(f"Bad status {resp.status} from {url}")
+      return
     except Exception as exc:
-        print(f"Health check failed for {url}: {exc}")
-        sys.exit(1)
+      last_exc = exc
+      time.sleep(delay)
+  raise RuntimeError(f"Health check failed for {url}: {last_exc}")
+
+try:
+  wait_for("http://127.0.0.1:8000/health")
+  wait_for("http://127.0.0.1/")
+except Exception as exc:
+  print(str(exc))
+  sys.exit(1)
 
 print("Health checks passed")
 PY
