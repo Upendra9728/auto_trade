@@ -40,6 +40,16 @@ class UserProfileResponse(BaseModel):
     phone_number: str
 
 
+class AdminUserResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone_number: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
 class UserAuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

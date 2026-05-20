@@ -1,13 +1,34 @@
-<div class="container py-4">
-  <div class="row justify-content-center">
-    <div class="col-12 col-md-7 col-lg-6">
-      <div class="card">
+<div class="container">
+  <div class="row g-4 align-items-stretch">
+    <div class="col-12 col-lg-5">
+      <div class="app-auth-aside">
+        <span class="app-pill">Create Account</span>
+        <h1 class="app-title mt-3">Start in minutes</h1>
+        <p class="app-subtitle">Create your profile to store tokens and consent securely.</p>
+        <ul class="app-checklist">
+          <li>Encrypted credential storage</li>
+          <li>Access from any device</li>
+          <li>Fast onboarding</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-12 col-lg-7">
+      <div class="card app-card h-100">
         <div class="card-body">
-          <h1 class="h4 mb-2">Create Account</h1>
-          <p class="text-muted mb-3">Register with your name, Gmail and phone number.</p>
+          <div class="app-card-header">
+            <div>
+              <h2 class="app-section-title">Create account</h2>
+              <p class="app-subtitle mb-0">Register with your name, Gmail, and phone number.</p>
+            </div>
+          </div>
 
-          <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
-            {{ alert.message }}
+          <div class="app-alert-stack" *ngIf="alert as alertData">
+            <app-alert
+              [type]="alertData.type"
+              [message]="alertData.message"
+              [dismissible]="true"
+              (closed)="alert = null"
+            ></app-alert>
           </div>
 
           <form (ngSubmit)="register()" class="vstack gap-3">
@@ -53,11 +74,12 @@
             </div>
 
             <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+              <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
               {{ isSaving ? 'Creating...' : 'Register' }}
             </button>
           </form>
 
-          <div class="mt-3">
+          <div class="mt-4">
             Already have an account? <a routerLink="/login">Login</a>
           </div>
         </div>
@@ -65,3 +87,15 @@
     </div>
   </div>
 </div>
+
+<app-modal
+  [open]="showSuccessModal"
+  title="Registration successful"
+  (closed)="cancelSuccess()"
+>
+  <p class="mb-3">User registered successfully. Proceed to login?</p>
+  <div class="d-flex justify-content-end gap-2">
+    <button type="button" class="btn btn-outline-secondary" (click)="cancelSuccess()">Cancel</button>
+    <button type="button" class="btn btn-primary" (click)="confirmGoToLogin()">Go to login</button>
+  </div>
+</app-modal>

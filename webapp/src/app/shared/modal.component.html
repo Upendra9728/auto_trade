@@ -1,0 +1,23 @@
+<div
+  class="app-modal-backdrop"
+  *ngIf="open"
+  (click)="onBackdropClick()"
+  role="dialog"
+  aria-modal="true"
+  [attr.aria-label]="title || 'Dialog'"
+>
+  <div class="app-modal" (click)="$event.stopPropagation()">
+    <div class="d-flex align-items-center justify-content-between mb-2" *ngIf="title || showClose">
+      <h2 class="h6 mb-0" *ngIf="title">{{ title }}</h2>
+      <button
+        *ngIf="showClose"
+        type="button"
+        class="btn btn-sm btn-outline-secondary"
+        (click)="onCloseClick()"
+      >
+        Close
+      </button>
+    </div>
+    <ng-content></ng-content>
+  </div>
+</div>

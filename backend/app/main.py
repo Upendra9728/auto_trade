@@ -37,6 +37,7 @@ from .schemas import (
     TokenAdminUpdateRequest,
     TokenResponse,
     TokenUpsertRequest,
+    AdminUserResponse,
     UserAuthResponse,
     UserLoginRequest,
     UserProfileResponse,
@@ -547,6 +548,26 @@ def list_tokens(
     ]
 
 
+@app.get("/api/users", response_model=list[AdminUserResponse])
+def list_users(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> list[AdminUserResponse]:
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    return [
+        AdminUserResponse(
+            id=u.id,
+            name=u.name,
+            email=u.email,
+            phone_number=u.phone_number,
+            is_active=u.is_active,
+            created_at=u.created_at.isoformat(),
+            updated_at=u.updated_at.isoformat(),
+        )
+        for u in users
+    ]
+
+
 @app.get("/api/tokens/{client_id}", response_model=TokenResponse)
 def get_token(
     client_id: str,
@@ -600,6 +621,26 @@ def delete_token(
     db.delete(token)
     db.commit()
     return {"status": "deleted", "client_id": client_id}
+
+
+@app.delete("/api/users/{user_email}")
+def delete_user(
+    user_email: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+) -> dict[str, str]:
+    email = _normalize_email(user_email)
+    user = db.query(User).filter(User.email == email).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db.query(UserSession).filter(UserSession.user_id == user.id).delete(synchronize_session=False)
+    db.query(PasswordResetOtp).filter(PasswordResetOtp.user_id == user.id).delete(synchronize_session=False)
+    db.query(UserUpstoxApp).filter(UserUpstoxApp.user_id == user.id).delete(synchronize_session=False)
+    db.query(ClientToken).filter(ClientToken.client_id == email).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+    return {"status": "deleted", "user_email": email}
 
 
 @app.post("/api/gtt/place-batch", response_model=BatchPlaceResponse)

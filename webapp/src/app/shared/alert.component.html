@@ -1,0 +1,23 @@
+<div
+  class="app-alert alert"
+  [ngClass]="['alert-' + type, dismissible ? 'alert-dismissible' : '']"
+  role="alert"
+  [attr.aria-live]="ariaLive"
+>
+  <div class="app-alert-body">
+    <span *ngIf="showIcon" class="app-alert-icon" aria-hidden="true"></span>
+    <div class="app-alert-content">
+      <ng-container *ngIf="hasMessage; else projected">{{ message }}</ng-container>
+      <ng-template #projected>
+        <ng-content></ng-content>
+      </ng-template>
+    </div>
+  </div>
+  <button
+    *ngIf="dismissible"
+    type="button"
+    class="btn-close"
+    aria-label="Close"
+    (click)="close()"
+  ></button>
+</div>

@@ -1,20 +1,518 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+	--app-bg: #f5f7fb;
+	--app-surface: #ffffff;
+	--app-surface-muted: #f8fafc;
+	--app-border: #e2e8f0;
+	--app-ink: #0f172a;
+	--app-muted: #64748b;
+	--app-primary: #0f766e;
+	--app-primary-600: #0d6b63;
+	--app-accent: #f59e0b;
+	--app-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+	--app-radius: 16px;
+	--app-radius-sm: 10px;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	font-family: 'Manrope', 'Space Grotesk', sans-serif;
+	color: var(--app-ink);
+	background:
+		radial-gradient(circle at 20% 10%, rgba(15, 118, 110, 0.14), transparent 45%),
+		radial-gradient(circle at 90% 0%, rgba(245, 158, 11, 0.16), transparent 40%),
+		linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+	min-height: 100vh;
+	line-height: 1.6;
+}
+
+a {
+	color: var(--app-primary);
+	text-decoration: none;
+	transition: color 0.2s ease;
+}
+
+a:hover {
+	color: var(--app-primary-600);
+}
+
+.app-shell {
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.app-main {
+	flex: 1;
+	padding: 1.3rem 0 2rem;
+}
+
+.app-page {
+	animation: appFadeUp 0.45s ease;
+}
+
+.app-page-compact .app-page-header {
+	margin-bottom: 0.85rem;
+}
+
+.app-page-compact .card-body {
+	padding: 1rem;
+}
+
+.app-page-compact .app-card-header {
+	margin-bottom: 0.5rem;
+}
+
+.app-page-compact .app-alert-stack {
+	margin-bottom: 0.6rem;
+}
+
+.app-page-compact .app-alert {
+	padding: 0.6rem 0.75rem;
+	font-size: 0.9rem;
+}
+
+.app-page-compact .form-text {
+	margin-top: 0.2rem;
+	font-size: 0.82rem;
+}
+
+.app-page-compact .app-stack-compact {
+	gap: 0.65rem;
+}
+
+.app-page-compact .app-subtitle {
+	font-size: 0.9rem;
+}
+
+router-outlet + * {
+	animation: appFadeUp 0.45s ease;
+}
+
+.app-navbar {
+	background: rgba(255, 255, 255, 0.9);
+	backdrop-filter: blur(14px);
+	border-bottom: 1px solid var(--app-border);
+	box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+}
+
+.app-brand {
+	font-family: 'Space Grotesk', sans-serif;
+	font-weight: 600;
+	color: var(--app-ink);
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+}
+
+.app-brand-mark {
+	width: 26px;
+	height: 26px;
+	border-radius: 12px;
+	background: linear-gradient(135deg, var(--app-primary), #38bdf8);
+	box-shadow: 0 10px 22px rgba(15, 118, 110, 0.35);
+}
+
+.app-nav-link {
+	font-weight: 600;
+	color: var(--app-muted);
+	transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.app-nav-link.active,
+.app-nav-link:hover {
+	color: var(--app-ink);
+	transform: translateY(-1px);
+}
+
+.app-user-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.2rem 0.5rem;
+	background: var(--app-surface-muted);
+	border-radius: 999px;
+	border: 1px solid var(--app-border);
+	font-size: 0.74rem;
+}
+
+.app-user-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: var(--app-accent);
+}
+
+.app-footer {
+	padding: 0.75rem 0 1.1rem;
+	color: var(--app-muted);
+	font-size: 0.85rem;
+}
+
+.app-title {
+	font-family: 'Space Grotesk', sans-serif;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	font-size: clamp(1.25rem, 2vw, 1.7rem);
+}
+
+.app-section-title {
+	font-size: 1rem;
+}
+
+.app-subtitle {
+	color: var(--app-muted);
+}
+
+.app-page-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.9rem;
+}
+
+.card,
+.app-card {
+	border: 1px solid var(--app-border);
+	border-radius: var(--app-radius);
+	box-shadow: var(--app-shadow);
+	background: var(--app-surface);
+}
+
+.card-body {
+	padding: 0.95rem;
+}
+
+.app-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin-bottom: 0.5rem;
+}
+
+.app-section-title {
+	font-weight: 600;
+	margin: 0;
+}
+
+.app-auth-aside {
+	background: linear-gradient(150deg, rgba(15, 118, 110, 0.1), rgba(15, 118, 110, 0.02));
+	border: 1px solid rgba(15, 118, 110, 0.18);
+	border-radius: var(--app-radius);
+	padding: 1.15rem;
+	box-shadow: var(--app-shadow);
+	height: 100%;
+}
+
+.app-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	padding: 0.35rem 0.75rem;
+	border-radius: 999px;
+	background: rgba(15, 118, 110, 0.12);
+	color: var(--app-primary);
+	font-weight: 600;
+	font-size: 0.8rem;
+}
+
+.app-checklist {
+	list-style: none;
+	padding: 0;
+	margin: 0.75rem 0 0;
+}
+
+.app-checklist li {
+	padding-left: 1.6rem;
+	position: relative;
+	margin-bottom: 0.75rem;
+	color: var(--app-muted);
+}
+
+.app-checklist li::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0.3rem;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: var(--app-accent);
+}
+
+.form-label {
+	font-weight: 600;
+	color: var(--app-ink);
+}
+
+.form-control,
+.form-select {
+	border-radius: var(--app-radius-sm);
+	border: 1px solid var(--app-border);
+	padding: 0.5rem 0.75rem;
+	background: var(--app-surface);
+	transition: border 0.2s ease, box-shadow 0.2s ease;
+	font-size: 0.92rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+	border-color: rgba(15, 118, 110, 0.4);
+	box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+.form-text {
+	color: var(--app-muted);
+}
+
+.btn {
+	border-radius: 10px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+	padding: 0.4rem 0.85rem;
+	font-size: 0.92rem;
+}
+
+.btn-sm {
+	padding: 0.3rem 0.65rem;
+	font-size: 0.82rem;
+}
+
+.btn-primary {
+	background: var(--app-primary);
+	border-color: var(--app-primary);
+	box-shadow: 0 14px 28px rgba(15, 118, 110, 0.2);
+}
+
+.btn-primary:hover {
+	background: var(--app-primary-600);
+	border-color: var(--app-primary-600);
+	transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+	color: var(--app-primary);
+	border-color: rgba(15, 118, 110, 0.35);
+}
+
+.btn-outline-primary:hover {
+	background: rgba(15, 118, 110, 0.1);
+	color: var(--app-primary);
+}
+
+.btn-outline-secondary {
+	color: var(--app-ink);
+	border-color: var(--app-border);
+}
+
+.btn-outline-secondary:hover {
+	background: rgba(148, 163, 184, 0.15);
+}
+
+.btn-outline-danger {
+	border-color: rgba(220, 38, 38, 0.4);
+}
+
+.alert {
+	border-radius: var(--app-radius-sm);
+	border: 1px solid var(--app-border);
+	box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
+}
+
+.app-alert-stack {
+	display: grid;
+	gap: 0.5rem;
+	margin-bottom: 0.7rem;
+}
+
+.app-alert {
+	padding: 0.6rem 0.75rem;
+	border-radius: var(--app-radius-sm);
+	border: 1px solid rgba(15, 23, 42, 0.08);
+	box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+	background: var(--app-surface);
+	animation: appFadeDown 0.2s ease;
+	font-size: 0.92rem;
+}
+
+.app-alert-body {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+}
+
+.app-alert-icon {
+	width: 10px;
+	height: 10px;
+	margin-top: 0.35rem;
+	border-radius: 999px;
+	background: currentColor;
+	flex: 0 0 auto;
+}
+
+.app-alert-content {
+	flex: 1;
+	color: inherit;
+}
+
+.alert-success {
+	color: #0f766e;
+	background: rgba(15, 118, 110, 0.12);
+	border-color: rgba(15, 118, 110, 0.25);
+}
+
+.alert-danger {
+	color: #b91c1c;
+	background: rgba(239, 68, 68, 0.12);
+	border-color: rgba(239, 68, 68, 0.25);
+}
+
+.alert-warning {
+	color: #b45309;
+	background: rgba(245, 158, 11, 0.16);
+	border-color: rgba(245, 158, 11, 0.3);
+}
+
+.alert-info {
+	color: #1d4ed8;
+	background: rgba(59, 130, 246, 0.12);
+	border-color: rgba(59, 130, 246, 0.25);
+}
+
+.alert-dismissible .btn-close {
+	opacity: 0.6;
+}
+
+.alert-dismissible .btn-close:hover {
+	opacity: 1;
+}
+
+.table {
+	margin-bottom: 0;
+}
+
+.app-table thead th {
+	font-size: 0.8rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--app-muted);
+	border-bottom: 1px solid var(--app-border);
+}
+
+.app-table tbody tr {
+	transition: background 0.2s ease;
+}
+
+.app-table tbody tr:hover {
+	background: rgba(15, 118, 110, 0.05);
+}
+
+.app-empty {
+	padding: 1.5rem;
+	border-radius: var(--app-radius-sm);
+	border: 1px dashed var(--app-border);
+	color: var(--app-muted);
+	background: var(--app-surface-muted);
+}
 
 .app-modal-backdrop {
 	position: fixed;
 	inset: 0;
-	background: rgba(0, 0, 0, 0.45);
+	background: rgba(15, 23, 42, 0.45);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	padding: 1.5rem;
 	z-index: 1050;
+	animation: appFadeIn 0.2s ease;
 }
 
 .app-modal {
-	width: min(560px, 100%);
-	background: #ffffff;
-	border-radius: 12px;
-	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
-	padding: 1.25rem;
+	width: min(480px, 100%);
+	background: var(--app-surface);
+	border-radius: var(--app-radius);
+	box-shadow: 0 30px 70px rgba(15, 23, 42, 0.25);
+	padding: 1rem;
+	border: 1px solid var(--app-border);
+	animation: appScaleIn 0.2s ease;
+}
+
+.table > :not(caption) > * > * {
+	padding: 0.4rem 0.6rem;
+}
+
+@keyframes appFadeUp {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes appFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes appFadeDown {
+	from {
+		opacity: 0;
+		transform: translateY(-6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes appScaleIn {
+	from {
+		opacity: 0;
+		transform: scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@media (max-width: 991px) {
+	.app-main {
+		padding: 1.1rem 0 1.8rem;
+	}
+	.app-page-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.app-page,
+	.app-modal,
+	.app-modal-backdrop {
+		animation: none;
+	}
+	.app-alert {
+		animation: none;
+	}
+	.btn,
+	.app-nav-link {
+		transition: none;
+	}
 }

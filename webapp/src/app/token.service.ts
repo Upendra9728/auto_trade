@@ -19,6 +19,16 @@ export interface TokenAdminUpdateRequest {
   consent?: boolean;
 }
 
+export interface AdminUserResponse {
+  id: number;
+  name: string;
+  email: string;
+  phone_number: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserTokenStatusResponse {
   has_token: boolean;
   token: TokenResponse | null;
@@ -40,6 +50,12 @@ export class TokenService {
     });
   }
 
+  listUsersAdmin(adminSecret: string): Observable<AdminUserResponse[]> {
+    return this.http.get<AdminUserResponse[]>('/api/users', {
+      headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+    });
+  }
+
   updateTokenAdmin(
     adminSecret: string,
     clientId: string,
@@ -53,6 +69,15 @@ export class TokenService {
   deleteTokenAdmin(adminSecret: string, clientId: string): Observable<{ status: string; client_id: string }> {
     return this.http.delete<{ status: string; client_id: string }>(
       `/api/tokens/${encodeURIComponent(clientId)}`,
+      {
+        headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+      }
+    );
+  }
+
+  deleteUserAdmin(adminSecret: string, userEmail: string): Observable<{ status: string; user_email: string }> {
+    return this.http.delete<{ status: string; user_email: string }>(
+      `/api/users/${encodeURIComponent(userEmail)}`,
       {
         headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
       }

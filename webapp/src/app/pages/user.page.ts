@@ -5,6 +5,7 @@ import { throwError } from 'rxjs';
 import { catchError, finalize, timeout } from 'rxjs/operators';
 import { AuthService } from '../auth.service';
 import { formatHttpError } from '../http-error';
+import { AlertComponent } from '../shared/alert.component';
 import { TokenService } from '../token.service';
 
 type AlertType = 'success' | 'danger' | 'info';
@@ -12,7 +13,7 @@ type AlertType = 'success' | 'danger' | 'info';
 @Component({
   selector: 'app-user-page',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AlertComponent],
   templateUrl: './user.page.html',
 })
 export class UserPage {

@@ -6,13 +6,15 @@ import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../auth.service';
 import { formatHttpError } from '../http-error';
+import { AlertComponent } from '../shared/alert.component';
+import { ModalComponent } from '../shared/modal.component';
 
 type AlertType = 'success' | 'danger' | 'info';
 
 @Component({
   selector: 'app-register-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, AlertComponent, ModalComponent],
   templateUrl: './register.page.html',
 })
 export class RegisterPage {
@@ -23,6 +25,7 @@ export class RegisterPage {
   confirmPassword = '';
 
   isSaving = false;
+  showSuccessModal = false;
   alert: { type: AlertType; message: string } | null = null;
 
   constructor(
@@ -59,14 +62,23 @@ export class RegisterPage {
       )
       .subscribe({
         next: () => {
-          this.alert = { type: 'success', message: 'Registration successful. You can now login.' };
+          this.alert = null;
+          this.showSuccessModal = true;
           this.cdr.detectChanges();
-          setTimeout(() => this.router.navigateByUrl('/login'), 800);
         },
         error: (err) => {
           this.alert = { type: 'danger', message: `Registration failed: ${formatHttpError(err)}` };
           this.cdr.detectChanges();
         },
       });
+  }
+
+  cancelSuccess(): void {
+    this.showSuccessModal = false;
+  }
+
+  confirmGoToLogin(): void {
+    this.showSuccessModal = false;
+    this.router.navigateByUrl('/login');
   }
 }

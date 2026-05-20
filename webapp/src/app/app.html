@@ -1,42 +1,73 @@
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <div class="container">
-    <a class="navbar-brand" routerLink="/user">Automate Trading</a>
+<div class="app-shell">
+  <nav class="navbar navbar-expand-lg navbar-light app-navbar">
+    <div class="container">
+      <a class="navbar-brand app-brand" routerLink="/user">
+        <span class="app-brand-mark"></span>
+        <span>Automate Trading</span>
+      </a>
 
-    <button
-      class="navbar-toggler"
-      type="button"
-      data-bs-toggle="collapse"
-      data-bs-target="#navbarNav"
-      aria-controls="navbarNav"
-      aria-expanded="false"
-      aria-label="Toggle navigation"
-    >
-      <span class="navbar-toggler-icon"></span>
-    </button>
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#navbarNav"
+        aria-controls="navbarNav"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
 
-    <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav me-auto">
-        <li class="nav-item" *ngIf="auth.isLoggedIn()">
-          <a class="nav-link" routerLink="/user" routerLinkActive="active">User</a>
-        </li>
-        <li class="nav-item" *ngIf="!auth.isLoggedIn()">
-          <a class="nav-link" routerLink="/login" routerLinkActive="active">Login</a>
-        </li>
-        <li class="nav-item" *ngIf="!auth.isLoggedIn()">
-          <a class="nav-link" routerLink="/register" routerLinkActive="active">Register</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" routerLink="/admin" routerLinkActive="active">Admin</a>
-        </li>
-      </ul>
-      <div class="d-flex align-items-center gap-2" *ngIf="auth.isLoggedIn()">
-        <span class="text-light small">{{ auth.getCurrentUser()?.email }}</span>
-        <button class="btn btn-sm btn-outline-light" type="button" (click)="logout()">Logout</button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item" *ngIf="auth.isLoggedIn()">
+            <a class="nav-link app-nav-link" routerLink="/user" routerLinkActive="active">User</a>
+          </li>
+          <li class="nav-item" *ngIf="!auth.isLoggedIn()">
+            <a class="nav-link app-nav-link" routerLink="/login" routerLinkActive="active">Login</a>
+          </li>
+          <li class="nav-item" *ngIf="!auth.isLoggedIn()">
+            <a class="nav-link app-nav-link" routerLink="/register" routerLinkActive="active">Register</a>
+          </li>
+          <li class="nav-item" *ngIf="!auth.isLoggedIn()">
+            <a class="nav-link app-nav-link" routerLink="/admin" routerLinkActive="active">Admin</a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2" *ngIf="auth.isLoggedIn()">
+          <div class="app-user-pill">
+            <span class="app-user-dot"></span>
+            <span>{{ auth.getCurrentUser()?.email }}</span>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" type="button" (click)="logout()">Logout</button>
+        </div>
       </div>
     </div>
-  </div>
-</nav>
+  </nav>
 
-<router-outlet></router-outlet>
+  <main class="app-main">
+    <div class="app-page">
+      <router-outlet></router-outlet>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container d-flex flex-wrap justify-content-between gap-2">
+      <span>Automate Trading Platform</span>
+      <span>Secure Upstox automation</span>
+    </div>
+  </footer>
+</div>
+
+<app-modal
+  [open]="showLogoutModal"
+  title="Confirm logout"
+  (closed)="cancelLogout()"
+>
+  <p class="mb-3">Are you sure you want to log out?</p>
+  <div class="d-flex justify-content-end gap-2">
+    <button type="button" class="btn btn-outline-secondary" (click)="cancelLogout()">Cancel</button>
+    <button type="button" class="btn btn-danger" (click)="confirmLogout()">Logout</button>
+  </div>
+</app-modal>
 
 

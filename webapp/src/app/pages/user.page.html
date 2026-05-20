@@ -1,24 +1,49 @@
-<div class="container py-4">
-  <div class="row justify-content-center">
-    <div class="col-12 col-lg-8">
-      <div class="card">
-        <div class="card-body">
-          <h1 class="h4 mb-1">User Token</h1>
-          <p class="text-muted mb-3">
-            Logged in as <strong>{{ auth.getCurrentUser()?.email }}</strong>
-          </p>
+<div class="container app-page-compact">
+  <div class="app-page-header">
+    <div>
+      <h1 class="app-title">User Console</h1>
+      <p class="app-subtitle mb-0">Logged in as <strong>{{ auth.getCurrentUser()?.email }}</strong></p>
+    </div>
+    <div class="app-pill">
+      <span class="app-user-dot"></span>
+      <span>{{ hasToken ? 'Token active' : 'Token missing' }}</span>
+    </div>
+  </div>
 
-          <div class="alert alert-secondary" role="alert">
-            <div *ngIf="hasApp; else noApp">
-              Upstox app credentials saved for this account.
-              <span *ngIf="appUpdatedAt">Last updated: {{ appUpdatedAt }}</span>
+  <div class="app-alert-stack" *ngIf="alert as alertData">
+    <app-alert
+      [type]="alertData.type"
+      [message]="alertData.message"
+      [dismissible]="true"
+      (closed)="alert = null"
+    ></app-alert>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-5">
+      <div class="card app-card h-100">
+        <div class="card-body">
+          <div class="app-card-header">
+            <div>
+              <h2 class="app-section-title">Upstox App</h2>
+              <p class="app-subtitle mb-0">Manage client id and secret for OAuth.</p>
             </div>
-            <ng-template #noApp>
-              Add your Upstox app credentials to enable OAuth flow.
-            </ng-template>
+            <span class="badge" [ngClass]="hasApp ? 'text-bg-success' : 'text-bg-secondary'">
+              {{ hasApp ? 'Connected' : 'Not connected' }}
+            </span>
           </div>
 
-          <form (ngSubmit)="saveUpstoxApp()" class="vstack gap-3 mb-4">
+          <div class="app-alert-stack">
+            <app-alert *ngIf="hasApp" type="success">
+              Upstox app credentials saved for this account.
+              <span *ngIf="appUpdatedAt">Last updated: {{ appUpdatedAt }}</span>
+            </app-alert>
+            <app-alert *ngIf="!hasApp" type="info">
+              Add your Upstox app credentials to enable OAuth flow.
+            </app-alert>
+          </div>
+
+          <form (ngSubmit)="saveUpstoxApp()" class="vstack app-stack-compact">
             <div>
               <label class="form-label" for="appClientId">Upstox Client ID</label>
               <input
@@ -45,8 +70,9 @@
               <div class="form-text">Stored encrypted in the backend database.</div>
             </div>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
               <button type="submit" class="btn btn-outline-primary" [disabled]="isSavingApp">
+                <span *ngIf="isSavingApp" class="spinner-border spinner-border-sm me-2" role="status"></span>
                 {{ isSavingApp ? 'Saving...' : (hasApp ? 'Update App Credentials' : 'Save App Credentials') }}
               </button>
               <button
@@ -62,26 +88,35 @@
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
 
-          <div class="alert alert-info" role="alert" *ngIf="isLoading">
-            Loading token status...
+    <div class="col-12 col-lg-7">
+      <div class="card app-card h-100">
+        <div class="card-body">
+          <div class="app-card-header">
+            <div>
+              <h2 class="app-section-title">Access Token</h2>
+              <p class="app-subtitle mb-0">Store the token used for automated orders.</p>
+            </div>
+            <span class="badge" [ngClass]="hasToken ? 'text-bg-success' : 'text-bg-secondary'">
+              {{ hasToken ? 'Active' : 'Missing' }}
+            </span>
           </div>
 
-          <div class="alert alert-secondary" role="alert" *ngIf="!isLoading">
-            <div *ngIf="hasToken; else createMode">
+          <div class="app-alert-stack">
+            <app-alert *ngIf="isLoading" type="info">Loading token status...</app-alert>
+            <app-alert *ngIf="!isLoading && hasToken" type="success">
               Existing token found. You can update it below.
               <span *ngIf="lastUpdatedAt">Last updated: {{ lastUpdatedAt }}</span>
-            </div>
-            <ng-template #createMode>
+            </app-alert>
+            <app-alert *ngIf="!isLoading && !hasToken" type="warning">
               No token found for this account. Please create a new token.
-            </ng-template>
+            </app-alert>
           </div>
 
-          <div *ngIf="alert" class="alert" [ngClass]="'alert-' + alert.type" role="alert">
-            {{ alert.message }}
-          </div>
-
-          <form (ngSubmit)="save()" class="vstack gap-3">
+          <form (ngSubmit)="save()" class="vstack app-stack-compact">
             <div>
               <label class="form-label" for="accessToken">Upstox Access Token</label>
               <input
@@ -110,8 +145,9 @@
               </label>
             </div>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
               <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+                <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
                 {{ isSaving ? 'Saving...' : (hasToken ? 'Update Token' : 'Create Token') }}
               </button>
               <button type="button" class="btn btn-outline-secondary" (click)="accessToken=''" [disabled]="isSaving">

@@ -6,13 +6,14 @@ import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../auth.service';
 import { formatHttpError } from '../http-error';
+import { AlertComponent } from '../shared/alert.component';
 
 type AlertType = 'success' | 'danger' | 'info';
 
 @Component({
   selector: 'app-reset-password-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, AlertComponent],
   templateUrl: './reset-password.page.html',
 })
 export class ResetPasswordPage {
