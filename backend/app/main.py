@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import re
 import json
+import logging
+import re
 from collections.abc import Generator
 import uuid
 import datetime as dt
@@ -49,6 +50,11 @@ from .schemas import (
 )
 from .telegram_parser import parse_telegram_message_to_gtt
 from .upstox_oauth import build_authorize_url, exchange_code_and_store
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(title="Automate Trading (Upstox GTT)")
 
