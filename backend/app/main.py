@@ -815,3 +815,9 @@ async def place_dhan_super_order(req: DhanSuperOrderRequest):
             status_code=500,
             detail=f"Dhan API Error: {str(e)}",
         )
+
+import requests
+
+@app.get("/api/my-ip")
+def my_ip():
+    return requests.get("https://api.ipify.org?format=json").json()
