@@ -1,4 +1,4 @@
-<div class="container app-page-compact">
+﻿<div class="container app-page-compact">
   <div class="app-page-header">
     <div>
       <h1 class="app-title">User Console</h1>
@@ -6,157 +6,180 @@
     </div>
     <div class="app-pill">
       <span class="app-user-dot"></span>
-      <span>{{ hasToken ? 'Token active' : 'Token missing' }}</span>
+      <span>{{ activeBrokerToken ? 'Token active' : 'Token missing' }}</span>
     </div>
   </div>
 
   <div class="app-alert-stack" *ngIf="alert as alertData">
-    <app-alert
-      [type]="alertData.type"
-      [message]="alertData.message"
-      [dismissible]="true"
-      (closed)="alert = null"
-    ></app-alert>
+    <app-alert [type]="alertData.type" [message]="alertData.message" [dismissible]="true" (closed)="alert = null"></app-alert>
   </div>
 
-  <div class="row g-3">
-    <div class="col-12 col-lg-5">
-      <div class="card app-card h-100">
-        <div class="card-body">
-          <div class="app-card-header">
-            <div>
-              <h2 class="app-section-title">Upstox App</h2>
-              <p class="app-subtitle mb-0">Manage client id and secret for OAuth.</p>
-            </div>
-            <span class="badge" [ngClass]="hasApp ? 'text-bg-success' : 'text-bg-secondary'">
-              {{ hasApp ? 'Connected' : 'Not connected' }}
-            </span>
-          </div>
+  <!-- Broker selector tabs -->
+  <div class="user-broker-tabs">
+    <button
+      *ngFor="let broker of allBrokers"
+      type="button"
+      class="user-broker-tab"
+      [class.active]="activeBroker === broker"
+      (click)="switchBroker(broker)"
+    >
+      <img [src]="'/images/' + (broker === 'upstox' ? 'upstocx.png' : broker === 'dhann' ? 'dhann.jpg' : 'fyers.png')"
+           [alt]="broker"
+           class="user-broker-tab-logo" />
+      <span class="text-capitalize">{{ broker }}</span>
+      <span class="user-broker-tab-dot" [class.active]="brokerHasToken(broker)"></span>
+    </button>
+  </div>
 
-          <div class="app-alert-stack">
-            <app-alert *ngIf="hasApp" type="success">
-              Upstox app credentials saved for this account.
-              <span *ngIf="appUpdatedAt">Last updated: {{ appUpdatedAt }}</span>
-            </app-alert>
-            <app-alert *ngIf="!hasApp" type="info">
-              Add your Upstox app credentials to enable OAuth flow.
-            </app-alert>
-          </div>
+  <!-- Loading state -->
+  <div *ngIf="isLoading" class="text-center py-4">
+    <span class="spinner-border text-primary" role="status"></span>
+  </div>
 
-          <form (ngSubmit)="saveUpstoxApp()" class="vstack app-stack-compact">
-            <div>
-              <label class="form-label" for="appClientId">Upstox Client ID</label>
-              <input
-                id="appClientId"
-                name="appClientId"
-                class="form-control"
-                [(ngModel)]="appClientId"
-                required
-                autocomplete="off"
-              />
-            </div>
-
-            <div>
-              <label class="form-label" for="appClientSecret">Upstox Client Secret</label>
-              <input
-                id="appClientSecret"
-                name="appClientSecret"
-                type="password"
-                class="form-control"
-                [(ngModel)]="appClientSecret"
-                required
-                autocomplete="off"
-              />
-              <div class="form-text">Stored encrypted in the backend database.</div>
-            </div>
-
-            <div class="d-flex flex-wrap gap-2">
-              <button type="submit" class="btn btn-outline-primary" [disabled]="isSavingApp">
-                <span *ngIf="isSavingApp" class="spinner-border spinner-border-sm me-2" role="status"></span>
-                {{ isSavingApp ? 'Saving...' : (hasApp ? 'Update App Credentials' : 'Save App Credentials') }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-outline-secondary"
-                (click)="appClientSecret=''"
-                [disabled]="isSavingApp"
-              >
-                Clear Secret
-              </button>
-              <button type="button" class="btn btn-primary" (click)="connectUpstox()">
-                Connect Upstox (OAuth)
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-12 col-lg-7">
-      <div class="card app-card h-100">
-        <div class="card-body">
-          <div class="app-card-header">
-            <div>
-              <h2 class="app-section-title">Access Token</h2>
-              <p class="app-subtitle mb-0">Store the token used for automated orders.</p>
-            </div>
-            <span class="badge" [ngClass]="hasToken ? 'text-bg-success' : 'text-bg-secondary'">
-              {{ hasToken ? 'Active' : 'Missing' }}
-            </span>
-          </div>
-
-          <div class="app-alert-stack">
-            <app-alert *ngIf="isLoading" type="info">Loading token status...</app-alert>
-            <app-alert *ngIf="!isLoading && hasToken" type="success">
-              Existing token found. You can update it below.
-              <span *ngIf="lastUpdatedAt">Last updated: {{ lastUpdatedAt }}</span>
-            </app-alert>
-            <app-alert *ngIf="!isLoading && !hasToken" type="warning">
-              No token found for this account. Please create a new token.
-            </app-alert>
-          </div>
-
-          <form (ngSubmit)="save()" class="vstack app-stack-compact">
-            <div>
-              <label class="form-label" for="accessToken">Upstox Access Token</label>
-              <input
-                id="accessToken"
-                name="accessToken"
-                class="form-control"
-                [(ngModel)]="accessToken"
-                required
-                autocomplete="off"
-              />
-              <div class="form-text">
-                Token is stored encrypted in the backend database.
+  <!-- UPSTOX panel -->
+  <ng-container *ngIf="!isLoading && activeBroker === 'upstox'">
+    <div class="row g-3">
+      <!-- Upstox App credentials -->
+      <div class="col-12 col-lg-5">
+        <div class="card app-card h-100">
+          <div class="card-body">
+            <div class="app-card-header">
+              <div>
+                <h2 class="app-section-title">Upstox App</h2>
+                <p class="app-subtitle mb-0">Client ID &amp; Secret for OAuth.</p>
               </div>
+              <span class="badge" [ngClass]="hasUpstoxApp ? 'text-bg-success' : 'text-bg-secondary'">
+                {{ hasUpstoxApp ? 'Connected' : 'Not set' }}
+              </span>
             </div>
 
-            <div class="form-check">
-              <input
-                id="consent"
-                type="checkbox"
-                class="form-check-input"
-                name="consent"
-                [(ngModel)]="consent"
-              />
-              <label class="form-check-label" for="consent">
-                I provide consent for automated order placement
-              </label>
+            <div class="app-alert-stack">
+              <app-alert *ngIf="hasUpstoxApp" type="success">
+                App credentials saved. Last updated: {{ upstoxAppUpdatedAt }}
+              </app-alert>
+              <app-alert *ngIf="!hasUpstoxApp" type="info">
+                Add your Upstox app credentials to enable OAuth.
+              </app-alert>
             </div>
 
-            <div class="d-flex flex-wrap gap-2">
-              <button type="submit" class="btn btn-primary" [disabled]="isSaving">
-                <span *ngIf="isSaving" class="spinner-border spinner-border-sm me-2" role="status"></span>
-                {{ isSaving ? 'Saving...' : (hasToken ? 'Update Token' : 'Create Token') }}
-              </button>
-              <button type="button" class="btn btn-outline-secondary" (click)="accessToken=''" [disabled]="isSaving">
-                Clear Token
-              </button>
+            <form (ngSubmit)="saveUpstoxApp()" class="vstack app-stack-compact">
+              <div>
+                <label class="form-label" for="upstoxClientId">Upstox Client ID</label>
+                <input id="upstoxClientId" name="upstoxClientId" class="form-control" [(ngModel)]="upstoxClientId" required autocomplete="off" />
+              </div>
+              <div>
+                <label class="form-label" for="upstoxClientSecret">Upstox Client Secret</label>
+                <input id="upstoxClientSecret" name="upstoxClientSecret" type="password" class="form-control" [(ngModel)]="upstoxClientSecret" required autocomplete="off" />
+                <div class="form-text">Stored encrypted.</div>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-outline-primary" [disabled]="isSavingApp">
+                  <span *ngIf="isSavingApp" class="spinner-border spinner-border-sm me-2"></span>
+                  {{ isSavingApp ? 'Saving...' : (hasUpstoxApp ? 'Update' : 'Save') }}
+                </button>
+                <button type="button" class="btn btn-primary" (click)="connectUpstox()">Connect via OAuth</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upstox Access Token -->
+      <div class="col-12 col-lg-7">
+        <div class="card app-card h-100">
+          <div class="card-body">
+            <div class="app-card-header">
+              <div>
+                <h2 class="app-section-title">Upstox Access Token</h2>
+                <p class="app-subtitle mb-0">Token used for automated GTT orders.</p>
+              </div>
+              <span class="badge" [ngClass]="hasUpstoxToken ? 'text-bg-success' : 'text-bg-secondary'">
+                {{ hasUpstoxToken ? 'Active' : 'Missing' }}
+              </span>
             </div>
-          </form>
+
+            <div class="app-alert-stack">
+              <app-alert *ngIf="hasUpstoxToken" type="success">
+                Token active. Last updated: {{ upstoxTokenUpdatedAt }}
+              </app-alert>
+              <app-alert *ngIf="!hasUpstoxToken" type="warning">
+                No token found. Please add your Upstox access token below.
+              </app-alert>
+            </div>
+
+            <form (ngSubmit)="saveUpstoxToken()" class="vstack app-stack-compact">
+              <div>
+                <label class="form-label" for="upstoxAccessToken">Access Token</label>
+                <input id="upstoxAccessToken" name="upstoxAccessToken" class="form-control" [(ngModel)]="upstoxAccessToken" required autocomplete="off" />
+                <div class="form-text">Stored encrypted in the database.</div>
+              </div>
+              <div class="form-check">
+                <input id="upstoxConsent" type="checkbox" class="form-check-input" [(ngModel)]="upstoxConsent" name="upstoxConsent" />
+                <label class="form-check-label" for="upstoxConsent">Consent for automated order placement</label>
+              </div>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" [disabled]="isSavingUpstoxToken">
+                  <span *ngIf="isSavingUpstoxToken" class="spinner-border spinner-border-sm me-2"></span>
+                  {{ isSavingUpstoxToken ? 'Saving...' : (hasUpstoxToken ? 'Update Token' : 'Save Token') }}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </ng-container>
+
+  <!-- DHANN / FYERS panel -->
+  <ng-container *ngIf="!isLoading && (activeBroker === 'dhann' || activeBroker === 'fyers')">
+    <div class="row g-3 justify-content-center">
+      <div class="col-12 col-lg-7">
+        <div class="card app-card">
+          <div class="card-body">
+            <div class="app-card-header">
+              <div>
+                <h2 class="app-section-title text-capitalize">{{ brokerLabel }} Credentials</h2>
+                <p class="app-subtitle mb-0">Client ID &amp; Access Token for {{ brokerLabel }} bracket orders.</p>
+              </div>
+              <span class="badge" [ngClass]="activeBrokerToken ? 'text-bg-success' : 'text-bg-secondary'">
+                {{ activeBrokerToken ? 'Connected' : 'Not set' }}
+              </span>
+            </div>
+
+            <div class="app-alert-stack">
+              <app-alert *ngIf="activeBrokerToken" type="success">
+                {{ brokerLabel }} credentials saved. Last updated: {{ activeBrokerToken.updated_at }}
+              </app-alert>
+              <app-alert *ngIf="!activeBrokerToken" type="info">
+                Enter your {{ brokerLabel }} client ID and daily access token.
+              </app-alert>
+              <app-alert *ngIf="activeBroker === 'fyers'" type="warning">
+                Fyers order placement is not yet fully implemented. Credentials will be saved but orders won't be placed.
+              </app-alert>
+            </div>
+
+            <form (ngSubmit)="saveBrokerToken()" class="vstack app-stack-compact">
+              <div>
+                <label class="form-label" for="brokerClientId">{{ brokerLabel }} Client ID</label>
+                <input id="brokerClientId" name="brokerClientId" class="form-control" [(ngModel)]="brokerClientId" required autocomplete="off" />
+              </div>
+              <div>
+                <label class="form-label" for="brokerAccessToken">{{ brokerLabel }} Access Token</label>
+                <input id="brokerAccessToken" name="brokerAccessToken" type="password" class="form-control" [(ngModel)]="brokerAccessToken" [required]="!activeBrokerToken" autocomplete="off" />
+                <div class="form-text">Stored encrypted. Update daily with a fresh token.</div>
+              </div>
+              <div class="form-check">
+                <input id="brokerConsent" type="checkbox" class="form-check-input" [(ngModel)]="brokerConsent" name="brokerConsent" />
+                <label class="form-check-label" for="brokerConsent">Consent for automated order placement</label>
+              </div>
+              <button type="submit" class="btn btn-primary" [disabled]="isSavingBrokerToken">
+                <span *ngIf="isSavingBrokerToken" class="spinner-border spinner-border-sm me-2"></span>
+                {{ isSavingBrokerToken ? 'Saving...' : (activeBrokerToken ? 'Update Credentials' : 'Save Credentials') }}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </ng-container>
 </div>

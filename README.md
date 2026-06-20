@@ -26,7 +26,7 @@ sudo journalctl -u automate-bot -n 50
 Edit backend env on the server:
 
 ```bash
-cd /var/www/automate_trading/backend
+cd /var/www/auto_trade/backend
 nano .env
 sudo systemctl restart automate-backend
 ```
@@ -34,7 +34,7 @@ sudo systemctl restart automate-backend
 Edit bot env on the server:
 
 ```bash
-cd /var/www/automate_trading/bot
+cd /var/www/auto_trade/bot
 nano .env
 sudo systemctl restart automate-bot
 ```
@@ -46,7 +46,7 @@ Full VPS setup steps are in `DEPLOY.md`.
 ### Setup (Windows PowerShell)
 
 ```powershell
-cd c:\Users\kalle\Downloads\automate_trading\backend
+cd c:\Users\kalle\Downloads\auto_trade\backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt

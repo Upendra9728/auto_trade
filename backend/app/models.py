@@ -10,12 +10,17 @@ from .db import Base
 
 class ClientToken(Base):
     __tablename__ = "client_tokens"
+    __table_args__ = (UniqueConstraint("user_id", "broker", name="uq_user_broker"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    client_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    client_id: Mapped[str] = mapped_column(String(64), index=True)
+    broker: Mapped[str] = mapped_column(String(32), default="upstox")
     consent: Mapped[bool] = mapped_column(Boolean, default=True)
     access_token_encrypted: Mapped[str] = mapped_column(Text)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+
+    user: Mapped["User | None"] = relationship()
 
 
 class User(Base):
@@ -26,6 +31,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
     phone_number: Mapped[str] = mapped_column(String(32))
     password_hash: Mapped[str] = mapped_column(Text)
+    primary_broker: Mapped[str] = mapped_column(String(32), default="upstox")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)

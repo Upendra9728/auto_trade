@@ -1,7 +1,7 @@
 <div class="app-shell">
   <nav class="navbar navbar-expand-lg navbar-light app-navbar">
     <div class="container">
-      <a class="navbar-brand app-brand" routerLink="/user">
+      <a class="navbar-brand app-brand" routerLink="/">
         <span class="app-brand-mark"></span>
         <span>Automate Trading</span>
       </a>
@@ -20,6 +20,9 @@
 
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
+          <li class="nav-item" *ngIf="!auth.isLoggedIn()">
+            <a class="nav-link app-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">Home</a>
+          </li>
           <li class="nav-item" *ngIf="auth.isLoggedIn()">
             <a class="nav-link app-nav-link" routerLink="/user" routerLinkActive="active">User</a>
           </li>
@@ -29,11 +32,11 @@
           <li class="nav-item" *ngIf="!auth.isLoggedIn()">
             <a class="nav-link app-nav-link" routerLink="/register" routerLinkActive="active">Register</a>
           </li>
-          <li class="nav-item" *ngIf="!auth.isLoggedIn()">
+          <li class="nav-item">
             <a class="nav-link app-nav-link" routerLink="/admin" routerLinkActive="active">Admin</a>
           </li>
         </ul>
-        <div class="d-flex align-items-center gap-2" *ngIf="auth.isLoggedIn()">
+        <div class="d-flex align-items-center gap-2" *ngIf="auth.isLoggedIn() && !router.url.startsWith('/admin')">
           <div class="app-user-pill">
             <span class="app-user-dot"></span>
             <span>{{ auth.getCurrentUser()?.email }}</span>

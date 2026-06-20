@@ -18,8 +18,9 @@
           <div class="app-card-header">
             <div>
               <h2 class="app-section-title">Create account</h2>
-              <p class="app-subtitle mb-0">Register with your name, Gmail, and phone number.</p>
+              <p class="app-subtitle mb-0">One account works for all brokers. Add broker tokens after login.</p>
             </div>
+            <span class="badge text-bg-primary text-capitalize">{{ brokerLabel }}</span>
           </div>
 
           <div class="app-alert-stack" *ngIf="alert as alertData">
@@ -80,7 +81,7 @@
           </form>
 
           <div class="mt-4">
-            Already have an account? <a routerLink="/login">Login</a>
+            Already have an account? <a routerLink="/login">Login</a> — you can add more broker tokens from your account page after logging in.
           </div>
         </div>
       </div>

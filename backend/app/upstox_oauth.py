@@ -117,12 +117,26 @@ async def exchange_code_and_store(code: str, state: str) -> str:
         if not access_token:
             raise HTTPException(status_code=400, detail=f"No access token in response: {j}")
 
-        existing = db.query(ClientToken).filter(ClientToken.client_id == email).one_or_none()
+        existing = (
+            db.query(ClientToken)
+            .filter(ClientToken.user_id == user.id, ClientToken.broker == "upstox")
+            .one_or_none()
+        )
+        # fall back to legacy lookup by client_id == email (pre-broker records)
+        if existing is None:
+            existing = db.query(ClientToken).filter(ClientToken.client_id == email, ClientToken.broker == "upstox").one_or_none()
         encrypted = encrypt_token(access_token)
         if existing is None:
-            token = ClientToken(client_id=email, consent=True, access_token_encrypted=encrypted)
+            token = ClientToken(
+                user_id=user.id,
+                client_id=email,
+                broker="upstox",
+                consent=True,
+                access_token_encrypted=encrypted,
+            )
             db.add(token)
         else:
+            existing.user_id = user.id
             existing.access_token_encrypted = encrypted
             existing.consent = True
         db.commit()

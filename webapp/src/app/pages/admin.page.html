@@ -1,47 +1,30 @@
-<div class="container">
+﻿<div class="container">
+  <!-- Login form when not authed -->
   <div class="row g-4 align-items-stretch" *ngIf="!isAuthed; else adminPanel">
     <div class="col-12 col-lg-5">
       <div class="app-auth-aside">
         <span class="app-pill">Admin Access</span>
         <h1 class="app-title mt-3">Admin Console</h1>
-        <p class="app-subtitle">Securely manage registered users in one place.</p>
+        <p class="app-subtitle">View and manage all registered users and their broker tokens.</p>
         <ul class="app-checklist">
-          <li>Review registered users</li>
-          <li>Remove accounts securely</li>
-          <li>Monitor sign-up activity</li>
+          <li>Multi-broker user overview</li>
+          <li>Token status per broker</li>
+          <li>Toggle user status &amp; delete accounts</li>
+          <li>Dashboard stats</li>
         </ul>
       </div>
     </div>
     <div class="col-12 col-lg-7">
       <div class="card app-card h-100">
         <div class="card-body">
-          <div class="app-card-header">
-            <div>
-              <h2 class="app-section-title">Admin sign in</h2>
-              <p class="app-subtitle mb-0">Enter the admin secret to continue.</p>
-            </div>
+          <h2 class="app-section-title">Admin sign in</h2>
+          <div class="app-alert-stack" *ngIf="alert as a">
+            <app-alert [type]="a.type" [message]="a.message" [dismissible]="true" (closed)="alert = null"></app-alert>
           </div>
-
-          <div class="app-alert-stack" *ngIf="alert as alertData">
-            <app-alert
-              [type]="alertData.type"
-              [message]="alertData.message"
-              [dismissible]="true"
-              (closed)="alert = null"
-            ></app-alert>
-          </div>
-
           <label class="form-label" for="adminSecret">Admin Secret</label>
-          <input
-            id="adminSecret"
-            name="adminSecret"
-            class="form-control mb-3"
-            [(ngModel)]="adminSecret"
-            autocomplete="off"
-          />
-
+          <input id="adminSecret" name="adminSecret" class="form-control mb-3" [(ngModel)]="adminSecret" autocomplete="off" (keydown.enter)="login()" />
           <button type="button" class="btn btn-primary w-100" (click)="login()" [disabled]="isLoading">
-            <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
             {{ isLoading ? 'Signing in...' : 'Sign in' }}
           </button>
         </div>
@@ -49,106 +32,194 @@
     </div>
   </div>
 
+  <!-- Admin panel -->
   <ng-template #adminPanel>
     <div class="app-page-header">
       <div>
         <h1 class="app-title">Admin Console</h1>
-        <p class="app-subtitle mb-0">Manage registered users.</p>
+        <p class="app-subtitle mb-0">{{ users.length }} users registered</p>
       </div>
       <div class="d-flex flex-wrap gap-2">
         <button class="btn btn-outline-secondary" type="button" (click)="load()" [disabled]="isLoading">
-          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2" role="status"></span>
+          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
           {{ isLoading ? 'Refreshing...' : 'Refresh' }}
         </button>
         <button class="btn btn-outline-danger" type="button" (click)="requestLogout()">Logout</button>
       </div>
     </div>
 
-    <div class="app-alert-stack" *ngIf="alert as alertData">
-      <app-alert
-        [type]="alertData.type"
-        [message]="alertData.message"
-        [dismissible]="true"
-        (closed)="alert = null"
-      ></app-alert>
+    <div class="app-alert-stack" *ngIf="alert as a">
+      <app-alert [type]="a.type" [message]="a.message" [dismissible]="true" (closed)="alert = null"></app-alert>
     </div>
 
-    <div class="row g-3">
-      <div class="col-12">
-        <div class="card app-card">
-          <div class="card-body">
-            <div class="app-card-header">
-              <h2 class="app-section-title">Clients</h2>
-              <span class="badge text-bg-secondary">{{ users.length }} total</span>
-            </div>
-
-            <div class="table-responsive" *ngIf="users.length; else noUsers">
-              <table class="table table-sm align-middle app-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Created</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let u of users">
-                    <td class="text-nowrap">{{ u.name }}</td>
-                    <td class="text-nowrap">{{ u.email }}</td>
-                    <td class="text-nowrap">{{ u.phone_number }}</td>
-                    <td class="text-nowrap">{{ u.created_at }}</td>
-                    <td>
-                      <span class="badge" [ngClass]="u.is_active ? 'text-bg-success' : 'text-bg-secondary'">
-                        {{ u.is_active ? 'Active' : 'Inactive' }}
-                      </span>
-                    </td>
-                    <td class="text-end">
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-outline-danger"
-                        (click)="requestDeleteUser(u.email)"
-                        [disabled]="isDeleting"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <ng-template #noUsers>
-              <div class="app-empty">No clients registered yet.</div>
-            </ng-template>
-          </div>
+    <!-- Dashboard stats -->
+    <div class="row g-3 mb-4" *ngIf="dashboard">
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value">{{ dashboard.total_users }}</div>
+          <div class="admin-stat-label">Total Users</div>
         </div>
       </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value text-success">{{ dashboard.active_users }}</div>
+          <div class="admin-stat-label">Active Users</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value text-primary">{{ dashboard.tokens_by_broker['upstox'] || 0 }}</div>
+          <div class="admin-stat-label">Upstox Tokens</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value text-success">{{ dashboard.tokens_by_broker['dhann'] || 0 }}</div>
+          <div class="admin-stat-label">Dhann Tokens</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value text-warning">{{ dashboard.tokens_by_broker['fyers'] || 0 }}</div>
+          <div class="admin-stat-label">Fyers Tokens</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value">{{ dashboard.consented_by_broker['upstox'] || 0 }}</div>
+          <div class="admin-stat-label">Upstox Consented</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value">{{ dashboard.consented_by_broker['dhann'] || 0 }}</div>
+          <div class="admin-stat-label">Dhann Consented</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="admin-stat-card">
+          <div class="admin-stat-value">{{ dashboard.recent_batches }}</div>
+          <div class="admin-stat-label">Total Batches</div>
+        </div>
+      </div>
+    </div>
 
+    <!-- Filters -->
+    <div class="row g-2 mb-3">
+      <div class="col-12 col-sm-4">
+        <input type="search" class="form-control" placeholder="Search name, email, phone..." [(ngModel)]="searchQuery" />
+      </div>
+      <div class="col-6 col-sm-3">
+        <select class="form-select" [(ngModel)]="filterBroker">
+          <option value="">All brokers</option>
+          <option value="upstox">Upstox</option>
+          <option value="dhann">Dhann</option>
+          <option value="fyers">Fyers</option>
+        </select>
+      </div>
+      <div class="col-6 col-sm-3">
+        <select class="form-select" [(ngModel)]="filterActive">
+          <option value="">All statuses</option>
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </select>
+      </div>
+      <div class="col-12 col-sm-2">
+        <button class="btn btn-outline-secondary w-100" type="button" (click)="searchQuery=''; filterBroker=''; filterActive=''">
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <!-- Users table -->
+    <div class="card app-card">
+      <div class="card-body">
+        <div class="app-card-header">
+          <h2 class="app-section-title">Users</h2>
+          <span class="badge text-bg-secondary">{{ filteredUsers.length }} / {{ users.length }}</span>
+        </div>
+
+        <div class="table-responsive" *ngIf="filteredUsers.length; else noUsers">
+          <table class="table table-sm align-middle app-table admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Primary Broker</th>
+                <th>Tokens</th>
+                <th>Registered</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let u of filteredUsers" [class.table-warning]="!u.is_active">
+                <td class="text-nowrap fw-medium">{{ u.name }}</td>
+                <td class="text-nowrap">
+                  <a [href]="'mailto:' + u.email">{{ u.email }}</a>
+                </td>
+                <td class="text-nowrap">{{ u.phone_number }}</td>
+                <td>
+                  <span class="badge text-capitalize" [ngClass]="brokerBadgeClass(u.primary_broker)">
+                    {{ u.primary_broker }}
+                  </span>
+                </td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    <ng-container *ngIf="u.broker_tokens.length; else noTokens">
+                      <span
+                        *ngFor="let t of u.broker_tokens"
+                        class="badge text-capitalize"
+                        [ngClass]="t.consent ? brokerBadgeClass(t.broker) : 'text-bg-secondary'"
+                        [title]="t.broker + ' | consent: ' + t.consent + ' | updated: ' + t.updated_at"
+                      >
+                        {{ t.broker }}
+                        <span *ngIf="!t.consent" class="ms-1 opacity-75">(no consent)</span>
+                      </span>
+                    </ng-container>
+                    <ng-template #noTokens>
+                      <span class="text-muted small">—</span>
+                    </ng-template>
+                  </div>
+                </td>
+                <td class="text-nowrap text-muted small">{{ u.created_at | slice:0:10 }}</td>
+                <td>
+                  <span class="badge" [ngClass]="u.is_active ? 'text-bg-success' : 'text-bg-secondary'">
+                    {{ u.is_active ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+                <td class="text-end text-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="toggleActive(u.email)" title="Toggle active status">
+                    {{ u.is_active ? 'Deactivate' : 'Activate' }}
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" (click)="requestDeleteUser(u.email)" [disabled]="isDeleting">
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ng-template #noUsers>
+          <div class="app-empty">No users match the current filters.</div>
+        </ng-template>
+      </div>
     </div>
   </ng-template>
 </div>
 
-<app-modal
-  [open]="showLogoutModal"
-  title="Confirm logout"
-  (closed)="cancelLogout()"
->
-  <p class="mb-3">Are you sure you want to log out of the admin console?</p>
+<app-modal [open]="showLogoutModal" title="Confirm logout" (closed)="cancelLogout()">
+  <p class="mb-3">Log out of the admin console?</p>
   <div class="d-flex justify-content-end gap-2">
     <button type="button" class="btn btn-outline-secondary" (click)="cancelLogout()">Cancel</button>
     <button type="button" class="btn btn-danger" (click)="confirmLogout()">Logout</button>
   </div>
 </app-modal>
 
-<app-modal
-  [open]="showDeleteModal"
-  title="Confirm delete"
-  (closed)="cancelDeleteUser()"
->
-  <p class="mb-3">Are you sure you want to delete this user?</p>
+<app-modal [open]="showDeleteModal" title="Confirm delete" (closed)="cancelDeleteUser()">
+  <p class="mb-3">Delete user <strong>{{ pendingDeleteEmail }}</strong> and all their data?</p>
   <div class="d-flex justify-content-end gap-2">
     <button type="button" class="btn btn-outline-secondary" (click)="cancelDeleteUser()">Cancel</button>
     <button type="button" class="btn btn-danger" (click)="confirmDeleteUser()" [disabled]="isDeleting">

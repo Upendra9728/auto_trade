@@ -2,6 +2,13 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface BrokerTokenSummary {
+  broker: string;
+  client_id: string;
+  consent: boolean;
+  updated_at: string;
+}
+
 export interface TokenUpsertRequest {
   client_id: string;
   access_token: string;
@@ -10,6 +17,7 @@ export interface TokenUpsertRequest {
 
 export interface TokenResponse {
   client_id: string;
+  broker: string;
   consent: boolean;
   updated_at: string;
 }
@@ -24,14 +32,28 @@ export interface AdminUserResponse {
   name: string;
   email: string;
   phone_number: string;
+  primary_broker: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  broker_tokens: BrokerTokenSummary[];
+}
+
+export interface AdminDashboardResponse {
+  total_users: number;
+  active_users: number;
+  tokens_by_broker: Record<string, number>;
+  consented_by_broker: Record<string, number>;
+  recent_batches: number;
 }
 
 export interface UserTokenStatusResponse {
   has_token: boolean;
   token: TokenResponse | null;
+}
+
+export interface AllBrokerTokensResponse {
+  tokens: BrokerTokenSummary[];
 }
 
 export interface UserUpstoxAppStatusResponse {
@@ -43,6 +65,14 @@ export interface UserUpstoxAppStatusResponse {
 @Injectable({ providedIn: 'root' })
 export class TokenService {
   constructor(private readonly http: HttpClient) {}
+
+  // ── Admin ──────────────────────────────────────────────────────────────────
+
+  getDashboard(adminSecret: string): Observable<AdminDashboardResponse> {
+    return this.http.get<AdminDashboardResponse>('/api/admin/dashboard', {
+      headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
+    });
+  }
 
   listTokensAdmin(adminSecret: string): Observable<TokenResponse[]> {
     return this.http.get<TokenResponse[]>('/api/tokens', {
@@ -69,23 +99,23 @@ export class TokenService {
   deleteTokenAdmin(adminSecret: string, clientId: string): Observable<{ status: string; client_id: string }> {
     return this.http.delete<{ status: string; client_id: string }>(
       `/api/tokens/${encodeURIComponent(clientId)}`,
-      {
-        headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
-      }
+      { headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }) }
     );
   }
 
   deleteUserAdmin(adminSecret: string, userEmail: string): Observable<{ status: string; user_email: string }> {
     return this.http.delete<{ status: string; user_email: string }>(
       `/api/users/${encodeURIComponent(userEmail)}`,
-      {
-        headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
-      }
+      { headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }) }
     );
   }
 
-  upsertToken(req: TokenUpsertRequest): Observable<TokenResponse> {
-    throw new Error('Use upsertTokenAdmin or upsertUserToken');
+  toggleUserActive(adminSecret: string, userEmail: string): Observable<{ status: string }> {
+    return this.http.patch<{ status: string }>(
+      `/api/users/${encodeURIComponent(userEmail)}/toggle-active`,
+      {},
+      { headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }) }
+    );
   }
 
   upsertTokenAdmin(adminSecret: string, req: TokenUpsertRequest): Observable<TokenResponse> {
@@ -93,6 +123,18 @@ export class TokenService {
       headers: new HttpHeaders({ 'X-Admin-Secret': adminSecret }),
     });
   }
+
+  // ── User broker tokens ─────────────────────────────────────────────────────
+
+  getAllBrokerTokens(): Observable<AllBrokerTokensResponse> {
+    return this.http.get<AllBrokerTokensResponse>('/api/user/broker-tokens');
+  }
+
+  upsertBrokerToken(broker: string, req: TokenUpsertRequest): Observable<TokenResponse> {
+    return this.http.put<TokenResponse>(`/api/user/broker-token/${broker}`, req);
+  }
+
+  // ── Upstox-specific ────────────────────────────────────────────────────────
 
   getUserTokenStatus(): Observable<UserTokenStatusResponse> {
     return this.http.get<UserTokenStatusResponse>('/api/user/token');
@@ -110,7 +152,9 @@ export class TokenService {
     return this.http.put<UserUpstoxAppStatusResponse>('/api/user/upstox-app', req);
   }
 
-  upsertUserToken(req: { access_token: string; consent: boolean }): Observable<TokenResponse> {
+  upsertUserToken(req: { client_id: string; access_token: string; consent: boolean }): Observable<TokenResponse> {
     return this.http.put<TokenResponse>('/api/user/token', req);
   }
 }
+
+

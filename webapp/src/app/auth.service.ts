@@ -6,6 +6,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phone_number: string;
+  primary_broker: string;
 }
 
 export interface LoginResponse {
@@ -30,6 +31,7 @@ export class AuthService {
     email: string;
     phone_number: string;
     password: string;
+    broker: string;
   }): Observable<UserProfile> {
     return this.http.post<UserProfile>('/api/auth/register', req);
   }
@@ -57,6 +59,20 @@ export class AuthService {
     );
   }
 
+  /** Called once on app startup. Validates the stored token; clears auth if expired/invalid. */
+  validateSession(): void {
+    if (!this.getToken()) {
+      // No token stored — clear any stale user object
+      this.clearAuth();
+      return;
+    }
+    this.http.get<UserProfile>('/api/auth/me').pipe(
+      tap((user) => this.setUser(user))
+    ).subscribe({
+      error: () => this.clearAuth(),
+    });
+  }
+
   logout(): Observable<{ status: string }> {
     return this.http.post<{ status: string }>('/api/auth/logout', {}).pipe(
       tap(() => this.clearAuth())
@@ -77,7 +93,9 @@ export class AuthService {
   }
 
   isLoggedIn(): boolean {
-    return !!this.getToken();
+    // Use the reactive subject as source of truth — clearAuth() calls userSubject.next(null)
+    // which triggers Angular change detection, unlike reading localStorage directly.
+    return this.userSubject.value !== null && !!this.getToken();
   }
 
   private setToken(token: string): void {

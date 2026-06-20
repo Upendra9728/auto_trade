@@ -4,29 +4,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
-class TokenUpsertRequest(BaseModel):
-    client_id: str = Field(min_length=1, max_length=64)
-    access_token: str = Field(min_length=10)
-    consent: bool = True
+BrokerType = Literal["upstox", "dhann", "fyers"]
 
 
-class TokenResponse(BaseModel):
-    client_id: str
-    consent: bool
-    updated_at: str
-
-
-class TokenAdminUpdateRequest(BaseModel):
-    access_token: str | None = Field(default=None, min_length=10)
-    consent: bool | None = None
-
+# -- Auth ----------------------------------------------------------------------
 
 class UserRegistrationRequest(BaseModel):
     name: str = Field(min_length=2, max_length=128)
     email: str = Field(min_length=5, max_length=254)
     phone_number: str = Field(min_length=7, max_length=32)
     password: str = Field(min_length=8, max_length=128)
+    broker: BrokerType = "upstox"
 
 
 class UserLoginRequest(BaseModel):
@@ -38,16 +26,7 @@ class UserProfileResponse(BaseModel):
     name: str
     email: str
     phone_number: str
-
-
-class AdminUserResponse(BaseModel):
-    id: int
-    name: str
-    email: str
-    phone_number: str
-    is_active: bool
-    created_at: str
-    updated_at: str
+    primary_broker: str
 
 
 class UserAuthResponse(BaseModel):
@@ -67,8 +46,29 @@ class PasswordResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
-class UserTokenUpsertRequest(BaseModel):
+# -- Tokens --------------------------------------------------------------------
+
+class TokenUpsertRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=64)
     access_token: str = Field(min_length=10)
+    consent: bool = True
+
+
+class TokenResponse(BaseModel):
+    client_id: str
+    broker: str
+    consent: bool
+    updated_at: str
+
+
+class TokenAdminUpdateRequest(BaseModel):
+    access_token: str | None = Field(default=None, min_length=10)
+    consent: bool | None = None
+
+
+class UserTokenUpsertRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=64)
+    access_token: str = Field(min_length=1)
     consent: bool = True
 
 
@@ -76,6 +76,19 @@ class UserTokenStatusResponse(BaseModel):
     has_token: bool
     token: TokenResponse | None = None
 
+
+class BrokerTokenSummary(BaseModel):
+    broker: str
+    client_id: str
+    consent: bool
+    updated_at: str
+
+
+class AllBrokerTokensResponse(BaseModel):
+    tokens: list[BrokerTokenSummary]
+
+
+# -- Upstox App ----------------------------------------------------------------
 
 class UserUpstoxAppUpsertRequest(BaseModel):
     client_id: str = Field(min_length=3, max_length=128)
@@ -87,6 +100,8 @@ class UserUpstoxAppStatusResponse(BaseModel):
     client_id: str | None = None
     updated_at: str | None = None
 
+
+# -- Orders --------------------------------------------------------------------
 
 class GttRule(BaseModel):
     strategy: Literal["ENTRY", "TARGET", "STOPLOSS"]
@@ -131,8 +146,31 @@ class OrderBatchResponse(BaseModel):
     batch_id: int
     created_at: str
     source: str
+    broker: str | None = None
     raw_text: str
     parsed_payload_json: str
     telegram_chat_id: str | None = None
     telegram_message_id: str | None = None
     results: list[OrderResultResponse]
+
+
+# -- Admin ---------------------------------------------------------------------
+
+class AdminUserResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone_number: str
+    primary_broker: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+    broker_tokens: list[BrokerTokenSummary] = []
+
+
+class AdminDashboardResponse(BaseModel):
+    total_users: int
+    active_users: int
+    tokens_by_broker: dict[str, int]
+    consented_by_broker: dict[str, int]
+    recent_batches: int

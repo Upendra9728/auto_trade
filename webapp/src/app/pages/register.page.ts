@@ -1,7 +1,7 @@
-import { CommonModule } from '@angular/common';
-import { ChangeDetectorRef, Component } from '@angular/core';
+﻿import { CommonModule } from '@angular/common';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../auth.service';
@@ -11,18 +11,25 @@ import { ModalComponent } from '../shared/modal.component';
 
 type AlertType = 'success' | 'danger' | 'info';
 
+const BROKER_LABELS: Record<string, string> = {
+  upstox: 'Upstox',
+  dhann: 'Dhann',
+  fyers: 'Fyers',
+};
+
 @Component({
   selector: 'app-register-page',
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, AlertComponent, ModalComponent],
   templateUrl: './register.page.html',
 })
-export class RegisterPage {
+export class RegisterPage implements OnInit {
   name = '';
   email = '';
   phone_number = '';
   password = '';
   confirmPassword = '';
+  broker = 'upstox';
 
   isSaving = false;
   showSuccessModal = false;
@@ -31,8 +38,20 @@ export class RegisterPage {
   constructor(
     private readonly auth: AuthService,
     private readonly router: Router,
+    private readonly route: ActivatedRoute,
     private readonly cdr: ChangeDetectorRef
   ) {}
+
+  ngOnInit(): void {
+    const brokerParam = this.route.snapshot.queryParamMap.get('broker');
+    if (brokerParam && ['upstox', 'dhann', 'fyers'].includes(brokerParam)) {
+      this.broker = brokerParam;
+    }
+  }
+
+  get brokerLabel(): string {
+    return BROKER_LABELS[this.broker] || this.broker;
+  }
 
   register(): void {
     this.alert = null;
@@ -53,7 +72,7 @@ export class RegisterPage {
 
     this.isSaving = true;
     this.auth
-      .register({ name, email, phone_number, password })
+      .register({ name, email, phone_number, password, broker: this.broker })
       .pipe(
         finalize(() => {
           this.isSaving = false;
@@ -67,7 +86,16 @@ export class RegisterPage {
           this.cdr.detectChanges();
         },
         error: (err) => {
-          this.alert = { type: 'danger', message: `Registration failed: ${formatHttpError(err)}` };
+          const msg = formatHttpError(err);
+          // If the email is already registered, guide the user to login instead
+          if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('email')) {
+            this.alert = {
+              type: 'info',
+              message: 'This email is already registered. One account covers all brokers — just log in and add your broker tokens from the account page.',
+            };
+          } else {
+            this.alert = { type: 'danger', message: `Registration failed: ${msg}` };
+          }
           this.cdr.detectChanges();
         },
       });

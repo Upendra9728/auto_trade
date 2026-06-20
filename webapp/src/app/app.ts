@@ -15,8 +15,11 @@ export class App {
 
   constructor(
     public readonly auth: AuthService,
-    private readonly router: Router
-  ) {}
+    public readonly router: Router
+  ) {
+    // Validate stored session on every app load to clear stale tokens
+    this.auth.validateSession();
+  }
 
   logout(): void {
     this.showLogoutModal = true;
