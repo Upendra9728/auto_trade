@@ -11,6 +11,8 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import requests
 from sqlalchemy.orm import Session
 
 from .auth import (
@@ -745,3 +747,64 @@ def _batch_to_detail_response(batch: OrderBatch) -> OrderBatchResponse:
         telegram_message_id=batch.telegram_message_id,
         results=results,
     )
+
+class DhanSuperOrderRequest(BaseModel):
+    dhanClientId: str
+    accessToken: str
+    exchangeSegment: str
+    securityId: str
+    quantity: int
+    price: float
+    targetPrice: float
+    stopLossPrice: float
+    transactionType: str = "BUY"
+    productType: str = "INTRADAY"
+    orderType: str = "LIMIT"
+    trailingJump: float = 0
+
+@app.post("/api/dhan/super-order")
+async def place_dhan_super_order(req: DhanSuperOrderRequest):
+    payload = {
+        "dhanClientId": req.dhanClientId,
+        "correlationId": uuid.uuid4().hex[:20],
+        "transactionType": req.transactionType,
+        "exchangeSegment": req.exchangeSegment,
+        "productType": req.productType,
+        "orderType": req.orderType,
+        "securityId": req.securityId,
+        "quantity": req.quantity,
+        "price": req.price,
+        "targetPrice": req.targetPrice,
+        "stopLossPrice": req.stopLossPrice,
+        "trailingJump": req.trailingJump,
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "access-token": req.accessToken,
+    }
+
+    try:
+        response = requests.post(
+            "https://api.dhan.co/v2/super/orders",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        print(response.text)
+        try:
+            dhan_response = response.json()
+        except Exception:
+            dhan_response = response.text
+
+        return {
+            "status_code": response.status_code,
+            "request": payload,
+            "response": dhan_response,
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dhan API Error: {str(e)}",
+        )
