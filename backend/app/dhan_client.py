@@ -87,7 +87,16 @@ class DhanClient:
         try:
             info = socket.getaddrinfo("api.dhan.co", 443, proto=socket.IPPROTO_TCP)
             resolved_ips = [item[4][0] for item in info]
-            logger.info("Dhan outbound address candidates: %s", resolved_ips)
+            logger.info("Dhan outbound destination IPs: %s", resolved_ips)
+
+            source_ips = []
+            for ip in resolved_ips:
+                try:
+                    with socket.create_connection((ip, 443), timeout=5) as sock:
+                        source_ips.append(sock.getsockname()[0])
+                except OSError as exc:
+                    source_ips.append(f"{ip} (connect failed: {exc})")
+            logger.info("Dhan outbound source IPs: %s", source_ips)
         except Exception as exc:
             logger.warning("Could not resolve Dhan outbound addresses: %s", exc)
 
