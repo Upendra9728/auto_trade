@@ -154,6 +154,27 @@ class OrderBatchResponse(BaseModel):
     results: list[OrderResultResponse]
 
 
+class DhanSuperOrderRequest(BaseModel):
+    dhan_client_id: str = Field(min_length=1)
+    access_token: str = Field(min_length=1)
+    exchange_segment: str = Field(min_length=1)
+    security_id: str = Field(min_length=1)
+    quantity: int = Field(ge=1)
+    price: float = Field(ge=0)
+    target_price: float = Field(ge=0)
+    stop_loss_price: float = Field(ge=0)
+    transaction_type: str = "BUY"
+    product_type: str = "INTRADAY"
+    order_type: str = "LIMIT"
+    trailing_jump: float = 0
+
+
+class DhanSuperOrderResponse(BaseModel):
+    success: bool
+    message: str
+    data: dict[str, Any] | None = None
+
+
 # -- Admin ---------------------------------------------------------------------
 
 class AdminUserResponse(BaseModel):

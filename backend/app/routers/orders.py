@@ -11,6 +11,8 @@ from ..models import OrderBatch
 from ..order_service import place_gtt_for_all_clients, place_orders_for_parsed
 from ..schemas import (
     BatchPlaceResponse,
+    DhanSuperOrderRequest,
+    DhanSuperOrderResponse,
     GttPlaceRequest,
     OrderBatchResponse,
     OrderResultResponse,
@@ -18,6 +20,7 @@ from ..schemas import (
 )
 from ..config import settings
 from ..telegram_parser import parse_telegram_message
+from ..dhan_client import DhanClient, DhanApiError
 
 router = APIRouter(tags=["orders"])
 logger = logging.getLogger(__name__)
@@ -27,6 +30,31 @@ logger = logging.getLogger(__name__)
 async def place_batch(req: GttPlaceRequest, db: Session = Depends(get_db)) -> BatchPlaceResponse:
     batch = await place_gtt_for_all_clients(db=db, gtt_request=req, raw_text=req.model_dump_json(), source="api")
     return _batch_to_response(batch)
+
+
+@router.post("/api/dhan/super-order", response_model=DhanSuperOrderResponse)
+async def dhan_super_order(req: DhanSuperOrderRequest) -> DhanSuperOrderResponse:
+    client = DhanClient()
+    try:
+        data = await client.place_super_order(
+            dhan_client_id=req.dhan_client_id,
+            access_token=req.access_token,
+            exchange_segment=req.exchange_segment,
+            security_id=req.security_id,
+            quantity=req.quantity,
+            price=req.price,
+            target_price=req.target_price,
+            stop_loss_price=req.stop_loss_price,
+            transaction_type=req.transaction_type,
+            product_type=req.product_type,
+            order_type=req.order_type,
+            trailing_jump=req.trailing_jump,
+        )
+        return DhanSuperOrderResponse(success=True, message="Dhan super order request submitted", data=data)
+    except DhanApiError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/api/telegram/ingest", response_model=BatchPlaceResponse)
