@@ -65,6 +65,7 @@ class DhanClient:
             "Content-Type": "application/json",
             "access-token": access_token,
         }
+        logger.info("Dhan headers: %s", json.dumps(headers, separators=(",", ":")))
 
         logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
 
