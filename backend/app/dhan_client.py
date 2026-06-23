@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 from typing import Any
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
@@ -60,6 +65,8 @@ class DhanClient:
             "Content-Type": "application/json",
             "access-token": access_token,
         }
+
+        logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
