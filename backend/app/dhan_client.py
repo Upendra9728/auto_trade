@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import uuid
 from typing import Any
 
@@ -82,6 +83,13 @@ class DhanClient:
         logger.info("Dhan headers: %s", json.dumps(safe_headers, separators=(",", ":")))
 
         logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
+
+        try:
+            info = socket.getaddrinfo("api.dhan.co", 443, proto=socket.IPPROTO_TCP)
+            resolved_ips = [item[4][0] for item in info]
+            logger.info("Dhan outbound address candidates: %s", resolved_ips)
+        except Exception as exc:
+            logger.warning("Could not resolve Dhan outbound addresses: %s", exc)
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
