@@ -15,7 +15,8 @@ socket.getaddrinfo = _getaddrinfo_ipv4
 
 import logging
 
-from fastapi import APIRouter, Depends, FastAPI
+import httpx
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -68,3 +69,21 @@ def _startup() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/server-ip")
+async def get_server_ip(request: Request) -> dict[str, str]:
+    """Return the server's public IP and the request source IP for debugging."""
+    source_ip = request.client.host if request.client else "unknown"
+    public_ip = "unknown"
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            public_ip = (await client.get("https://api.ipify.org")).text.strip()
+    except Exception:
+        public_ip = "error"
+
+    return {
+        "source_ip": source_ip,
+        "public_ip": public_ip,
+    }
