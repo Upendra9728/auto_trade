@@ -28,6 +28,19 @@ class DhanApiError(RuntimeError):
 
 
 class DhanClient:
+    @staticmethod
+    def _format_error_message(data: Any, status_code: int) -> str:
+        if isinstance(data, dict):
+            error_code = data.get("errorCode") or data.get("code")
+            error_message = data.get("errorMessage") or data.get("message")
+            if error_code == "DH-905" or str(error_message).lower().startswith("invalid ip"):
+                return (
+                    "Dhan rejected the request because this server's public IP is not whitelisted. "
+                    "Add the backend server IP to the Dhan developer portal and retry."
+                )
+            return f"Dhann API error HTTP {status_code}: {data}"
+        return f"Dhann API error HTTP {status_code}: {data}"
+
     async def place_super_order(
         self,
         *,
@@ -65,12 +78,15 @@ class DhanClient:
             "Content-Type": "application/json",
             "access-token": access_token,
         }
-        logger.info("Dhan headers: %s", json.dumps(headers, separators=(",", ":")))
+        safe_headers = {"Content-Type": headers["Content-Type"], "access-token": "<redacted>"}
+        logger.info("Dhan headers: %s", json.dumps(safe_headers, separators=(",", ":")))
 
         logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
+
+        logger.info("Dhan response status=%s body=%s", resp.status_code, resp.text[:2000])
 
         try:
             data = resp.json()
@@ -78,6 +94,6 @@ class DhanClient:
             raise DhanApiError(f"Dhann returned non-JSON: HTTP {resp.status_code} -> {resp.text[:500]}")
 
         if resp.status_code >= 400:
-            raise DhanApiError(f"Dhann API error HTTP {resp.status_code}: {data}")
+            raise DhanApiError(self._format_error_message(data, resp.status_code))
 
         return data
