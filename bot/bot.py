@@ -33,6 +33,32 @@ BACKEND_INTERNAL_SECRET = os.environ.get("BACKEND_INTERNAL_SECRET", "").strip()
 
 _TELEGRAM_TOKEN_RE = re.compile(r"^\d+:[A-Za-z0-9_-]{20,}$")
 
+import socket
+
+def debug_network():
+    print("=" * 50)
+
+    for host in [
+        "api.dhan.co",
+        "api.telegram.org"
+    ]:
+        print(f"\nHost: {host}")
+
+        try:
+            infos = socket.getaddrinfo(host, 443)
+            for info in infos:
+                family = info[0]
+                addr = info[4][0]
+
+                if family == socket.AF_INET:
+                    print(f"IPv4 -> {addr}")
+                elif family == socket.AF_INET6:
+                    print(f"IPv6 -> {addr}")
+
+        except Exception as e:
+            print(e)
+
+    print("=" * 50)
 
 def _validate_env() -> None:
     if not BOT_TOKEN:
@@ -192,7 +218,7 @@ async def chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     _validate_env()
-
+    debug_network()
     try:
         app = Application.builder().token(BOT_TOKEN).build()
 
