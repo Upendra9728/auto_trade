@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 from typing import Any
 
 import httpx
@@ -12,6 +13,16 @@ from telegram.error import InvalidToken
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 load_dotenv()
+
+# Force IPv4 for outbound HTTP calls when IPv6 causes IP mismatch issues.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _getaddrinfo_ipv4
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 ALLOWED_CHAT_ID = os.environ.get("TELEGRAM_ALLOWED_CHAT_ID", "").strip()
