@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
+from ..config import settings
+from ..crypto import decrypt_token
 from ..deps import get_db
-from ..models import OrderBatch
+from ..models import ClientToken, OrderBatch
 from ..order_service import place_gtt_for_all_clients, place_orders_for_parsed
 from ..schemas import (
     BatchPlaceResponse,
@@ -18,7 +22,6 @@ from ..schemas import (
     OrderResultResponse,
     TelegramIngestRequest,
 )
-from ..config import settings
 from ..telegram_parser import parse_telegram_message
 from ..dhan_client import DhanClient, DhanApiError
 
@@ -55,6 +58,51 @@ async def dhan_super_order(req: DhanSuperOrderRequest) -> DhanSuperOrderResponse
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/api/dhan/registered-ips")
+async def dhan_registered_ips(
+    x_internal_secret: str | None = Header(default=None, alias="X-Internal-Secret"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    if x_internal_secret != settings.internal_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    token_row = (
+        db.query(ClientToken)
+        .filter(ClientToken.broker.in_(["dhann", "dhan"]), ClientToken.consent.is_(True))
+        .order_by(ClientToken.id.desc())
+        .first()
+    )
+    if token_row is None:
+        raise HTTPException(status_code=404, detail="No Dhan token found")
+
+    access_token = decrypt_token(token_row.access_token_encrypted)
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(
+                "https://api.dhan.co/v2/ip/getIP",
+                headers={"Accept": "application/json", "access-token": access_token},
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Dhan IP lookup failed: {exc}") from exc
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Dhan API error: {resp.text}")
+
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Dhan returned invalid JSON: {exc}") from exc
+
+    return {
+        "client_id": token_row.client_id,
+        "primaryIP": data.get("primaryIP"),
+        "secondaryIP": data.get("secondaryIP"),
+        "modifyDatePrimary": data.get("modifyDatePrimary"),
+        "modifyDateSecondary": data.get("modifyDateSecondary"),
+        "raw": data,
+    }
 
 
 @router.post("/api/telegram/ingest", response_model=BatchPlaceResponse)
