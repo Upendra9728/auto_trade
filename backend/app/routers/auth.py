@@ -16,6 +16,7 @@ from ..auth import (
 )
 from ..config import settings
 from ..deps import get_current_user, get_db, _utcnow
+from ..ipv6_pool import assign_next_ipv6
 from ..mailer import send_password_reset_email
 from ..models import PasswordResetOtp, User, UserSession
 from ..schemas import (
@@ -74,6 +75,7 @@ def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -
         password_hash=hash_password(req.password),
         role="user",
         is_active=True,
+        assigned_ipv6=assign_next_ipv6(db),
     )
     db.add(user)
     db.commit()
