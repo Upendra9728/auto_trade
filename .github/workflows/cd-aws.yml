@@ -30,6 +30,9 @@ jobs:
             git checkout aws-prod
             git reset --hard origin/aws-prod
 
+            echo "==> Clearing stale Python bytecode cache..."
+            find "$APP_DIR/backend" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+
             echo "==> Updating backend dependencies..."
             source backend/.venv/bin/activate
             pip install --quiet --upgrade pip
