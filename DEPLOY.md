@@ -1,112 +1,319 @@
 ﻿# End-to-End Deployment Guide
 
-This guide walks through **every step** from a fresh AWS account to a fully
-running backend — including PostgreSQL, Firebase FCM, IPv6 per-user IP
-assignment, Nginx, systemd, and automatic GitHub Actions CD.
-
----
-
-## Overview
+This guide starts from a **blank AWS account** and ends with a fully running
+production backend with per-user IPv6 order placement.
 
 ```
 Mobile App
     │
     ▼ HTTPS
-AWS EC2 (ap-south-1, 13.234.232.51)
+AWS EC2 (ap-south-1)
     │
-    ├── Nginx (port 80/443) ──► FastAPI / Uvicorn (port 8000)
-    │                               │
-    │                               ├── PostgreSQL (port 5432)
-    │                               ├── Firebase Admin SDK (FCM push)
-    │                               └── Dhan API  ←── bound to user's IPv6
+    ├── Nginx (80/443) ──► FastAPI / Uvicorn (8000)
+    │                           │
+    │                           ├── PostgreSQL (5432)
+    │                           ├── Firebase Admin SDK (FCM push)
+    │                           └── Dhan API  ◄── bound to user's IPv6
     │
-    └── ENI: 2406:da1a:c1e:f000:bb82::/80  (one address per user)
+    └── ENI  ←── /80 IPv6 prefix (one address per user, survives reboots)
 ```
 
-**GitHub Actions** deploys automatically on every push to `aws-prod`.
-
 ---
 
-## Prerequisites
+## Section A — AWS Infrastructure (one-time)
 
-| Item | Value / Notes |
-|------|--------------|
-| AWS EC2 instance | `i-0cbb6ceca01ea6569` · `t3.micro` · Amazon Linux 2023 |
-| Public IPv4 | `13.234.232.51` |
-| IPv6 prefix on ENI | `2406:da1a:c1e:f000:bb82::/80` (already delegated — see `poc.md`) |
-| SSH key | `dhan-test-key.pem` |
-| GitHub repo | `aws-prod` branch pushed |
-| Firebase project | needed for FCM push notifications |
-| Dhan developer account | for registering per-user IPv6 addresses |
+Do everything in **ap-south-1 (Mumbai)** for lowest latency to Dhan.
 
----
+> **CloudShell tip:** Use the region dropdown in the top-right of the AWS
+> Console UI to select Mumbai *before* opening CloudShell. The env var
+> `AWS_DEFAULT_REGION` takes precedence over `aws configure set region`.
 
-## Section A — GitHub Setup (one-time, from your laptop)
+Open **CloudShell** (or use the AWS CLI locally with your credentials).
 
-### A1. Push the aws-prod branch
+### A1. VPC with IPv6
 
 ```bash
-git push -u origin aws-prod
+# Create VPC
+VPC_ID=$(aws ec2 create-vpc \
+  --cidr-block 10.0.0.0/16 \
+  --amazon-provided-ipv6-cidr-block \
+  --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=automate-trading-vpc}]' \
+  --query 'Vpc.VpcId' --output text)
+echo "VPC: $VPC_ID"
+
+# Enable DNS
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support
+
+# Get the Amazon-provided IPv6 CIDR (e.g. 2406:da1a:xxxx:xx00::/56)
+IPV6_CIDR=$(aws ec2 describe-vpcs --vpc-ids $VPC_ID \
+  --query 'Vpcs[0].Ipv6CidrBlockAssociationSet[0].Ipv6CidrBlock' --output text)
+echo "VPC IPv6 CIDR: $IPV6_CIDR"
+# Save this — you will need the prefix later for the IPv6 pool config
 ```
 
-### A2. Add GitHub Actions secrets
+### A2. Subnet
 
-Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**
+```bash
+# Use the first /64 from the /56 block (replace the last octet of the prefix with 00)
+SUBNET_IPV6=$(echo $IPV6_CIDR | sed 's|/56|/64|' | sed 's|00::/64|00::/64|')
 
-| Secret name | Value |
-|-------------|-------|
-| `AWS_EC2_HOST` | `13.234.232.51` |
-| `AWS_EC2_USER` | `ec2-user` |
-| `AWS_EC2_SSH_KEY` | Full contents of `dhan-test-key.pem` (including `-----BEGIN...` lines) |
+SUBNET_ID=$(aws ec2 create-subnet \
+  --vpc-id $VPC_ID \
+  --cidr-block 10.0.1.0/24 \
+  --ipv6-cidr-block $SUBNET_IPV6 \
+  --availability-zone ap-south-1a \
+  --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=automate-trading-subnet}]' \
+  --query 'Subnet.SubnetId' --output text)
+echo "Subnet: $SUBNET_ID"
 
-After this, every push to `aws-prod` auto-deploys via `.github/workflows/cd-aws.yml`.
+# Auto-assign public IPv4 on launch
+aws ec2 modify-subnet-attribute --subnet-id $SUBNET_ID --map-public-ip-on-launch
+
+# Auto-assign IPv6 on launch
+aws ec2 modify-subnet-attribute --subnet-id $SUBNET_ID \
+  --assign-ipv6-address-on-creation
+```
+
+### A3. Internet Gateway
+
+```bash
+IGW_ID=$(aws ec2 create-internet-gateway \
+  --tag-specifications 'ResourceType=internet-gateway,Tags=[{Key=Name,Value=automate-trading-igw}]' \
+  --query 'InternetGateway.InternetGatewayId' --output text)
+aws ec2 attach-internet-gateway --internet-gateway-id $IGW_ID --vpc-id $VPC_ID
+echo "IGW: $IGW_ID"
+```
+
+### A4. Route table
+
+```bash
+RTB_ID=$(aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.main,Values=true" \
+  --query 'RouteTables[0].RouteTableId' --output text)
+
+# Default IPv4 route
+aws ec2 create-route --route-table-id $RTB_ID \
+  --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID
+
+# Default IPv6 route
+aws ec2 create-route --route-table-id $RTB_ID \
+  --destination-ipv6-cidr-block ::/0 --gateway-id $IGW_ID
+
+echo "Routes added to $RTB_ID"
+```
+
+### A5. Security group
+
+```bash
+SG_ID=$(aws ec2 create-security-group \
+  --group-name automate-trading-sg \
+  --description "Automate Trading backend" \
+  --vpc-id $VPC_ID \
+  --query 'GroupId' --output text)
+
+# SSH — restrict to your IP in production; use 0.0.0.0/0 only for initial setup
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+# HTTP
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 80 --ipv6-cidr ::/0
+
+# HTTPS
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 443 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $SG_ID \
+  --protocol tcp --port 443 --ipv6-cidr ::/0
+
+echo "Security group: $SG_ID"
+```
+
+### A6. Key pair
+
+```bash
+# Creates the key and saves it locally in CloudShell
+aws ec2 create-key-pair --key-name automate-trading-key \
+  --query 'KeyMaterial' --output text > ~/automate-trading-key.pem
+chmod 400 ~/automate-trading-key.pem
+echo "Key saved to ~/automate-trading-key.pem"
+```
+
+> Download the `.pem` file from CloudShell (Actions → Download file) and keep
+> it somewhere safe — you cannot download it again.
+
+### A7. Launch EC2 instance
+
+```bash
+# Amazon Linux 2023 in ap-south-1 (verify latest AMI if needed)
+AMI_ID=$(aws ec2 describe-images \
+  --owners amazon \
+  --filters 'Name=name,Values=al2023-ami-2023*-x86_64' \
+            'Name=state,Values=available' \
+  --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
+echo "Using AMI: $AMI_ID"
+
+INSTANCE_ID=$(aws ec2 run-instances \
+  --image-id $AMI_ID \
+  --instance-type t3.small \
+  --key-name automate-trading-key \
+  --security-group-ids $SG_ID \
+  --subnet-id $SUBNET_ID \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=automate-trading}]' \
+  --query 'Instances[0].InstanceId' --output text)
+echo "Instance: $INSTANCE_ID"
+
+# Wait for it to be running
+aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+
+# Get public IP
+PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+echo "Public IP: $PUBLIC_IP"
+```
+
+> Note: Use **t3.small** (or larger) rather than t3.micro.
+> t3.micro allows only 2 IPv6 slots per ENI (individual addresses + prefixes
+> combined). t3.small allows more, giving you headroom for the prefix
+> delegation plus any individually-assigned addresses.
+
+### A8. Delegate an IPv6 /80 prefix to the ENI
+
+```bash
+ENI_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].NetworkInterfaces[0].NetworkInterfaceId' \
+  --output text)
+echo "ENI: $ENI_ID"
+
+aws ec2 assign-ipv6-addresses \
+  --network-interface-id $ENI_ID \
+  --ipv6-prefix-count 1
+
+# Confirm the delegated prefix
+aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID \
+  --query 'NetworkInterfaces[0].Ipv6Prefixes'
+# Output example: [{"Ipv6Prefix": "2406:da1a:xxxx:xx00:abcd::/80"}]
+# Save the prefix — you need it for .env  (IPV6_POOL_PREFIX)
+```
 
 ---
 
-## Section B — EC2 First-Time Setup
-
-SSH in:
+## Section B — OS IPv6 Setup (SSH into the instance)
 
 ```bash
-ssh -i dhan-test-key.pem ec2-user@13.234.232.51
+ssh -i automate-trading-key.pem ec2-user@<PUBLIC_IP>
 ```
 
-### B1. System packages
+### B1. Find the network interface name
+
+```bash
+ip link show
+# Usually 'ens5' on Amazon Linux 2023 / Nitro instances
+IFACE=ens5
+```
+
+### B2. Configure static IPv6 addresses (persistent across reboots)
+
+Amazon Linux 2023 uses `systemd-networkd`. The correct place for
+persistent custom addresses is a drop-in in `/etc/systemd/network/`
+(not `/run/systemd/network/` which is wiped on reboot).
+
+```bash
+sudo mkdir -p /etc/systemd/network/70-${IFACE}.network.d
+
+# Replace 2406:da1a:xxxx:xx00:abcd: with your actual delegated prefix
+sudo tee /etc/systemd/network/70-${IFACE}.network.d/90-client-static-ips.conf > /dev/null << 'EOF'
+# Add one [Address] block per user.
+# Addresses ::1 onward; the app auto-assigns starting from IPV6_POOL_START.
+# You only need to list addresses here that the OS should bind.
+# Start with a batch; add more as users register (no reboot required).
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::1/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::2/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::3/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::4/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::5/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::6/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::7/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::8/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::9/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::a/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::b/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::c/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::d/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::e/128
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::f/128
+EOF
+
+sudo systemctl restart systemd-networkd
+```
+
+Verify all addresses are live:
+
+```bash
+ip -6 addr show $IFACE | grep "2406:da1a"
+# Should list all 15 addresses
+```
+
+Test egress from one address:
+
+```bash
+curl -6 --interface 2406:da1a:xxxx:xx00:abcd::1 https://icanhazip.com
+# Must return exactly: 2406:da1a:xxxx:xx00:abcd::1
+```
+
+> If curl returns the wrong IP, see **Troubleshooting** at the bottom.
+
+---
+
+## Section C — Application Setup
+
+### C1. System packages
 
 ```bash
 sudo dnf update -y
 sudo dnf install -y git python3 python3-pip python3-venv nginx
 ```
 
-### B2. PostgreSQL
+### C2. PostgreSQL
 
 ```bash
 sudo dnf install -y postgresql15-server postgresql15
 sudo postgresql-setup --initdb
 sudo systemctl enable --now postgresql
 
-# Create the database and user
 sudo -u postgres psql << 'EOF'
 CREATE USER automate_user WITH PASSWORD 'REPLACE_WITH_STRONG_PASSWORD';
 CREATE DATABASE automate_trading OWNER automate_user;
 EOF
-```
 
-> **Production alternative:** Use AWS RDS PostgreSQL 16 (same VPC).
-> Set `DATABASE_URL` accordingly and skip the above steps.
-
-Configure pg_hba so password auth works locally:
-
-```bash
-sudo sed -i 's/^local\s\+all\s\+all\s\+peer/local   all             all                                     md5/' \
-    /var/lib/pgsql/data/pg_hba.conf
+# Enable password auth for local connections
+sudo sed -i \
+  's/^local\s\+all\s\+all\s\+peer/local   all             all                                     md5/' \
+  /var/lib/pgsql/data/pg_hba.conf
 sudo systemctl restart postgresql
 
 # Test
 psql -h localhost -U automate_user -d automate_trading -c '\l'
 ```
 
-### B3. Clone the repository
+### C3. Clone the repository
 
 ```bash
 sudo mkdir -p /var/www
@@ -116,7 +323,7 @@ git clone -b aws-prod https://github.com/YOUR_ORG/auto_trade.git
 cd auto_trade
 ```
 
-### B4. Python virtual environment
+### C4. Python virtual environment
 
 ```bash
 cd /var/www/auto_trade/backend
@@ -127,80 +334,80 @@ pip install -r requirements.txt
 deactivate
 ```
 
-### B5. Generate secrets
-
-Run these commands and **save the output** — you need them for `.env`:
+### C5. Generate secrets
 
 ```bash
-# Fernet encryption key (for Dhan access tokens)
+# Run each command and copy the output:
+
+# 1. Fernet key (encrypts Dhan tokens in DB)
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-# Two random secrets (one for INTERNAL_SECRET, one for ADMIN_SECRET)
+# 2. INTERNAL_SECRET
 openssl rand -base64 32
+
+# 3. ADMIN_SECRET
 openssl rand -base64 32
 ```
 
-### B6. Create the .env file
+### C6. Create .env
 
 ```bash
 cp /var/www/auto_trade/backend/.env.example /var/www/auto_trade/backend/.env
 nano /var/www/auto_trade/backend/.env
 ```
 
-Fill in every value:
+Fill in every value — replace ALL placeholders:
 
 ```env
 DATABASE_URL=postgresql+psycopg://automate_user:REPLACE_WITH_STRONG_PASSWORD@localhost:5432/automate_trading
 
 CORS_ORIGINS=*
 
-TOKEN_ENCRYPTION_KEY=<paste Fernet key from B5>
-INTERNAL_SECRET=<paste first random secret from B5>
-ADMIN_SECRET=<paste second random secret from B5>
+TOKEN_ENCRYPTION_KEY=<Fernet key from C5 step 1>
+INTERNAL_SECRET=<random secret from C5 step 2>
+ADMIN_SECRET=<random secret from C5 step 3>
 
 AUTH_SESSION_HOURS=168
 OTP_EXPIRY_MINUTES=10
 
-# Email (for password-reset OTPs) — use a Gmail App Password
+# Email — required for password-reset OTPs
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-gmail@gmail.com
 SMTP_PASSWORD=your-gmail-app-password
 SMTP_FROM_EMAIL=your-gmail@gmail.com
 
-# Firebase (fill in after Section C)
+# Firebase — fill in after Section D
 FIREBASE_CREDENTIALS_PATH=/etc/automate-trading/firebase-service-account.json
 
-# IPv6 pool — addresses ::10 onwards (::1–::f already used in POC testing)
-IPV6_POOL_PREFIX=2406:da1a:c1e:f000:bb82:
-IPV6_POOL_START=16
+# IPv6 pool — use YOUR actual delegated prefix, e.g. 2406:da1a:xxxx:xx00:abcd:
+# The app assigns ::1, ::2, ... starting at IPV6_POOL_START
+IPV6_POOL_PREFIX=2406:da1a:xxxx:xx00:abcd:
+IPV6_POOL_START=1
 ```
 
 ---
 
-## Section C — Firebase Cloud Messaging (FCM)
+## Section D — Firebase Cloud Messaging (FCM)
 
-FCM is used to push order signals to users' mobile devices.
-
-### C1. Create a Firebase project
+### D1. Create a Firebase project
 
 1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Click **Add project** → name it (e.g. `automate-trading`)
-3. Disable Google Analytics if not needed → **Create project**
+2. **Add project** → enter a name → **Create project**
 
-### C2. Generate a service account key
+### D2. Generate a service account key
 
-1. In Firebase Console → ⚙️ **Project Settings** → **Service accounts** tab
+1. **Project Settings** (⚙️) → **Service accounts** tab
 2. Click **Generate new private key** → **Generate key**
-3. A JSON file downloads — keep it safe, it grants full Firebase admin access
+3. A JSON file downloads — this is your Firebase credentials
 
-### C3. Upload the key to EC2
+### D3. Upload to EC2
 
 From your laptop:
 
 ```bash
-scp -i dhan-test-key.pem ~/Downloads/firebase-service-account.json \
-    ec2-user@13.234.232.51:/tmp/firebase-key.json
+scp -i automate-trading-key.pem ~/Downloads/firebase-key.json \
+    ec2-user@<PUBLIC_IP>:/tmp/firebase-key.json
 ```
 
 On EC2:
@@ -212,13 +419,9 @@ sudo chmod 640 /etc/automate-trading/firebase-service-account.json
 sudo chown root:ec2-user /etc/automate-trading/firebase-service-account.json
 ```
 
-The path already matches `FIREBASE_CREDENTIALS_PATH` in your `.env`.
-
 ---
 
-## Section D — Systemd Service
-
-### D1. Create the service file
+## Section E — Systemd Service
 
 ```bash
 sudo tee /etc/systemd/system/automate-backend.service > /dev/null << 'EOF'
@@ -239,22 +442,18 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-```
 
-### D2. Enable and start
-
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable automate-backend
 sudo systemctl start automate-backend
 
-# Verify it started
+# Verify
 sudo systemctl status automate-backend --no-pager
 curl http://127.0.0.1:8000/health
 # Expected: {"status":"ok"}
 ```
 
-If it fails, check logs:
+If it fails:
 
 ```bash
 sudo journalctl -u automate-backend -n 50 --no-pager
@@ -262,9 +461,7 @@ sudo journalctl -u automate-backend -n 50 --no-pager
 
 ---
 
-## Section E — Nginx
-
-### E1. Create the config
+## Section F — Nginx
 
 ```bash
 sudo tee /etc/nginx/conf.d/automate.conf > /dev/null << 'EOF'
@@ -285,68 +482,70 @@ server {
     }
 
     location /health {
-        proxy_pass  http://127.0.0.1:8000;
-        access_log  off;
+        proxy_pass http://127.0.0.1:8000;
+        access_log off;
     }
 
-    location /docs {
-        proxy_pass http://127.0.0.1:8000;
-    }
-
-    location /openapi.json {
-        proxy_pass http://127.0.0.1:8000;
-    }
+    location /docs        { proxy_pass http://127.0.0.1:8000; }
+    location /openapi.json { proxy_pass http://127.0.0.1:8000; }
 }
 EOF
-```
 
-### E2. Enable and test
-
-```bash
 sudo nginx -t                          # must print "syntax is ok"
 sudo systemctl enable --now nginx
+```
 
-# Test from outside (replace with your machine IP if needed)
-curl http://13.234.232.51/health
+Test from outside:
+
+```bash
+curl http://<PUBLIC_IP>/health
 # Expected: {"status":"ok"}
 ```
 
-### E3. HTTPS (strongly recommended for production)
+### HTTPS (recommended for production)
 
 ```bash
-# Requires a domain name pointed at 13.234.232.51
+# Requires a domain name pointed at <PUBLIC_IP>
 sudo dnf install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d yourdomain.com
-# Certbot auto-renews; verify:
-sudo systemctl status certbot-renew.timer
+sudo systemctl status certbot-renew.timer   # verify auto-renewal
 ```
 
 ---
 
-## Section F — Security Group (AWS Console)
+## Section G — GitHub Actions CD
 
-The current security group (`sg-063e1eb8d758a57c5`) allows SSH from anywhere.
-Tighten it before going to production:
+### G1. Add secrets to GitHub
 
-1. AWS Console → **EC2 → Security Groups → sg-063e1eb8d758a57c5 → Edit inbound rules**
-2. Replace current rules with:
+Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**
 
-| Type | Protocol | Port | Source | Purpose |
-|------|----------|------|--------|---------|
-| SSH | TCP | 22 | Your office/home IP only | Admin access |
-| HTTP | TCP | 80 | 0.0.0.0/0, ::/0 | Mobile app + LetsEncrypt |
-| HTTPS | TCP | 443 | 0.0.0.0/0, ::/0 | Mobile app (after cert) |
+| Secret | Value |
+|--------|-------|
+| `AWS_EC2_HOST` | `<PUBLIC_IP>` |
+| `AWS_EC2_USER` | `ec2-user` |
+| `AWS_EC2_SSH_KEY` | Full contents of `automate-trading-key.pem` |
+
+### G2. How it works
+
+Every push to `aws-prod` triggers `.github/workflows/cd-aws.yml`:
+
+1. SSHes into the EC2 instance
+2. `git pull` from `aws-prod`
+3. Updates Python dependencies
+4. Restarts `automate-backend`
+5. Polls `/health` until healthy (or fails the deploy)
 
 ---
 
-## Section G — Bootstrap First Admin
+## Section H — Bootstrap First Admin
 
-Run these API calls from your laptop (or Postman):
-
-### G1. Register your admin account
+Run from your laptop (or Postman/curl). Replace `<PUBLIC_IP>` and secrets.
 
 ```bash
-curl -s -X POST http://13.234.232.51/api/auth/register \
+BASE=http://<PUBLIC_IP>
+
+# 1. Register your account (gets auto-assigned first IPv6 ::1)
+curl -s -X POST $BASE/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Admin",
@@ -354,27 +553,17 @@ curl -s -X POST http://13.234.232.51/api/auth/register \
     "phone_number": "+911234567890",
     "password": "StrongPass123!"
   }' | python3 -m json.tool
-```
 
-Expected response includes `"assigned_ipv6": "2406:da1a:c1e:f000:bb82::10"` — the first
-auto-assigned address starting at pool_start=16 (0x10).
-
-### G2. Promote to admin
-
-```bash
-curl -s -X POST http://13.234.232.51/api/auth/admin-bootstrap \
+# 2. Promote to admin using ADMIN_SECRET from .env
+curl -s -X POST $BASE/api/auth/admin-bootstrap \
   -H "Content-Type: application/json" \
   -d '{
-    "admin_secret": "PASTE_YOUR_ADMIN_SECRET_FROM_ENV",
+    "admin_secret": "YOUR_ADMIN_SECRET",
     "email": "admin@yourdomain.com"
   }' | python3 -m json.tool
-# Expected: {"status":"promoted","email":"...","role":"admin"}
-```
 
-### G3. Login and save the token
-
-```bash
-curl -s -X POST http://13.234.232.51/api/auth/login \
+# 3. Login — save the access_token from the response
+curl -s -X POST $BASE/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "admin@yourdomain.com",
@@ -382,153 +571,157 @@ curl -s -X POST http://13.234.232.51/api/auth/login \
   }' | python3 -m json.tool
 ```
 
-Save the `access_token` — use it as `Authorization: Bearer <token>` in all
-subsequent admin calls.
+Use `Authorization: Bearer <access_token>` for all subsequent admin API calls.
 
 ---
 
-## Section H — Per-User Onboarding Flow
+## Section I — Per-User Onboarding Flow
 
-For each new Dhan client:
+For every new Dhan client that joins:
 
-### H1. User registers via mobile app
+### Step 1 — User registers via mobile app
 
-`POST /api/auth/register` — the backend automatically assigns the next IPv6
-address from the pool (e.g. `::11`, `::12`, …).
+`POST /api/auth/register` automatically assigns the next IPv6 from the pool
+(`::1`, `::2`, `::3`, …). The address is returned in `assigned_ipv6`.
 
-The assigned address is returned in the response as `assigned_ipv6`.
+### Step 2 — Add that IPv6 to the OS (if not already there)
 
-### H2. Admin registers that IPv6 with Dhan
+If the address was not pre-configured in Section B2, add it now:
 
-The user's assigned IPv6 must be whitelisted in their Dhan account before
-any orders can be placed.
+```bash
+sudo tee -a /etc/systemd/network/70-ens5.network.d/90-client-static-ips.conf << EOF
+[Address]
+Address=2406:da1a:xxxx:xx00:abcd::NEW_SUFFIX/128
+EOF
 
-Call Dhan's IP registration API **using that user's own Dhan access token**:
+sudo systemctl restart systemd-networkd
+```
+
+Verify:
+
+```bash
+curl -6 --interface 2406:da1a:xxxx:xx00:abcd::NEW_SUFFIX https://icanhazip.com
+```
+
+### Step 3 — Register the IPv6 with Dhan
+
+Using the **user's own Dhan access token**, call Dhan's IP whitelist API:
 
 ```bash
 curl -X POST https://api.dhan.co/v2/ip/setIP \
   -H "access-token: USER_DHAN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"primaryIP": "2406:da1a:c1e:f000:bb82::11"}'
+  -d '{"primaryIP": "2406:da1a:xxxx:xx00:abcd::NEW_SUFFIX"}'
 ```
 
-> This must be done once per user, from any machine. After this, Dhan only
-> accepts orders for that account when the request originates from that IPv6.
+This must be done once per user. After this, Dhan only accepts orders from
+that account when the request comes from that exact IPv6.
 
-### H3. User saves their Dhan credential via mobile app
+### Step 4 — User saves Dhan credentials via mobile app
 
-`POST /api/users/me/dhan` — stores the Dhan client ID and access token
-(encrypted at rest with Fernet).
+`POST /api/users/me/dhan` — stores Dhan client ID + access token
+(encrypted at rest).
 
-### H4. Verify with the admin dashboard
+### Step 5 — Verify in admin dashboard
 
 ```bash
-curl -s http://13.234.232.51/api/admin/dashboard \
+curl -s http://<PUBLIC_IP>/api/admin/dashboard \
   -H "Authorization: Bearer ADMIN_TOKEN" | python3 -m json.tool
 ```
 
-Check `users.with_ipv6_assigned` and `users.with_dhan_credential` counts.
+Check `users.with_ipv6_assigned` and `users.with_dhan_credential`.
 
 ---
 
-## Section I — Adding More IPv6 Addresses (Scaling)
-
-The existing `/80` prefix has room for billions of addresses.
-When you need more than the 15 already configured on the OS (`::1`–`::f`),
-add more stanzas to the persistent systemd-networkd drop-in on the EC2:
+## Section J — Sending a Signal (Admin Flow)
 
 ```bash
-sudo nano /etc/systemd/network/70-ens5.network.d/90-client-static-ips.conf
+curl -s -X POST http://<PUBLIC_IP>/api/admin/signals \
+  -H "Authorization: Bearer ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "NIFTY 24000CE BUY",
+    "exchange_segment": "NSE_FNO",
+    "security_id": "35022",
+    "transaction_type": "BUY",
+    "product_type": "INTRADAY",
+    "order_type": "LIMIT",
+    "quantity": 50,
+    "price": 120.0,
+    "target_price": 150.0,
+    "stop_loss_price": 100.0,
+    "trailing_jump": 0
+  }' | python3 -m json.tool
 ```
 
-Add new `[Address]` blocks (hex suffix, no leading zeros):
+This:
+1. Creates the signal in DB
+2. Creates a `SignalNotification` (status=`pending`) for every eligible user
+3. Sends an FCM push to every user's device
 
-```ini
-[Address]
-Address=2406:da1a:c1e:f000:bb82::10/128
-[Address]
-Address=2406:da1a:c1e:f000:bb82::11/128
-# ... up to however many users you have
-```
-
-Apply without a reboot:
-
-```bash
-sudo systemctl restart systemd-networkd
-# Verify
-ip -6 addr show ens5 | grep bb82
-```
-
-Addresses survive reboots automatically (this is the `/etc/systemd/network/`
-persistent drop-in, not the runtime `/run/` one — see `poc.md` for details).
+Users then confirm via the mobile app → `POST /api/users/me/notifications/{id}/confirm`
+→ order placed from their IPv6 → status becomes `placed` or `failed`.
 
 ---
 
-## Section J — Ongoing Operations
+## Section K — Ongoing Operations
 
-### Restart backend
-
-```bash
-sudo systemctl restart automate-backend
-```
-
-### View logs
-
-```bash
-sudo journalctl -u automate-backend -f          # live
-sudo journalctl -u automate-backend -n 100      # last 100 lines
-```
-
-### Deploy a code update manually (CD does this automatically)
-
-```bash
-cd /var/www/auto_trade
-git pull origin aws-prod
-source backend/.venv/bin/activate
-pip install -r backend/requirements.txt
-deactivate
-sudo systemctl restart automate-backend
-```
-
-### API documentation (Swagger UI)
-
-```
-http://13.234.232.51/docs
-```
-
-### Check which IPv6 addresses are live on the instance
-
-```bash
-ip -6 addr show ens5 | grep "2406:da1a"
-```
-
-### Test egress from a specific user's IPv6
-
-```bash
-curl -6 --interface 2406:da1a:c1e:f000:bb82::10 https://icanhazip.com
-# Must return exactly: 2406:da1a:c1e:f000:bb82::10
-```
+| Task | Command |
+|------|---------|
+| Restart backend | `sudo systemctl restart automate-backend` |
+| View live logs | `sudo journalctl -u automate-backend -f` |
+| View last 100 lines | `sudo journalctl -u automate-backend -n 100` |
+| API docs (Swagger) | `http://<PUBLIC_IP>/docs` |
+| Check active IPv6 addresses | `ip -6 addr show ens5 \| grep "2406:da1a"` |
+| Test user's egress IP | `curl -6 --interface <IPv6> https://icanhazip.com` |
 
 ---
 
-## Quick Reference
+## Troubleshooting
+
+**Backend won't start**
+```bash
+sudo journalctl -u automate-backend -n 50
+# Check .env values — especially DATABASE_URL and TOKEN_ENCRYPTION_KEY
+```
+
+**curl to /health times out**
+```bash
+sudo systemctl status nginx
+sudo nginx -t
+```
+
+**IPv6 egress test returns wrong IP**
+- Confirm the address is up: `ip -6 addr show ens5`
+- Confirm the prefix is delegated: `aws ec2 describe-network-interfaces --network-interface-ids <ENI_ID> --query 'NetworkInterfaces[0].Ipv6Prefixes'`
+- If address is missing, restart systemd-networkd: `sudo systemctl restart systemd-networkd`
+
+**Dhan rejects with "invalid IP" error**
+- The IPv6 was not registered with Dhan (Section I Step 3 was skipped)
+- Or the address on the OS does not match what was registered with Dhan
+- Check the user's `assigned_ipv6`: `GET /api/admin/users/{id}`
+
+---
+
+## Quick API Reference
 
 | Endpoint | Method | Who | Purpose |
 |----------|--------|-----|---------|
 | `/api/auth/register` | POST | User | Register + auto-get IPv6 |
 | `/api/auth/login` | POST | User/Admin | Get bearer token |
 | `/api/auth/admin-bootstrap` | POST | Setup | Promote first admin |
-| `/api/users/me` | GET | User | Profile + assigned IPv6 |
+| `/api/auth/me` | GET | User | Profile + assigned IPv6 |
 | `/api/users/me/fcm-token` | PUT | User | Save device push token |
 | `/api/users/me/dhan` | POST | User | Save Dhan credentials |
 | `/api/users/me/notifications` | GET | User | Pending order signals |
 | `/api/users/me/notifications/{id}/confirm` | POST | User | Confirm → places order |
 | `/api/users/me/notifications/{id}/reject` | POST | User | Reject signal |
+| `/api/users/me/orders` | GET | User | Order history |
 | `/api/admin/signals` | POST | Admin | Create + broadcast signal |
 | `/api/admin/signals` | GET | Admin | List all signals |
 | `/api/admin/signals/{id}` | GET | Admin | Signal + per-user status |
 | `/api/admin/signals/{id}/cancel` | PUT | Admin | Cancel signal |
 | `/api/admin/users` | GET | Admin | List all users |
 | `/api/admin/users/{id}` | PUT | Admin | Assign IPv6 / role / active |
-| `/api/admin/dashboard` | GET | Admin | Stats |
+| `/api/admin/dashboard` | GET | Admin | Stats overview |
 | `/health` | GET | Anyone | Health check |
