@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # Leave empty to disable auto-assignment (admin assigns manually).
     ipv6_pool_prefix: str = "2406:da1a:c1e:f000:bb82:"
     # Lowest host suffix to allocate (decimal).  1 = start at ::1
-    ipv6_pool_start: int = 1
+    ipv6_pool_start: int = 16
 
 
 settings = Settings()
