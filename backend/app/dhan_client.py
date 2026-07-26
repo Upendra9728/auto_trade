@@ -36,11 +36,11 @@ class DhanClient:
             error_message = data.get("errorMessage") or data.get("message")
             if error_code == "DH-905" or str(error_message).lower().startswith("invalid ip"):
                 return (
-                    "Dhan rejected the request because this server's public IP is not whitelisted. "
-                    "Add the backend server IP to the Dhan developer portal and retry."
+                    "Dhan rejected the request because the source IP is not whitelisted for this client. "
+                    "Ensure the assigned IPv6 address is registered in the Dhan developer portal."
                 )
-            return f"Dhann API error HTTP {status_code}: {data}"
-        return f"Dhann API error HTTP {status_code}: {data}"
+            return f"Dhan API error HTTP {status_code}: {data}"
+        return f"Dhan API error HTTP {status_code}: {data}"
 
     async def place_super_order(
         self,
@@ -57,6 +57,9 @@ class DhanClient:
         product_type: str = "INTRADAY",
         order_type: str = "LIMIT",
         trailing_jump: float = 0,
+        # AWS IPv6 address assigned to this user — the outbound request will be
+        # bound to this address so Dhan sees the per-user whitelisted IP.
+        source_ipv6: str | None = None,
     ) -> dict[str, Any]:
         segment = EXCHANGE_SEGMENT_MAP.get(exchange_segment.upper(), exchange_segment.upper())
 
@@ -81,34 +84,26 @@ class DhanClient:
         }
         safe_headers = {"Content-Type": headers["Content-Type"], "access-token": "<redacted>"}
         logger.info("Dhan headers: %s", json.dumps(safe_headers, separators=(",", ":")))
-
         logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
+        if source_ipv6:
+            logger.info("Dhan outbound bound to IPv6: %s", source_ipv6)
+
+        # Build transport — optionally bind to the user's assigned IPv6 address
+        # so that Dhan's per-client IP whitelist check passes.
+        transport = httpx.AsyncHTTPTransport(local_address=source_ipv6) if source_ipv6 else httpx.AsyncHTTPTransport()
 
         try:
-            info = socket.getaddrinfo("api.dhan.co", 443, proto=socket.IPPROTO_TCP)
-            resolved_ips = [item[4][0] for item in info]
-            logger.info("Dhan outbound destination IPs: %s", resolved_ips)
-
-            source_ips = []
-            for ip in resolved_ips:
-                try:
-                    with socket.create_connection((ip, 443), timeout=5) as sock:
-                        source_ips.append(sock.getsockname()[0])
-                except OSError as exc:
-                    source_ips.append(f"{ip} (connect failed: {exc})")
-            logger.info("Dhan outbound source IPs: %s", source_ips)
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
         except Exception as exc:
-            logger.warning("Could not resolve Dhan outbound addresses: %s", exc)
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
+            raise DhanApiError(f"Network error connecting to Dhan: {exc}") from exc
 
         logger.info("Dhan response status=%s body=%s", resp.status_code, resp.text[:2000])
 
         try:
             data = resp.json()
         except Exception:
-            raise DhanApiError(f"Dhann returned non-JSON: HTTP {resp.status_code} -> {resp.text[:500]}")
+            raise DhanApiError(f"Dhan returned non-JSON: HTTP {resp.status_code} -> {resp.text[:500]}")
 
         if resp.status_code >= 400:
             raise DhanApiError(self._format_error_message(data, resp.status_code))

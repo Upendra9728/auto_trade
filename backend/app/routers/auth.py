@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import datetime as dt
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from ..auth import (
@@ -19,6 +19,7 @@ from ..deps import get_current_user, get_db, _utcnow
 from ..mailer import send_password_reset_email
 from ..models import PasswordResetOtp, User, UserSession
 from ..schemas import (
+    AdminBootstrapRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     UserAuthResponse,
@@ -44,14 +45,17 @@ def _validate_phone(phone_number: str) -> bool:
 
 def _to_profile(user: User) -> UserProfileResponse:
     return UserProfileResponse(
+        id=user.id,
         name=user.name,
         email=user.email,
         phone_number=user.phone_number,
-        primary_broker=getattr(user, "primary_broker", "upstox") or "upstox",
+        role=user.role,
+        assigned_ipv6=user.assigned_ipv6,
+        is_active=user.is_active,
     )
 
 
-@router.post("/register", response_model=UserProfileResponse)
+@router.post("/register", response_model=UserProfileResponse, status_code=201)
 def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -> UserProfileResponse:
     email = _normalize_email(req.email)
     if not _validate_email(email):
@@ -68,7 +72,7 @@ def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -
         email=email,
         phone_number=req.phone_number.strip(),
         password_hash=hash_password(req.password),
-        primary_broker=req.broker,
+        role="user",
         is_active=True,
     )
     db.add(user)
@@ -92,6 +96,7 @@ def login_user(req: UserLoginRequest, db: Session = Depends(get_db)) -> UserAuth
         expires_at=expires_at,
     )
     db.add(session)
+    # Clean up expired sessions
     db.query(UserSession).filter(UserSession.expires_at <= _utcnow()).delete(synchronize_session=False)
     db.commit()
 
@@ -110,11 +115,9 @@ def auth_me(user: User = Depends(get_current_user)) -> UserProfileResponse:
 
 @router.post("/logout")
 def logout_user(
-    authorization: str | None = None,
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
-    from fastapi import Header
-    # Allow calling without a valid session (idempotent logout)
     if not authorization or not authorization.lower().startswith("bearer "):
         return {"status": "logged_out"}
     raw_token = authorization.split(" ", 1)[1].strip()
@@ -130,6 +133,7 @@ def logout_user(
 def request_password_reset(req: PasswordResetRequest, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(req.email)
     user = db.query(User).filter(User.email == email, User.is_active.is_(True)).one_or_none()
+    # Always return same response to avoid user enumeration
     if user is None:
         return {"status": "otp_sent"}
 
@@ -148,40 +152,58 @@ def request_password_reset(req: PasswordResetRequest, db: Session = Depends(get_
     db.add(otp_row)
 
     try:
-        send_password_reset_email(to_email=email, otp=otp)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Could not send OTP email: {exc}")
+        send_password_reset_email(to_email=email, otp=otp, name=user.name)
+    except Exception:
+        pass  # Best-effort — don't reveal mail failure to caller
 
     db.commit()
     return {"status": "otp_sent"}
 
 
-@router.post("/verify-password-reset")
-def verify_password_reset(req: PasswordResetConfirmRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+@router.post("/reset-password")
+def reset_password(req: PasswordResetConfirmRequest, db: Session = Depends(get_db)) -> dict[str, str]:
     email = _normalize_email(req.email)
     user = db.query(User).filter(User.email == email, User.is_active.is_(True)).one_or_none()
     if user is None:
-        raise HTTPException(status_code=400, detail="Invalid email or OTP")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    otp_hash = hash_otp(email=email, otp=req.otp.strip(), secret=settings.internal_secret)
+    expected_hash = hash_otp(email=email, otp=req.otp, secret=settings.internal_secret)
     otp_row = (
         db.query(PasswordResetOtp)
         .filter(
             PasswordResetOtp.user_id == user.id,
-            PasswordResetOtp.otp_hash == otp_hash,
+            PasswordResetOtp.otp_hash == expected_hash,
             PasswordResetOtp.consumed_at.is_(None),
             PasswordResetOtp.expires_at > _utcnow(),
         )
-        .order_by(PasswordResetOtp.created_at.desc())
-        .first()
+        .one_or_none()
     )
     if otp_row is None:
-        raise HTTPException(status_code=400, detail="Invalid email or OTP")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    now = _utcnow()
     user.password_hash = hash_password(req.new_password)
-    user.updated_at = now
-    otp_row.consumed_at = now
+    otp_row.consumed_at = _utcnow()
+    # Invalidate all sessions on password change
     db.query(UserSession).filter(UserSession.user_id == user.id).delete(synchronize_session=False)
     db.commit()
-    return {"status": "password_updated"}
+    return {"status": "password_reset"}
+
+
+# ---------------------------------------------------------------------------
+# Admin bootstrap — promote a user to admin using the ADMIN_SECRET.
+# Used for the very first admin setup. After that, use the admin panel.
+# ---------------------------------------------------------------------------
+
+@router.post("/admin-bootstrap")
+def admin_bootstrap(req: AdminBootstrapRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+    if req.admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    email = _normalize_email(req.email)
+    user = db.query(User).filter(User.email == email).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found — register first, then bootstrap")
+
+    user.role = "admin"
+    db.commit()
+    return {"status": "promoted", "email": email, "role": "admin"}

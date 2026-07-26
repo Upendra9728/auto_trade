@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from .auth import hash_session_token
-from .config import settings
 from .db import SessionLocal
 from .models import User, UserSession
-
-router = APIRouter(tags=["deps"])
 
 
 def get_db():
@@ -49,3 +46,10 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User is inactive")
     return user
+
+
+def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency that requires the authenticated user to have the admin role."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user

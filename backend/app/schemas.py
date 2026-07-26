@@ -1,20 +1,20 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import datetime as dt
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-BrokerType = Literal["upstox", "dhann", "fyers"]
 
-
-# -- Auth ----------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
 
 class UserRegistrationRequest(BaseModel):
     name: str = Field(min_length=2, max_length=128)
     email: str = Field(min_length=5, max_length=254)
     phone_number: str = Field(min_length=7, max_length=32)
     password: str = Field(min_length=8, max_length=128)
-    broker: BrokerType = "upstox"
 
 
 class UserLoginRequest(BaseModel):
@@ -23,10 +23,13 @@ class UserLoginRequest(BaseModel):
 
 
 class UserProfileResponse(BaseModel):
+    id: int
     name: str
     email: str
     phone_number: str
-    primary_broker: str
+    role: str
+    assigned_ipv6: str | None = None
+    is_active: bool
 
 
 class UserAuthResponse(BaseModel):
@@ -46,152 +49,136 @@ class PasswordResetConfirmRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
-# -- Tokens --------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# User profile update
+# ---------------------------------------------------------------------------
 
-class TokenUpsertRequest(BaseModel):
-    client_id: str = Field(min_length=1, max_length=64)
+class UpdateProfileRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=128)
+    phone_number: str | None = Field(default=None, min_length=7, max_length=32)
+
+
+class UpdateFcmTokenRequest(BaseModel):
+    fcm_token: str = Field(min_length=1, max_length=4096)
+
+
+# ---------------------------------------------------------------------------
+# Dhan credentials (per user)
+# ---------------------------------------------------------------------------
+
+class DhanCredentialUpsertRequest(BaseModel):
+    dhan_client_id: str = Field(min_length=1, max_length=64)
     access_token: str = Field(min_length=10)
-    consent: bool = True
 
 
-class TokenResponse(BaseModel):
-    client_id: str
-    broker: str
-    consent: bool
+class DhanCredentialResponse(BaseModel):
+    dhan_client_id: str
+    is_active: bool
     updated_at: str
 
 
-class TokenAdminUpdateRequest(BaseModel):
-    access_token: str | None = Field(default=None, min_length=10)
-    consent: bool | None = None
+# ---------------------------------------------------------------------------
+# Signals (admin creates, users receive)
+# ---------------------------------------------------------------------------
 
-
-class UserTokenUpsertRequest(BaseModel):
-    client_id: str = Field(min_length=1, max_length=64)
-    access_token: str = Field(min_length=1)
-    consent: bool = True
-
-
-class UserTokenStatusResponse(BaseModel):
-    has_token: bool
-    token: TokenResponse | None = None
-
-
-class BrokerTokenSummary(BaseModel):
-    broker: str
-    client_id: str
-    consent: bool
-    updated_at: str
-
-
-class AllBrokerTokensResponse(BaseModel):
-    tokens: list[BrokerTokenSummary]
-
-
-# -- Upstox App ----------------------------------------------------------------
-
-class UserUpstoxAppUpsertRequest(BaseModel):
-    client_id: str = Field(min_length=3, max_length=128)
-    client_secret: str = Field(min_length=6, max_length=256)
-
-
-class UserUpstoxAppStatusResponse(BaseModel):
-    has_app: bool
-    client_id: str | None = None
-    updated_at: str | None = None
-
-
-# -- Orders --------------------------------------------------------------------
-
-class GttRule(BaseModel):
-    strategy: Literal["ENTRY", "TARGET", "STOPLOSS"]
-    trigger_type: Literal["BELOW", "ABOVE", "IMMEDIATE"]
-    trigger_price: float
-    market_protection: int | None = None
-    trailing_gap: float | None = None
-
-
-class GttPlaceRequest(BaseModel):
-    type: Literal["SINGLE", "MULTIPLE"]
-    quantity: int = Field(ge=1)
-    product: Literal["I", "D", "MTF"]
-    instrument_token: str
-    transaction_type: Literal["BUY", "SELL"]
-    rules: list[GttRule]
-
-
-class TelegramIngestRequest(BaseModel):
-    text: str = Field(min_length=1)
-    telegram_chat_id: str | None = None
-    telegram_message_id: str | None = None
-
-
-class BatchPlaceResponse(BaseModel):
-    batch_id: int
-    total_clients: int
-    success: int
-    error: int
-    results: list[dict[str, Any]]
-
-
-class OrderResultResponse(BaseModel):
-    client_id: str
-    status: Literal["success", "error"]
-    gtt_order_ids: list[str] | None = None
-    error_message: str | None = None
-    created_at: str
-
-
-class OrderBatchResponse(BaseModel):
-    batch_id: int
-    created_at: str
-    source: str
-    broker: str | None = None
-    raw_text: str
-    parsed_payload_json: str
-    telegram_chat_id: str | None = None
-    telegram_message_id: str | None = None
-    results: list[OrderResultResponse]
-
-
-class DhanSuperOrderRequest(BaseModel):
-    dhan_client_id: str = Field(min_length=1)
-    access_token: str = Field(min_length=1)
-    exchange_segment: str = Field(min_length=1)
-    security_id: str = Field(min_length=1)
+class SignalCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=256)
+    exchange_segment: str = Field(min_length=1, max_length=32,
+                                  description="e.g. NSE_FNO, NSE_EQ, BSE_FNO")
+    security_id: str = Field(min_length=1, max_length=64,
+                             description="Dhan security ID (numeric string)")
+    transaction_type: Literal["BUY", "SELL"] = "BUY"
+    product_type: Literal["INTRADAY", "CNC", "MARGIN", "MTF", "CO", "BO"] = "INTRADAY"
+    order_type: Literal["LIMIT", "MARKET"] = "LIMIT"
     quantity: int = Field(ge=1)
     price: float = Field(ge=0)
     target_price: float = Field(ge=0)
     stop_loss_price: float = Field(ge=0)
-    transaction_type: str = "BUY"
-    product_type: str = "INTRADAY"
-    order_type: str = "LIMIT"
-    trailing_jump: float = 0
+    trailing_jump: float = Field(default=0, ge=0)
+    expires_at: dt.datetime | None = None
 
 
-class DhanSuperOrderResponse(BaseModel):
-    success: bool
-    message: str
-    data: dict[str, Any] | None = None
+class SignalResponse(BaseModel):
+    id: int
+    title: str
+    exchange_segment: str
+    security_id: str
+    transaction_type: str
+    product_type: str
+    order_type: str
+    quantity: int
+    price: float
+    target_price: float
+    stop_loss_price: float
+    trailing_jump: float
+    status: str
+    created_by_id: int
+    created_at: str
+    expires_at: str | None = None
+    # summary counts (optional, returned on admin list)
+    total_notified: int | None = None
+    confirmed: int | None = None
+    placed: int | None = None
+    rejected: int | None = None
+    failed: int | None = None
 
 
-# -- Admin ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Signal notifications (user-facing)
+# ---------------------------------------------------------------------------
+
+class SignalNotificationResponse(BaseModel):
+    id: int
+    signal_id: int
+    status: str
+    signal: SignalResponse
+    error_message: str | None = None
+    dhan_order_id: str | None = None
+    confirmed_at: str | None = None
+    placed_at: str | None = None
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Admin user management
+# ---------------------------------------------------------------------------
 
 class AdminUserResponse(BaseModel):
     id: int
     name: str
     email: str
     phone_number: str
-    primary_broker: str
+    role: str
+    assigned_ipv6: str | None = None
     is_active: bool
+    has_dhan_credential: bool
     created_at: str
     updated_at: str
-    broker_tokens: list[BrokerTokenSummary] = []
 
 
-class AdminDashboardResponse(BaseModel):
-    total_users: int
-    active_users: int
-    tokens_by_broker: dict[str, int]
-    consented_by_broker: dict[str, int]
-    recent_batches: int
+class AdminUpdateUserRequest(BaseModel):
+    assigned_ipv6: str | None = None
+    role: Literal["user", "admin"] | None = None
+    is_active: bool | None = None
+
+
+class AdminSignalDetailResponse(BaseModel):
+    signal: SignalResponse
+    notifications: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Admin bootstrapping (create first admin via secret)
+# ---------------------------------------------------------------------------
+
+class AdminBootstrapRequest(BaseModel):
+    admin_secret: str
+    email: str = Field(min_length=5, max_length=254)
+
+
+# ---------------------------------------------------------------------------
+# Health / misc
+# ---------------------------------------------------------------------------
+
+class HealthResponse(BaseModel):
+    status: str

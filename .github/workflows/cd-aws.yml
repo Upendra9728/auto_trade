@@ -1,0 +1,55 @@
+name: CD — AWS EC2 (aws-prod)
+
+on:
+  push:
+    branches: [aws-prod]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to AWS EC2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AWS_EC2_HOST }}
+          username: ${{ secrets.AWS_EC2_USER }}
+          key: ${{ secrets.AWS_EC2_SSH_KEY }}
+          port: ${{ secrets.AWS_EC2_PORT || 22 }}
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.AWS_APP_DIR || '/var/www/auto_trade' }}"
+            cd "$APP_DIR"
+
+            echo "==> Pulling latest code from aws-prod..."
+            git fetch origin
+            git checkout aws-prod
+            git reset --hard origin/aws-prod
+
+            echo "==> Updating backend dependencies..."
+            source backend/.venv/bin/activate
+            pip install --quiet --upgrade pip
+            pip install --quiet -r backend/requirements.txt
+            deactivate
+
+            echo "==> Restarting backend service..."
+            sudo systemctl restart automate-backend
+
+            echo "==> Waiting for backend to become healthy..."
+            for i in $(seq 1 12); do
+              if curl -sf http://127.0.0.1:8000/health > /dev/null; then
+                echo "Backend is healthy."
+                break
+              fi
+              echo "Waiting... ($i/12)"
+              sleep 5
+            done
+
+            # Final check — fail the deploy if backend is still unhealthy
+            curl -sf http://127.0.0.1:8000/health || { echo "ERROR: Backend health check failed!"; exit 1; }
+
+            echo "==> Deployment complete."

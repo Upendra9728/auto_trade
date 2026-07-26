@@ -1,249 +1,94 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-import json
+import datetime as dt
 import logging
 
 from sqlalchemy.orm import Session
 
 from .crypto import decrypt_token
 from .dhan_client import DhanApiError, DhanClient
-from .models import ClientToken, OrderBatch, OrderResult
-from .schemas import GttPlaceRequest
-from .telegram_parser import ParsedOrder
-from .upstox_client import UpstoxApiError, UpstoxClient
+from .models import DhanCredential, Signal, SignalNotification, User
 
 logger = logging.getLogger(__name__)
 
 
-def _find_rule_price(gtt_request: GttPlaceRequest, strategy: str) -> float | None:
-    for rule in gtt_request.rules:
-        if rule.strategy == strategy:
-            return rule.trigger_price
-    return None
-
-
-async def place_orders_for_parsed(
+async def place_order_for_notification(
     *,
+    notification: SignalNotification,
     db: Session,
-    parsed: ParsedOrder,
-    raw_text: str,
-    source: str = "telegram",
-    telegram_chat_id: str | None = None,
-    telegram_message_id: str | None = None,
-) -> OrderBatch:
-    batch = OrderBatch(
-        source=source,
-        raw_text=raw_text,
-        parsed_payload_json=json.dumps({
-            "broker": parsed.broker,
-            "order_subtype": parsed.order_subtype,
-            "price": parsed.price,
-            "stoploss": parsed.stoploss,
-            "target": parsed.target,
-            "quantity": parsed.quantity,
-            "instrument_token": parsed.instrument_token,
-            "security_id": parsed.security_id,
-        }),
-        telegram_chat_id=telegram_chat_id,
-        telegram_message_id=telegram_message_id,
-    )
-    db.add(batch)
-    db.flush()
-
-    if parsed.broker == "upstox":
-        await _place_upstox_gtt_batch(db=db, batch=batch, parsed=parsed)
-    elif parsed.broker == "dhann":
-        await _place_dhan_bo_batch(db=db, batch=batch, parsed=parsed)
-    elif parsed.broker == "fyers":
-        await _place_fyers_dummy_batch(db=db, batch=batch, parsed=parsed)
-    else:
-        logger.warning("Unknown broker '%s', skipping order placement", parsed.broker)
-
-    db.commit()
-    db.refresh(batch)
-    return batch
-
-
-async def _place_upstox_gtt_batch(
-    *,
-    db: Session,
-    batch: OrderBatch,
-    parsed: ParsedOrder,
 ) -> None:
-    if parsed.gtt_request is None:
-        res = OrderResult(
-            batch_id=batch.id,
-            client_id="(system)",
-            status="error",
-            error_message="Upstox GTT payload could not be built from message",
-        )
-        db.add(res)
+    """
+    Execute the Dhan super order for a confirmed notification.
+
+    - Looks up the user's assigned IPv6 address and Dhan credentials.
+    - Binds the outbound HTTP request to the user's IPv6 address.
+    - Updates notification.status to 'placed' or 'failed'.
+    """
+    signal: Signal = notification.signal
+    user: User = notification.user
+
+    if not user.assigned_ipv6:
+        notification.status = "failed"
+        notification.error_message = "User has no assigned IPv6 address. Contact admin."
+        db.commit()
+        logger.error("No IPv6 assigned for user %s (notification %s)", user.id, notification.id)
         return
 
-    tokens = (
-        db.query(ClientToken)
-        .filter(ClientToken.broker == "upstox", ClientToken.consent.is_(True))
-        .order_by(ClientToken.client_id.asc())
-        .all()
-    )
+    cred: DhanCredential | None = user.dhan_credential
+    if cred is None or not cred.is_active:
+        notification.status = "failed"
+        notification.error_message = "No active Dhan credential on file."
+        db.commit()
+        logger.error("No active Dhan credential for user %s (notification %s)", user.id, notification.id)
+        return
 
-    client = UpstoxClient()
-    payload = json.loads(parsed.gtt_request.model_dump_json())
-    target_price = _find_rule_price(parsed.gtt_request, "TARGET")
-
-    for t in tokens:
-        try:
-            access_token = decrypt_token(t.access_token_encrypted)
-            order_ids = await client.place_gtt_order(access_token=access_token, payload=payload)
-
-            auto_cancel_message: str | None = None
-            if target_price is not None:
-                try:
-                    ltp = await client.get_ltp(
-                        access_token=access_token,
-                        instrument_token=payload["instrument_token"],
-                    )
-                    entry_price = _find_rule_price(parsed.gtt_request, "ENTRY")
-                    if _should_auto_cancel(parsed.gtt_request.transaction_type, ltp, target_price):
-                        for oid in order_ids:
-                            await client.cancel_gtt_order(access_token=access_token, gtt_order_id=oid)
-                        auto_cancel_message = "Auto-cancelled: target hit before entry"
-                        logger.warning(
-                            "%s | client=%s ltp=%s target=%s entry=%s",
-                            auto_cancel_message, t.client_id, ltp, target_price, entry_price,
-                        )
-                except UpstoxApiError as exc:
-                    logger.warning("Auto-cancel check failed | client=%s error=%s", t.client_id, exc)
-
-            if auto_cancel_message:
-                res = OrderResult(
-                    batch_id=batch.id,
-                    client_id=t.client_id,
-                    status="error",
-                    gtt_order_ids=json.dumps(order_ids),
-                    error_message=auto_cancel_message,
-                )
-            else:
-                res = OrderResult(
-                    batch_id=batch.id,
-                    client_id=t.client_id,
-                    status="success",
-                    gtt_order_ids=json.dumps(order_ids),
-                )
-        except (UpstoxApiError, Exception) as exc:
-            res = OrderResult(
-                batch_id=batch.id,
-                client_id=t.client_id,
-                status="error",
-                error_message=str(exc),
-            )
-        db.add(res)
-
-
-async def _place_dhan_bo_batch(
-    *,
-    db: Session,
-    batch: OrderBatch,
-    parsed: ParsedOrder,
-) -> None:
-    tokens = (
-        db.query(ClientToken)
-        .filter(ClientToken.broker == "dhann", ClientToken.consent.is_(True))
-        .order_by(ClientToken.client_id.asc())
-        .all()
-    )
+    try:
+        access_token = decrypt_token(cred.access_token_encrypted)
+    except Exception as exc:
+        notification.status = "failed"
+        notification.error_message = f"Failed to decrypt access token: {exc}"
+        db.commit()
+        logger.error("Token decryption failed for user %s: %s", user.id, exc)
+        return
 
     client = DhanClient()
-
-    for t in tokens:
-        try:
-            access_token = decrypt_token(t.access_token_encrypted)
-            await client.place_super_order(
-                dhan_client_id=t.client_id,
-                access_token=access_token,
-                exchange_segment=parsed.exchange_segment,
-                security_id=parsed.security_id,
-                quantity=parsed.quantity,
-                price=parsed.price,
-                target_price=parsed.adjusted_target,
-                stop_loss_price=parsed.adjusted_stoploss,
-            )
-            res = OrderResult(
-                batch_id=batch.id,
-                client_id=t.client_id,
-                status="success",
-                gtt_order_ids=json.dumps([]),
-            )
-        except (DhanApiError, Exception) as exc:
-            res = OrderResult(
-                batch_id=batch.id,
-                client_id=t.client_id,
-                status="error",
-                error_message=str(exc),
-            )
-        db.add(res)
-
-
-async def _place_fyers_dummy_batch(
-    *,
-    db: Session,
-    batch: OrderBatch,
-    parsed: ParsedOrder,
-) -> None:
-    tokens = (
-        db.query(ClientToken)
-        .filter(ClientToken.broker == "fyers", ClientToken.consent.is_(True))
-        .order_by(ClientToken.client_id.asc())
-        .all()
-    )
-
-    for t in tokens:
-        res = OrderResult(
-            batch_id=batch.id,
-            client_id=t.client_id,
-            status="error",
-            error_message="Fyers BO order placement is not yet implemented",
+    try:
+        result = await client.place_super_order(
+            dhan_client_id=cred.dhan_client_id,
+            access_token=access_token,
+            exchange_segment=signal.exchange_segment,
+            security_id=signal.security_id,
+            quantity=signal.quantity,
+            price=signal.price,
+            target_price=signal.target_price,
+            stop_loss_price=signal.stop_loss_price,
+            transaction_type=signal.transaction_type,
+            product_type=signal.product_type,
+            order_type=signal.order_type,
+            trailing_jump=signal.trailing_jump,
+            source_ipv6=user.assigned_ipv6,
         )
-        db.add(res)
-
-
-def _should_auto_cancel(signal_type: str, ltp: float, target: float) -> bool:
-    if signal_type.upper() == "SELL":
-        return ltp <= target
-    return ltp >= target
-
-
-# Legacy helper kept for the /api/gtt/place-batch endpoint
-async def place_gtt_for_all_clients(
-    *,
-    db: Session,
-    gtt_request: GttPlaceRequest,
-    raw_text: str,
-    source: str = "telegram",
-    telegram_chat_id: str | None = None,
-    telegram_message_id: str | None = None,
-) -> OrderBatch:
-    from .telegram_parser import ParsedOrder as PO
-    parsed = PO(
-        broker="upstox",
-        order_subtype="gtt",
-        quantity=gtt_request.quantity,
-        price=_find_rule_price(gtt_request, "ENTRY") or 0.0,
-        stoploss=_find_rule_price(gtt_request, "STOPLOSS") or 0.0,
-        target=_find_rule_price(gtt_request, "TARGET") or 0.0,
-        adjusted_stoploss=_find_rule_price(gtt_request, "STOPLOSS") or 0.0,
-        adjusted_target=_find_rule_price(gtt_request, "TARGET") or 0.0,
-        instrument_token=gtt_request.instrument_token,
-        security_id="",
-        exchange_segment="",
-        tradingsymbol="",
-        gtt_request=gtt_request,
-    )
-    return await place_orders_for_parsed(
-        db=db,
-        parsed=parsed,
-        raw_text=raw_text,
-        source=source,
-        telegram_chat_id=telegram_chat_id,
-        telegram_message_id=telegram_message_id,
-    )
+        order_id = (
+            result.get("orderId")
+            or result.get("data", {}).get("orderId")
+            or result.get("data", {}).get("order_id")
+            or str(result)[:64]
+        )
+        notification.status = "placed"
+        notification.dhan_order_id = order_id
+        notification.placed_at = dt.datetime.utcnow()
+        db.commit()
+        logger.info(
+            "Order placed for user %s (notification %s), Dhan order ID: %s",
+            user.id, notification.id, order_id,
+        )
+    except DhanApiError as exc:
+        notification.status = "failed"
+        notification.error_message = str(exc)
+        db.commit()
+        logger.error("Dhan API error for user %s (notification %s): %s", user.id, notification.id, exc)
+    except Exception as exc:
+        notification.status = "failed"
+        notification.error_message = f"Unexpected error: {exc}"
+        db.commit()
+        logger.exception("Unexpected error placing order for user %s: %s", user.id, exc)

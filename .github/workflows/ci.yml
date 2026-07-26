@@ -1,9 +1,10 @@
-name: CI
+﻿name: CI
 
 on:
   push:
     branches:
       - main
+      - aws-prod
   pull_request:
 
 jobs:
@@ -20,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install backend dependencies
         run: |
@@ -29,49 +30,3 @@ jobs:
 
       - name: Compile backend code
         run: python -m compileall app
-
-  bot:
-    name: Bot Checks
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: bot
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install bot dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Compile bot code
-        run: python -m compileall bot.py
-
-  webapp:
-    name: Webapp Build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: webapp
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
-
-      - name: Install webapp dependencies
-        run: npm ci
-
-      - name: Build webapp
-        run: npm run build

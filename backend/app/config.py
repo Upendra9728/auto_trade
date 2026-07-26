@@ -12,33 +12,31 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/automate_trading"
-    cors_origins: str = "http://localhost:4200"
+    # Comma-separated origins allowed for CORS (mobile app uses * or its own scheme)
+    cors_origins: str = "*"
 
     token_encryption_key: str
-    internal_secret: str = "change-me"
+    # Used to protect the admin-bootstrap endpoint
     admin_secret: str = "change-me"
+    # Used for internal service-to-service calls (optional)
+    internal_secret: str = "change-me"
 
-    upstox_base_url: str = "https://api.upstox.com"
-    # OAuth endpoints live on the v2 host
-    upstox_oauth_base_url: str = "https://api-v2.upstox.com"
-    # Force IPv4 for Upstox HTTP calls when IPv6 causes IP mismatch issues
-    upstox_force_ipv4: bool = False
-    upstox_x_algo_name: str | None = None
-    # Upstox OAuth config (optional, used for server-side token exchange)
-    upstox_client_id: str | None = None
-    upstox_client_secret: str | None = None
-    upstox_redirect_uri: str | None = None
-    # Optional: URL of the frontend webapp to redirect users back after OAuth
-    webapp_base_url: str | None = None
-
+    # Session config
     auth_session_hours: int = 24 * 7
     otp_expiry_minutes: int = 10
 
+    # Email (for OTP password reset)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
+
+    # Firebase Cloud Messaging
+    # Path to the service account JSON file OR the raw JSON string
+    firebase_credentials_path: str | None = None
+    # If set, takes precedence over firebase_credentials_path
+    firebase_credentials_json: str | None = None
 
 
 settings = Settings()
