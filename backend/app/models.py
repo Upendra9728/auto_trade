@@ -131,8 +131,3 @@ class PasswordResetOtp(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     user: Mapped[User] = relationship()
-    gtt_order_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
-
-    batch: Mapped[OrderBatch] = relationship(back_populates="results")
