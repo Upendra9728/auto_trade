@@ -48,9 +48,8 @@ export default function ProfileScreen() {
     setTestingIp(true);
     try {
       const result = await userApi.testIp();
-      Alert.alert('Your Live IP Address', result.ip, [
-        { text: 'OK' },
-      ]);
+      const message = `IPv4: ${result.ipv4 || 'Not detected'}\n\nIPv6: ${result.ipv6 || 'Not detected'}`;
+      Alert.alert('Live IP Address', message, [{ text: 'OK' }]);
     } catch (err: any) {
       Alert.alert('Error', 'Failed to fetch IP address: ' + (err.message ?? 'Unknown error'));
     } finally {

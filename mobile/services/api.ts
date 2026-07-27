@@ -82,7 +82,7 @@ export const userApi = {
     post<SignalNotification>(`/api/users/me/notifications/${id}/reject`),
   getOrders: (limit = 50) =>
     get<SignalNotification[]>(`/api/users/me/orders?limit=${limit}`),
-  testIp: () => get<{ ip: string }>('/api/users/test-ip'),
+  testIp: () => get<{ ipv4: string | null; ipv6: string | null }>('/api/users/test-ip'),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

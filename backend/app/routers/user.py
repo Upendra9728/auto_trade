@@ -279,11 +279,36 @@ def list_orders(
 
 
 @router.get("/test-ip")
-def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str]:
-    """Return the live IP address of the client making the request."""
-    # Get the real client IP, accounting for proxies (X-Forwarded-For header)
-    client_ip = request.headers.get("x-forwarded-for", request.client.host)
-    if "," in client_ip:
-        # If multiple IPs, take the first one (client's IP)
-        client_ip = client_ip.split(",")[0].strip()
-    return {"ip": client_ip}
+def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str | None]:
+    """Return the live IP address of the client (IPv4 and IPv6)."""
+    # Try to get from X-Forwarded-For header first (handles proxies)
+    forwarded = request.headers.get("x-forwarded-for", "")
+    client_host = request.client.host if request.client else None
+    
+    ipv4 = None
+    ipv6 = None
+    
+    # Parse forwarded header if available
+    if forwarded:
+        ips = [ip.strip() for ip in forwarded.split(",")]
+        for ip in ips:
+            if ":" in ip and not ip.startswith("["):
+                # This looks like IPv6
+                ipv6 = ip
+            elif "." in ip:
+                # This looks like IPv4
+                ipv4 = ip
+    
+    # Use client_host as fallback
+    if client_host:
+        if ":" in client_host:
+            # IPv6
+            ipv6 = ipv6 or client_host
+        else:
+            # IPv4
+            ipv4 = ipv4 or client_host
+    
+    return {
+        "ipv4": ipv4,
+        "ipv6": ipv6,
+    }
