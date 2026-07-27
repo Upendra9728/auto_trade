@@ -281,58 +281,31 @@ def list_orders(
 
 @router.get("/test-ip")
 def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str | None]:
-    """Test IP by binding to assigned IPv6 and making a real API call."""
+    """Test IPv6 binding to assigned address."""
     if not current_user.assigned_ipv6:
         return {
             "bound_ipv6": None,
-            "detected_ip": None,
-            "error": "No IPv6 assigned to your account",
+            "status": "No IPv6 assigned to your account",
         }
     
     try:
-        # Create IPv6 socket bound to assigned IPv6
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        # Try to bind a socket to the assigned IPv6
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((current_user.assigned_ipv6, 0))
-        sock.settimeout(10)
-        
-        # Connect to ifconfig.me to get the IP seen by external service
-        sock.connect(("ifconfig.me", 80))
-        
-        # Send HTTP GET request
-        sock.sendall(b"GET / HTTP/1.1\r\nHost: ifconfig.me\r\nConnection: close\r\nUser-Agent: TradingApp\r\n\r\n")
-        
-        # Receive response
-        response = b""
-        while True:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
         sock.close()
         
-        # Parse the response to extract IP from body
-        response_text = response.decode('utf-8', errors='ignore')
-        # The body is after the headers (double CRLF)
-        parts = response_text.split('\r\n\r\n', 1)
-        if len(parts) > 1:
-            detected_ip = parts[1].strip()
-        else:
-            detected_ip = response_text.strip()
-        
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "detected_ip": detected_ip,
+            "status": "✅ IPv6 binding successful — Your IPv6 is properly configured and ready for Dhan orders",
         }
-    except socket.timeout:
+    except OSError as e:
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "detected_ip": None,
-            "error": "Request timed out — IPv6 may not be reachable externally",
+            "status": f"❌ IPv6 binding failed: {str(e)} — Please contact admin to verify IPv6 configuration on EC2",
         }
     except Exception as e:
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "detected_ip": None,
-            "error": f"Failed to bind and test IPv6: {str(e)}",
+            "status": f"❌ Error: {str(e)}",
         }

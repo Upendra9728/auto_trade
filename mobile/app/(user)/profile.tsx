@@ -48,13 +48,11 @@ export default function ProfileScreen() {
     setTestingIp(true);
     try {
       const result = await userApi.testIp();
-      
-      if (result.error) {
-        Alert.alert('Test IP Result', `Error: ${result.error}`, [{ text: 'OK' }]);
-      } else {
-        const message = `Bound IPv6: ${result.bound_ipv6 || 'Not available'}\n\nDetected IP: ${result.detected_ip || 'Failed to detect'}`;
-        Alert.alert('IPv6 Binding Test', message, [{ text: 'OK' }]);
-      }
+      Alert.alert(
+        'IPv6 Binding Test',
+        `${result.bound_ipv6 ? '✅ ' : '⚠️ '}${result.bound_ipv6 || 'No IPv6'}\n\n${result.status}`,
+        [{ text: 'OK' }]
+      );
     } catch (err: any) {
       Alert.alert('Error', 'Failed to test IPv6: ' + (err.message ?? 'Unknown error'));
     } finally {
@@ -260,7 +258,7 @@ const styles = StyleSheet.create({
   editLink: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   infoLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
-  monoValue: { fontSize: 13, color: Colors.text, fontFamily: 'monospace', flex: 2, textAlign: 'right' },
+  monoValue: { fontSize: 13, color: Colors.text, fontWeight: '500', flex: 2, textAlign: 'right' },
   warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.sm },
   warnText: { fontSize: 13, color: Colors.warning, lineHeight: 18 },
   dhanInfo: { gap: Spacing.sm },
