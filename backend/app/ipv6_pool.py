@@ -27,10 +27,8 @@ def assign_next_ipv6(db: Session) -> str | None:
     if not prefix:
         return None
 
-    # Normalise: strip a trailing ':' so the prefix ends cleanly
-    # e.g. '2406:da1a:c1e:f000:bb82:' → we want addresses like prefix + ':1'
-    # The pool uses addresses of the form  <prefix>:<hex>
-    # (the prefix already ends with ':', so we build  prefix + hex_str)
+    # Normalise: the prefix should end with '::' (e.g. '2406:da1a:c1e:f000:a79e::')
+    # Addresses are generated as prefix + hex_number (e.g. '2406:da1a:c1e:f000:a79e::1')
 
     # Fetch all currently-assigned addresses that belong to this pool
     rows = (
@@ -44,10 +42,9 @@ def assign_next_ipv6(db: Session) -> str | None:
     for (addr,) in rows:
         if not addr:
             continue
-        # suffix is everything after the prefix
+        # suffix is everything after the prefix (e.g. '1', 'a', 'ff')
         suffix_str = addr[len(prefix):]
-        # Suffix may be hex (e.g. 'a') or decimal ('10') — treat as hex to
-        # match how IPv6 address notation works
+        # Treat suffix as hex (standard IPv6 notation)
         try:
             suffix = int(suffix_str, 16)
             if suffix > max_suffix:
@@ -56,7 +53,7 @@ def assign_next_ipv6(db: Session) -> str | None:
             continue
 
     next_suffix = max_suffix + 1
-    # Format as lowercase hex without leading zeros (standard IPv6 notation)
+    # Format as lowercase hex without leading zeros
     next_addr = f"{prefix}{next_suffix:x}"
 
     logger.info("IPv6 pool: assigning %s (suffix 0x%x)", next_addr, next_suffix)

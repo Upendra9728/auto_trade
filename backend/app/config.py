@@ -38,13 +38,13 @@ class Settings(BaseSettings):
     # If set, takes precedence over firebase_credentials_path
     firebase_credentials_json: str | None = None
 
-    # IPv6 pool — prefix (without trailing :) carved from the AWS ENI delegation.
-    # Example: '2406:da1a:c1e:f000:bb82:'
+    # IPv6 pool — prefix (without trailing number) carved from the AWS ENI delegation.
+    # Example: '2406:da1a:c1e:f000:a79e::'
     # When set, each new user is automatically assigned the next free address.
     # Leave empty to disable auto-assignment (admin assigns manually).
-    ipv6_pool_prefix: str = "2406:da1a:c1e:f000:bb82:"
+    ipv6_pool_prefix: str = "2406:da1a:c1e:f000:a79e::"
     # Lowest host suffix to allocate (decimal).  1 = start at ::1
-    ipv6_pool_start: int = 16
+    ipv6_pool_start: int = 1
 
 
 settings = Settings()
