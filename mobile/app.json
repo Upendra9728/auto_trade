@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Automate Trading",
+    "slug": "automate-trading",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1E40AF"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.automatetrading.app",
+      "googleServicesFile": "./GoogleService-Info.plist"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1E40AF"
+      },
+      "package": "com.automatetrading.app",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1E40AF",
+          "defaultChannel": "trading-signals"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "scheme": "automatetrading",
+    "extra": {
+      "apiBaseUrl": "http://YOUR_EC2_PUBLIC_IP",
+      "eas": {
+        "projectId": "your-expo-project-id"
+      }
+    }
+  }
+}
