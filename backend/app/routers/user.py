@@ -3,6 +3,7 @@
 import datetime as dt
 import logging
 import socket
+import http.client
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
@@ -281,31 +282,93 @@ def list_orders(
 
 @router.get("/test-ip")
 def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str | None]:
-    """Test IPv6 binding to assigned address."""
+    """Test IPv6 by binding and making a real HTTP call to detect the external IP."""
     if not current_user.assigned_ipv6:
         return {
             "bound_ipv6": None,
-            "status": "No IPv6 assigned to your account",
+            "detected_ip": None,
+            "status": "❌ No IPv6 assigned to your account",
         }
     
     try:
-        # Try to bind a socket to the assigned IPv6
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        # Use http.client with custom socket binding
+        # Create socket bound to assigned IPv6
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((current_user.assigned_ipv6, 0))
+        sock.settimeout(10)
+        
+        # Connect to icanhazip.com (IPv6-friendly service that returns your IP)
+        try:
+            sock.connect(("icanhazip.com", 80))
+        except socket.gaierror:
+            # Fallback to ipify.org if icanhazip doesn't resolve
+            sock.close()
+            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((current_user.assigned_ipv6, 0))
+            sock.settimeout(10)
+            sock.connect(("api.ipify.org", 80))
+        
+        # Send HTTP GET request
+        http_request = b"GET / HTTP/1.1\r\nHost: icanhazip.com\r\nConnection: close\r\nUser-Agent: TradingBot/1.0\r\n\r\n"
+        sock.sendall(http_request)
+        
+        # Receive response
+        response = b""
+        while True:
+            try:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            except socket.timeout:
+                break
         sock.close()
         
+        # Parse response body (skip headers)
+        response_text = response.decode('utf-8', errors='ignore')
+        parts = response_text.split('\r\n\r\n', 1)
+        
+        if len(parts) > 1:
+            detected_ip = parts[1].strip().split('\n')[0].strip()
+        else:
+            detected_ip = None
+        
+        if detected_ip:
+            return {
+                "bound_ipv6": current_user.assigned_ipv6,
+                "detected_ip": detected_ip,
+                "status": f"✅ IPv6 binding successful!\n\nBound to: {current_user.assigned_ipv6}\nExternal sees: {detected_ip}\n\nYour IPv6 is working and ready for Dhan orders!",
+            }
+        else:
+            return {
+                "bound_ipv6": current_user.assigned_ipv6,
+                "detected_ip": None,
+                "status": f"⚠️ Bound successfully but couldn't parse response.\n\nBound to: {current_user.assigned_ipv6}\n\nYou may still be able to place orders.",
+            }
+            
+    except socket.timeout:
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "status": "✅ IPv6 binding successful — Your IPv6 is properly configured and ready for Dhan orders",
+            "detected_ip": None,
+            "status": f"❌ Connection timed out.\n\nBound IPv6: {current_user.assigned_ipv6}\n\nThe IPv6 may not have external internet access.",
+        }
+    except socket.gaierror as e:
+        return {
+            "bound_ipv6": current_user.assigned_ipv6,
+            "detected_ip": None,
+            "status": f"❌ DNS resolution failed: {str(e)}\n\nBound IPv6: {current_user.assigned_ipv6}\n\nEC2 may not have IPv6 internet routing configured.",
         }
     except OSError as e:
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "status": f"❌ IPv6 binding failed: {str(e)} — Please contact admin to verify IPv6 configuration on EC2",
+            "detected_ip": None,
+            "status": f"❌ Binding failed: {str(e)}\n\nIPv6 {current_user.assigned_ipv6} is not available on this instance.",
         }
     except Exception as e:
         return {
             "bound_ipv6": current_user.assigned_ipv6,
-            "status": f"❌ Error: {str(e)}",
+            "detected_ip": None,
+            "status": f"❌ Unexpected error: {str(e)}",
         }
