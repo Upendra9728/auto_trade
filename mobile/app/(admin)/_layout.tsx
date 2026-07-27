@@ -40,6 +40,13 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="signal-create"
         options={{ href: null }}
       />

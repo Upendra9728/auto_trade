@@ -22,8 +22,13 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(email.trim().toLowerCase(), password);
-      // AuthContext redirect handles navigation
+      const user = await login(email.trim().toLowerCase(), password);
+      // Navigate based on role after successful login
+      if (user.role === 'admin') {
+        router.replace('/(admin)/');
+      } else {
+        router.replace('/(user)/');
+      }
     } catch (err: any) {
       Alert.alert('Login failed', err.message ?? 'Invalid credentials.');
     } finally {

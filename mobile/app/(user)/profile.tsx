@@ -4,6 +4,7 @@ import {
   ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
@@ -15,6 +16,7 @@ export default function ProfileScreen() {
   const [dhanForm, setDhanForm] = useState({ dhan_client_id: '', access_token: '' });
   const [savingDhan, setSavingDhan] = useState(false);
   const [showDhanForm, setShowDhanForm] = useState(false);
+  const [testingIp, setTestingIp] = useState(false);
 
   useEffect(() => {
     userApi.getDhanCredential().then(setDhan).catch(() => {});
@@ -42,10 +44,32 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleTestIp = async () => {
+    setTestingIp(true);
+    try {
+      const result = await userApi.testIp();
+      Alert.alert('Your Live IP Address', result.ip, [
+        { text: 'OK' },
+      ]);
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to fetch IP address: ' + (err.message ?? 'Unknown error'));
+    } finally {
+      setTestingIp(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          // Navigate to login after logout completes
+          router.replace('/(auth)/login');
+        },
+      },
     ]);
   };
 
@@ -180,6 +204,19 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Test IP */}
+        <TouchableOpacity
+          style={[styles.testIpBtn, testingIp && { opacity: 0.6 }]}
+          onPress={handleTestIp}
+          disabled={testingIp}
+        >
+          {testingIp ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Text style={styles.testIpText}>Test IP</Text>
+          )}
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sign Out</Text>
@@ -244,6 +281,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   saveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  testIpBtn: {
+    backgroundColor: Colors.primaryBg, borderRadius: Radius.sm,
+    paddingVertical: 14, alignItems: 'center', marginTop: 4,
+    borderWidth: 1.5, borderColor: Colors.primary,
+  },
+  testIpText: { color: Colors.primary, fontSize: 16, fontWeight: '700' },
 
   logoutBtn: {
     backgroundColor: Colors.errorBg, borderRadius: Radius.sm,

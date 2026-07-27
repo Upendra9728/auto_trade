@@ -3,7 +3,7 @@
 import datetime as dt
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
 from ..crypto import decrypt_token, encrypt_token
@@ -276,3 +276,14 @@ def list_orders(
         .all()
     )
     return [_to_notification_response(n) for n in notifications]
+
+
+@router.get("/test-ip")
+def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str]:
+    """Return the live IP address of the client making the request."""
+    # Get the real client IP, accounting for proxies (X-Forwarded-For header)
+    client_ip = request.headers.get("x-forwarded-for", request.client.host)
+    if "," in client_ip:
+        # If multiple IPs, take the first one (client's IP)
+        client_ip = client_ip.split(",")[0].strip()
+    return {"ip": client_ip}

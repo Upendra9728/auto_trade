@@ -8,7 +8,7 @@ interface AuthContextValue {
   user: User | null;
   token: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -41,13 +41,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<User> => {
     const res = await authApi.login({ email, password });
     await saveAuth(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
-    // Register push token after login
+    // Register push token after login (non-blocking)
     registerForPushNotifications().catch(() => {});
+    return res.user;
   }, []);
 
   const logout = useCallback(async () => {

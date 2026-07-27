@@ -1,61 +1,66 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { userApi } from './api';
 
-// Configure foreground notification behaviour
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// expo-notifications remote push was removed from Expo Go in SDK 53.
+// We skip it entirely in Expo Go so the app loads without crashing.
+// Use a development build (npx expo run:android) for full FCM support.
+const isExpoGo = Constants.appOwnership === 'expo';
 
 /**
  * Register for push notifications and send the device token to the backend.
- * Safe to call multiple times — skips silently on simulator / if permissions denied.
+ * No-ops gracefully in Expo Go or on simulators.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
-  if (!Device.isDevice) {
+  if (isExpoGo) {
+    console.log('[FCM] Skipping push notifications in Expo Go (not supported from SDK 53+).');
+    return null;
+  }
+
+  // Dynamic imports so the module is never loaded in Expo Go
+  const Device = await import('expo-device');
+  if (!Device.default.isDevice) {
     console.log('[FCM] Push notifications only work on physical devices.');
     return null;
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    console.log('[FCM] Notification permission denied.');
-    return null;
-  }
-
-  // Android notification channel
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('trading-signals', {
-      name: 'Trading Signals',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#1E40AF',
-    });
-  }
-
   try {
-    // getDevicePushTokenAsync returns the native FCM token (Android) or APNs token (iOS)
-    const { data: deviceToken } = await Notifications.getDevicePushTokenAsync();
-    if (deviceToken) {
-      await userApi.updateFcmToken(deviceToken);
+    const Notifications = await import('expo-notifications');
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') return null;
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('trading-signals', {
+        name: 'Trading Signals',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#1E40AF',
+      });
+    }
+
+    const { data: token } = await Notifications.getDevicePushTokenAsync();
+    if (token) {
+      await userApi.updateFcmToken(token);
       console.log('[FCM] Device token registered with backend.');
     }
-    return deviceToken ?? null;
+    return token ?? null;
   } catch (err) {
-    // Non-fatal — app works without FCM
-    console.warn('[FCM] Failed to get device push token:', err);
+    console.warn('[FCM] Failed to register push token:', err);
     return null;
   }
 }
+
