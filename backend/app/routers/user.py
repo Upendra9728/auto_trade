@@ -2,6 +2,7 @@
 
 import datetime as dt
 import logging
+import socket
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
@@ -280,35 +281,58 @@ def list_orders(
 
 @router.get("/test-ip")
 def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str | None]:
-    """Return the live IP address of the client (IPv4 and IPv6)."""
-    # Try to get from X-Forwarded-For header first (handles proxies)
-    forwarded = request.headers.get("x-forwarded-for", "")
-    client_host = request.client.host if request.client else None
+    """Test IP by binding to assigned IPv6 and making a real API call."""
+    if not current_user.assigned_ipv6:
+        return {
+            "bound_ipv6": None,
+            "detected_ip": None,
+            "error": "No IPv6 assigned to your account",
+        }
     
-    ipv4 = None
-    ipv6 = None
-    
-    # Parse forwarded header if available
-    if forwarded:
-        ips = [ip.strip() for ip in forwarded.split(",")]
-        for ip in ips:
-            if ":" in ip and not ip.startswith("["):
-                # This looks like IPv6
-                ipv6 = ip
-            elif "." in ip:
-                # This looks like IPv4
-                ipv4 = ip
-    
-    # Use client_host as fallback
-    if client_host:
-        if ":" in client_host:
-            # IPv6
-            ipv6 = ipv6 or client_host
+    try:
+        # Create IPv6 socket bound to assigned IPv6
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((current_user.assigned_ipv6, 0))
+        sock.settimeout(10)
+        
+        # Connect to ifconfig.me to get the IP seen by external service
+        sock.connect(("ifconfig.me", 80))
+        
+        # Send HTTP GET request
+        sock.sendall(b"GET / HTTP/1.1\r\nHost: ifconfig.me\r\nConnection: close\r\nUser-Agent: TradingApp\r\n\r\n")
+        
+        # Receive response
+        response = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        sock.close()
+        
+        # Parse the response to extract IP from body
+        response_text = response.decode('utf-8', errors='ignore')
+        # The body is after the headers (double CRLF)
+        parts = response_text.split('\r\n\r\n', 1)
+        if len(parts) > 1:
+            detected_ip = parts[1].strip()
         else:
-            # IPv4
-            ipv4 = ipv4 or client_host
-    
-    return {
-        "ipv4": ipv4,
-        "ipv6": ipv6,
-    }
+            detected_ip = response_text.strip()
+        
+        return {
+            "bound_ipv6": current_user.assigned_ipv6,
+            "detected_ip": detected_ip,
+        }
+    except socket.timeout:
+        return {
+            "bound_ipv6": current_user.assigned_ipv6,
+            "detected_ip": None,
+            "error": "Request timed out — IPv6 may not be reachable externally",
+        }
+    except Exception as e:
+        return {
+            "bound_ipv6": current_user.assigned_ipv6,
+            "detected_ip": None,
+            "error": f"Failed to bind and test IPv6: {str(e)}",
+        }

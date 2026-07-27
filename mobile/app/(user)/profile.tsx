@@ -48,10 +48,15 @@ export default function ProfileScreen() {
     setTestingIp(true);
     try {
       const result = await userApi.testIp();
-      const message = `IPv4: ${result.ipv4 || 'Not detected'}\n\nIPv6: ${result.ipv6 || 'Not detected'}`;
-      Alert.alert('Live IP Address', message, [{ text: 'OK' }]);
+      
+      if (result.error) {
+        Alert.alert('Test IP Result', `Error: ${result.error}`, [{ text: 'OK' }]);
+      } else {
+        const message = `Bound IPv6: ${result.bound_ipv6 || 'Not available'}\n\nDetected IP: ${result.detected_ip || 'Failed to detect'}`;
+        Alert.alert('IPv6 Binding Test', message, [{ text: 'OK' }]);
+      }
     } catch (err: any) {
-      Alert.alert('Error', 'Failed to fetch IP address: ' + (err.message ?? 'Unknown error'));
+      Alert.alert('Error', 'Failed to test IPv6: ' + (err.message ?? 'Unknown error'));
     } finally {
       setTestingIp(false);
     }
