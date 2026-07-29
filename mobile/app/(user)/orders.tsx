@@ -4,6 +4,7 @@ import {
   RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import StatusBadge from '../../components/StatusBadge';
@@ -24,6 +25,16 @@ export default function OrdersScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      const intervalId = setInterval(() => {
+        load();
+      }, 7000);
+      return () => clearInterval(intervalId);
+    }, [load]),
+  );
 
   const renderItem = ({ item: o }: { item: SignalNotification }) => {
     const isBuy = o.signal.transaction_type === 'BUY';

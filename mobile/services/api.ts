@@ -27,7 +27,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  } catch (networkErr: any) {
+    throw new Error(`Network error: ${networkErr?.message ?? String(networkErr)}`);
+  }
 
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;

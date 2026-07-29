@@ -8,6 +8,46 @@ import { userApi } from './api';
 const isExpoGo = Constants.appOwnership === 'expo';
 
 /**
+ * Call once at app startup (in _layout.tsx) to:
+ *  - Set the foreground notification handler (show alert + sound when app is open)
+ *  - Create the Android notification channel so background FCM messages land correctly
+ */
+export async function setupNotifications(): Promise<void> {
+  if (isExpoGo) return;
+
+  try {
+    const Notifications = await import('expo-notifications');
+
+    // Controls how notifications look when the app is in the FOREGROUND.
+    // Background/killed state is handled natively by Android FCM — no JS needed.
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+
+    // Android 8+ requires a channel. Must match the channel_id sent from the backend.
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('trading-signals', {
+        name: 'Trading Signals',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#1E40AF',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+    }
+  } catch (err) {
+    console.warn('[FCM] setupNotifications failed:', err);
+  }
+}
+
+/**
  * Register for push notifications and send the device token to the backend.
  * No-ops gracefully in Expo Go or on simulators.
  */
@@ -27,14 +67,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
   try {
     const Notifications = await import('expo-notifications');
 
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
-    });
-
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
     if (existing !== 'granted') {
@@ -42,15 +74,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
       finalStatus = status;
     }
     if (finalStatus !== 'granted') return null;
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('trading-signals', {
-        name: 'Trading Signals',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#1E40AF',
-      });
-    }
 
     const { data: token } = await Notifications.getDevicePushTokenAsync();
     if (token) {
@@ -63,4 +86,3 @@ export async function registerForPushNotifications(): Promise<string | null> {
     return null;
   }
 }
-

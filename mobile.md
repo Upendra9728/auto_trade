@@ -81,3 +81,6 @@ From mobile/:
   - mobile/contexts/AuthContext.tsx
   - mobile/app/(user)/index.tsx
   - mobile/app/(admin)/signals.tsx
+
+
+$env:EXPO_PUBLIC_API_URL = "http://13.126.206.167"; .\gradlew assembleRelease

@@ -4,6 +4,7 @@ import {
   TouchableOpacity, RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import StatusBadge from '../../components/StatusBadge';
@@ -16,12 +17,14 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showError = true) => {
     try {
       const data = await userApi.getNotifications();
       setItems(data);
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      if (showError) {
+        Alert.alert('Error', err.message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -29,6 +32,16 @@ export default function NotificationsScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load(false);
+      const intervalId = setInterval(() => {
+        load(false);
+      }, 5000);
+      return () => clearInterval(intervalId);
+    }, [load]),
+  );
 
   const handleConfirm = async (n: SignalNotification) => {
     Alert.alert(

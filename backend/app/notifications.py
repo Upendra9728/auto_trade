@@ -78,6 +78,21 @@ def send_push_notification(
             notification=messaging.Notification(title=title, body=body),
             data=data or {},
             token=fcm_token,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="trading-signals",
+                    sound="default",
+                    priority="high",
+                    default_sound=True,
+                    default_vibrate_timings=True,
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(sound="default", badge=1),
+                ),
+            ),
         )
         messaging.send(message, app=app)
         logger.info("FCM notification sent to token ...%s", fcm_token[-8:])

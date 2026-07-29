@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.md,
-    ...Shadow.md,
+    ...Shadow.card,
   },
   name: {
     ...Typography.h2,
@@ -141,10 +141,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
-    ...Shadow.sm,
+    ...Shadow.card,
   },
   cardTitle: {
-    ...Typography.subtitle,
+    ...Typography.h3,
     color: Colors.text,
     marginBottom: Spacing.md,
   },

@@ -13,6 +13,8 @@ const PRODUCT_TYPES = ['INTRADAY', 'CNC', 'MARGIN', 'MTF'];
 const ORDER_TYPES = ['LIMIT', 'MARKET'];
 
 export default function SignalCreateScreen() {
+  const [entryMode, setEntryMode] = useState<'form' | 'paste'>('form');
+  const [rawSignal, setRawSignal] = useState('');
   const [form, setForm] = useState({
     title: '',
     exchange_segment: 'NSE_FNO',
@@ -30,6 +32,52 @@ export default function SignalCreateScreen() {
 
   const set = (key: keyof typeof form) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
+
+  const parseAndPrefill = () => {
+    const lines = rawSignal
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length < 2) {
+      Alert.alert('Invalid format', 'Please paste at least symbol and strike lines.');
+      return;
+    }
+
+    const first = lines[0].toUpperCase();
+    const second = lines[1].toUpperCase();
+
+    const pickValue = (key: string): string => {
+      const row = lines.find((line) => line.toUpperCase().startsWith(`${key}:`));
+      if (!row) return '';
+      return row.split(':').slice(1).join(':').trim();
+    };
+
+    const parsedPrice = pickValue('PRICE');
+    const parsedStop = pickValue('STOPLOSS') || pickValue('STOP_LOSS');
+    const parsedTarget = pickValue('TARGETS') || pickValue('TARGET');
+    const parsedQty = pickValue('QTY') || pickValue('QUANTITY');
+    const parsedExpiry = pickValue('EXPIRY');
+
+    const parsedSegment = first.includes('SENSEX') ? 'BSE_FNO' : 'NSE_FNO';
+    const parsedDirection = second.endsWith('PE') || second.endsWith('CE') ? 'BUY' : form.transaction_type;
+
+    setForm((prev) => ({
+      ...prev,
+      title: parsedExpiry ? `${first} ${second} ${parsedExpiry}` : `${first} ${second}`,
+      exchange_segment: parsedSegment,
+      security_id: second,
+      transaction_type: parsedDirection,
+      quantity: parsedQty || prev.quantity,
+      price: parsedPrice || prev.price,
+      target_price: parsedTarget || prev.target_price,
+      stop_loss_price: parsedStop || prev.stop_loss_price,
+      trailing_jump: prev.trailing_jump || '0',
+    }));
+
+    setEntryMode('form');
+    Alert.alert('Parsed', 'Signal text parsed and form prefilled. Verify values before broadcasting.');
+  };
 
   const handleCreate = async () => {
     if (!form.title || !form.security_id || !form.quantity || !form.price || !form.target_price || !form.stop_loss_price) {
@@ -83,6 +131,41 @@ export default function SignalCreateScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.modeToggle}>
+            <TouchableOpacity
+              style={[styles.modeBtn, entryMode === 'form' && styles.modeBtnActive]}
+              onPress={() => setEntryMode('form')}
+            >
+              <Text style={[styles.modeBtnText, entryMode === 'form' && styles.modeBtnTextActive]}>Fill Form</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, entryMode === 'paste' && styles.modeBtnActive]}
+              onPress={() => setEntryMode('paste')}
+            >
+              <Text style={[styles.modeBtnText, entryMode === 'paste' && styles.modeBtnTextActive]}>Paste Message</Text>
+            </TouchableOpacity>
+          </View>
+
+          {entryMode === 'paste' && (
+            <View style={styles.pasteCard}>
+              <Text style={styles.label}>Paste Signal Message</Text>
+              <TextInput
+                style={styles.pasteInput}
+                value={rawSignal}
+                onChangeText={setRawSignal}
+                placeholder={'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300\nEXPIRY: 2026-07-21\nDhann BO'}
+                placeholderTextColor={Colors.textMuted}
+                multiline
+                textAlignVertical="top"
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+              <TouchableOpacity style={styles.parseBtn} onPress={parseAndPrefill}>
+                <Text style={styles.parseBtnText}>Parse & Prefill Form</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <Field label="Signal Title *" value={form.title} onChangeText={set('title')} placeholder='e.g. "NIFTY 24000CE BUY"' />
 
           {/* Buy/Sell toggle */}
@@ -216,6 +299,64 @@ const styles = StyleSheet.create({
   backText: { color: Colors.primary, fontSize: 15, fontWeight: '600', width: 60 },
   pageTitle: { ...Typography.h3 },
   scroll: { padding: Spacing.lg, gap: Spacing.md },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 4,
+    gap: 6,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+  },
+  modeBtnActive: {
+    backgroundColor: Colors.primary,
+  },
+  modeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  modeBtnTextActive: {
+    color: '#fff',
+  },
+  pasteCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    ...Shadow.card,
+  },
+  pasteInput: {
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    minHeight: 140,
+    fontSize: 14,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+  },
+  parseBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+  },
+  parseBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
   field: { gap: 6 },
   label: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {

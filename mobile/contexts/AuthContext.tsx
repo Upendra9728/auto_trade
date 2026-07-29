@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { authApi } from '../services/api';
 import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
-import { registerForPushNotifications } from '../services/notifications';
+import { registerForPushNotifications, setupNotifications } from '../services/notifications';
 import type { User } from '../types';
 
 interface AuthContextValue {
@@ -20,30 +20,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-    // Re-hydrate from secure storage on startup
+  // Re-hydrate from secure storage on startup
   useEffect(() => {
     (async () => {
       try {
-        const [savedToken, savedUser] = await Promise.all([
-          getToken(),
-          getSavedUser()
-        ]);
-        
-        if (savedToken && savedUser) {
-          // Immediately set what we have so the app doesn't show login screen
+        const [savedToken, savedUser] = await Promise.all([getToken(), getSavedUser()]);
+
+        if (savedToken) {
+          // Immediately set what we have so the app doesn't flash the login screen.
           setToken(savedToken);
-          setUser(savedUser as User);
-          setLoading(false); // Stop loading early to show the UI
+          if (savedUser) {
+            setUser(savedUser as User);
+          }
+          setLoading(false);
 
           try {
-            // Verify token in background
+            // Verify token in background and refresh cached profile.
             const me = await authApi.me();
             setUser(me);
+            await saveAuth(savedToken, me);
             // Register push notifications after auth is restored
             registerForPushNotifications().catch(() => {});
           } catch (err: any) {
-            // Only clear if it's an authentication error (401)
-            // Network errors should just be ignored during background sync
+            // Only clear on auth errors; keep session for transient network issues.
             if (err.message?.includes('401')) {
               await clearAuth();
               setToken(null);
