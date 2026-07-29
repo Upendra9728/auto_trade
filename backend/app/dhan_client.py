@@ -50,13 +50,17 @@ class DhanClient:
     @staticmethod
     def _format_error_message(data: Any, status_code: int) -> str:
         if isinstance(data, dict):
-            error_code = data.get("errorCode") or data.get("code")
-            error_message = data.get("errorMessage") or data.get("message")
-            if error_code == "DH-905" or str(error_message).lower().startswith("invalid ip"):
+            error_code = data.get("errorCode") or data.get("code") or ""
+            error_message = str(data.get("errorMessage") or data.get("message") or "")
+            # Only map to the IP-whitelist message when the errorMessage actually
+            # mentions IP — DH-905 is a generic Input_Exception used for many errors.
+            if "invalid ip" in error_message.lower() or "ip" in error_message.lower() and "whitelist" in error_message.lower():
                 return (
                     "Dhan rejected the request because the source IP is not whitelisted for this client. "
                     "Ensure the assigned IPv6 address is registered in the Dhan developer portal."
                 )
+            if error_message:
+                return f"Dhan error [{error_code}]: {error_message}"
             return f"Dhan API error HTTP {status_code}: {data}"
         return f"Dhan API error HTTP {status_code}: {data}"
 
