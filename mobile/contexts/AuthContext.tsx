@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { authApi } from '../services/api';
 import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
-import { registerForPushNotifications, setupNotifications } from '../services/notifications';
+import { registerForPushNotifications } from '../services/notifications';
 import type { User } from '../types';
 
 interface AuthContextValue {

@@ -280,6 +280,34 @@ def list_orders(
     return [_to_notification_response(n) for n in notifications]
 
 
+@router.post("/me/test-push")
+def test_push_notification(
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """
+    Send a test FCM push notification to the current user's registered device.
+    Useful for verifying that Firebase credentials and FCM token are configured.
+    """
+    if not current_user.fcm_token:
+        raise HTTPException(
+            status_code=400,
+            detail="No FCM token registered for your account. Open the app and log in first.",
+        )
+    from ..notifications import send_push_notification
+    ok = send_push_notification(
+        fcm_token=current_user.fcm_token,
+        title="🔔 Test Notification",
+        body="Push notifications are working correctly!",
+        data={"type": "TEST"},
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=500,
+            detail="FCM send failed. Check FIREBASE_CREDENTIALS_JSON in backend .env and server logs.",
+        )
+    return {"status": "sent", "token_suffix": current_user.fcm_token[-8:]}
+
+
 @router.get("/test-ip")
 def test_ip(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, str | None]:
     """Test IPv6 by binding and making a real HTTP call to detect the external IP."""

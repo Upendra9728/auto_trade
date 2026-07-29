@@ -1,10 +1,11 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import { userApi } from './api';
 
 // expo-notifications remote push was removed from Expo Go in SDK 53.
 // We skip it entirely in Expo Go so the app loads without crashing.
-// Use a development build (npx expo run:android) for full FCM support.
 const isExpoGo = Constants.appOwnership === 'expo';
 
 /**
@@ -16,10 +17,7 @@ export async function setupNotifications(): Promise<void> {
   if (isExpoGo) return;
 
   try {
-    const Notifications = await import('expo-notifications');
-
     // Controls how notifications look when the app is in the FOREGROUND.
-    // Background/killed state is handled natively by Android FCM — no JS needed.
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -53,27 +51,26 @@ export async function setupNotifications(): Promise<void> {
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (isExpoGo) {
-    console.log('[FCM] Skipping push notifications in Expo Go (not supported from SDK 53+).');
+    console.log('[FCM] Skipping push notifications in Expo Go.');
     return null;
   }
 
-  // Dynamic imports so the module is never loaded in Expo Go
-  const Device = await import('expo-device');
-  if (!Device.default.isDevice) {
+  if (!Device.isDevice) {
     console.log('[FCM] Push notifications only work on physical devices.');
     return null;
   }
 
   try {
-    const Notifications = await import('expo-notifications');
-
     const { status: existing } = await Notifications.getPermissionsAsync();
     let finalStatus = existing;
     if (existing !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    if (finalStatus !== 'granted') return null;
+    if (finalStatus !== 'granted') {
+      console.warn('[FCM] Notification permission not granted.');
+      return null;
+    }
 
     const { data: token } = await Notifications.getDevicePushTokenAsync();
     if (token) {
