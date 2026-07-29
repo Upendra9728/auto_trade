@@ -36,6 +36,7 @@ export interface Signal {
   product_type: string;
   order_type: string;
   quantity: number;
+  lot_size: number | null;
   price: number;
   target_price: number;
   stop_loss_price: number;
@@ -72,6 +73,7 @@ export interface SignalCreatePayload {
   product_type: string;
   order_type: string;
   quantity: number;
+  lot_size?: number | null;
   price: number;
   target_price: number;
   stop_loss_price: number;

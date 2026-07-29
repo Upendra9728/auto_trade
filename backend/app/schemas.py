@@ -91,6 +91,7 @@ class SignalCreateRequest(BaseModel):
     product_type: Literal["INTRADAY", "CNC", "MARGIN", "MTF", "CO", "BO"] = "INTRADAY"
     order_type: Literal["LIMIT", "MARKET"] = "LIMIT"
     quantity: int = Field(ge=1)
+    lot_size: int | None = Field(default=None, ge=1)
     price: float = Field(ge=0)
     target_price: float = Field(ge=0)
     stop_loss_price: float = Field(ge=0)
@@ -107,6 +108,7 @@ class SignalResponse(BaseModel):
     product_type: str
     order_type: str
     quantity: int
+    lot_size: int | None = None
     price: float
     target_price: float
     stop_loss_price: float

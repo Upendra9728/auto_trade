@@ -49,6 +49,7 @@ def _to_signal_response(signal: Signal) -> SignalResponse:
         product_type=signal.product_type,
         order_type=signal.order_type,
         quantity=signal.quantity,
+        lot_size=signal.lot_size,
         price=signal.price,
         target_price=signal.target_price,
         stop_loss_price=signal.stop_loss_price,

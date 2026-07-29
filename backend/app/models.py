@@ -67,6 +67,7 @@ class Signal(Base):
     product_type: Mapped[str] = mapped_column(String(16))       # INTRADAY | CNC | MARGIN | etc.
     order_type: Mapped[str] = mapped_column(String(16))         # LIMIT | MARKET
     quantity: Mapped[int] = mapped_column(Integer)
+    lot_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     price: Mapped[float] = mapped_column(Float)
     target_price: Mapped[float] = mapped_column(Float)
     stop_loss_price: Mapped[float] = mapped_column(Float)

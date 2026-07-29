@@ -15,6 +15,7 @@ const ORDER_TYPES = ['LIMIT', 'MARKET'];
 export default function SignalCreateScreen() {
   const [entryMode, setEntryMode] = useState<'form' | 'paste'>('form');
   const [rawSignal, setRawSignal] = useState('');
+  const [lotSize, setLotSize] = useState<number | null>(null);
   const [form, setForm] = useState({
     title: '',
     exchange_segment: 'NSE_FNO',
@@ -97,10 +98,13 @@ export default function SignalCreateScreen() {
         });
         if (results.length > 0) {
           const match = results[0];
+          setLotSize(match.lot_size);
           setForm((prev) => ({
             ...prev,
             security_id: match.security_id,
             exchange_segment: match.exchange_segment,
+            // Auto-fill quantity from lot_size if not already set by admin
+            quantity: prev.quantity || String(match.lot_size),
           }));
           Alert.alert(
             '✅ Security ID Found',
@@ -146,7 +150,10 @@ export default function SignalCreateScreen() {
 
     setLoading(true);
     try {
-      const signal = await adminApi.createSignal(payload);
+      const signal = await adminApi.createSignal({
+        ...payload,
+        ...(lotSize != null ? { lot_size: lotSize } : {}),
+      });
       Alert.alert(
         '✅ Signal Sent',
         `"${signal.title}" broadcast to all eligible users.`,
