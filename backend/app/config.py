@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     ipv6_pool_prefix: str = "2406:da1a:c1e:f000:a79e::"
     # Lowest host suffix to allocate (decimal).  1 = start at ::1
     ipv6_pool_start: int = 1
+    # Network interface name on the EC2 instance (usually ens5 on Nitro).
+    # Used when auto-provisioning new IPv6 addresses onto the interface.
+    ipv6_interface: str = "ens5"
+    # When True, automatically add newly assigned IPv6 addresses to the OS
+    # network interface and persistent systemd-networkd config.
+    # Requires the process to have CAP_NET_ADMIN or passwordless sudo for 'ip'.
+    ipv6_auto_provision: bool = True
 
 
 settings = Settings()
