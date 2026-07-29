@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -12,6 +13,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
 
 EXCHANGE_SEGMENT_MAP = {
@@ -26,6 +28,36 @@ EXCHANGE_SEGMENT_MAP = {
 
 class DhanApiError(RuntimeError):
     pass
+
+
+def _verify_ipv6_bindable(ipv6: str) -> None:
+    """
+    Raise DhanApiError if the IPv6 address is not assigned to any local interface.
+    This catches mis-configured ENI assignments before wasting a Dhan API call.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        sock.bind((ipv6, 0))
+        sock.close()
+    except OSError as exc:
+        raise DhanApiError(
+            f"IPv6 address {ipv6} is not assigned to this server's network interface "
+            f"({exc}). Ask admin to assign it on the AWS ENI."
+        ) from exc
+
+
+async def _resolve_ipv6(hostname: str) -> str | None:
+    """Resolve hostname to an IPv6 (AAAA) address, returning None if not available."""
+    loop = asyncio.get_event_loop()
+    try:
+        results = await loop.getaddrinfo(hostname, 443, family=socket.AF_INET6, type=socket.SOCK_STREAM)
+        if results:
+            addr = results[0][4][0]
+            logger.info("Resolved %s → IPv6 %s", hostname, addr)
+            return addr
+    except Exception as exc:
+        logger.warning("Could not resolve %s to IPv6: %s", hostname, exc)
+    return None
 
 
 class DhanClient:
@@ -57,8 +89,6 @@ class DhanClient:
         product_type: str = "INTRADAY",
         order_type: str = "LIMIT",
         trailing_jump: float = 0,
-        # AWS IPv6 address assigned to this user — the outbound request will be
-        # bound to this address so Dhan sees the per-user whitelisted IP.
         source_ipv6: str | None = None,
     ) -> dict[str, Any]:
         segment = EXCHANGE_SEGMENT_MAP.get(exchange_segment.upper(), exchange_segment.upper())
@@ -85,16 +115,40 @@ class DhanClient:
         safe_headers = {"Content-Type": headers["Content-Type"], "access-token": "<redacted>"}
         logger.info("Dhan headers: %s", json.dumps(safe_headers, separators=(",", ":")))
         logger.info("Dhan payload: %s", json.dumps(payload, separators=(",", ":")))
-        if source_ipv6:
-            logger.info("Dhan outbound bound to IPv6: %s", source_ipv6)
 
-        # Build transport — optionally bind to the user's assigned IPv6 address
-        # so that Dhan's per-client IP whitelist check passes.
-        transport = httpx.AsyncHTTPTransport(local_address=source_ipv6) if source_ipv6 else httpx.AsyncHTTPTransport()
+        # ── IPv6 source binding ────────────────────────────────────────────────
+        url = DHAN_SUPER_ORDERS_URL
+        transport: httpx.AsyncHTTPTransport
+
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            logger.info("Dhan outbound: binding to IPv6 %s", source_ipv6)
+
+            # 1. Verify the address is actually assigned to this server's interface.
+            _verify_ipv6_bindable(source_ipv6)
+
+            # 2. Force IPv6 DNS resolution so httpx doesn't fall back to IPv4
+            #    (Happy Eyeballs can silently ignore the local_address binding).
+            dhan_ipv6 = await _resolve_ipv6(DHAN_API_HOST)
+            if dhan_ipv6:
+                # Connect directly to the IPv6 address with the Host header preserved.
+                url = f"https://[{dhan_ipv6}]/v2/super/orders"
+                headers["Host"] = DHAN_API_HOST
+                logger.info("Dhan: forcing IPv6 connection to [%s]", dhan_ipv6)
+            else:
+                logger.warning(
+                    "Dhan: %s has no AAAA record — falling back to default resolution. "
+                    "Source IPv6 binding may not take effect.",
+                    DHAN_API_HOST,
+                )
+
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
 
         try:
             async with httpx.AsyncClient(transport=transport, timeout=30) as client:
-                resp = await client.post(DHAN_SUPER_ORDERS_URL, headers=headers, json=payload)
+                resp = await client.post(url, headers=headers, json=payload)
         except Exception as exc:
             raise DhanApiError(f"Network error connecting to Dhan: {exc}") from exc
 
