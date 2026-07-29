@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { authApi } from '../services/api';
-import { saveAuth, getToken, clearAuth } from '../services/auth';
+import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
 import type { User } from '../types';
 
@@ -20,22 +20,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Re-hydrate from secure storage on startup
+    // Re-hydrate from secure storage on startup
   useEffect(() => {
     (async () => {
       try {
-        const savedToken = await getToken();
-        if (savedToken) {
-          const me = await authApi.me();
+        const [savedToken, savedUser] = await Promise.all([
+          getToken(),
+          getSavedUser()
+        ]);
+        
+        if (savedToken && savedUser) {
+          // Immediately set what we have so the app doesn't show login screen
           setToken(savedToken);
-          setUser(me);
-          // Register push notifications after auth is restored
-          registerForPushNotifications().catch(() => {});
+          setUser(savedUser as User);
+          setLoading(false); // Stop loading early to show the UI
+
+          try {
+            // Verify token in background
+            const me = await authApi.me();
+            setUser(me);
+            // Register push notifications after auth is restored
+            registerForPushNotifications().catch(() => {});
+          } catch (err: any) {
+            // Only clear if it's an authentication error (401)
+            // Network errors should just be ignored during background sync
+            if (err.message?.includes('401')) {
+              await clearAuth();
+              setToken(null);
+              setUser(null);
+            }
+          }
+        } else {
+          setLoading(false);
         }
-      } catch {
-        // Token expired or invalid — clear it
-        await clearAuth();
-      } finally {
+      } catch (e) {
         setLoading(false);
       }
     })();

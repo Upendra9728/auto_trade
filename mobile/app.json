@@ -1,24 +1,41 @@
-﻿{
+{
   "expo": {
     "name": "Automate Trading",
     "slug": "automate-trading",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.automatetrading.app"
+      "bundleIdentifier": "com.automatetrading.app",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
-      "adaptiveIcon": { "backgroundColor": "#1E40AF" },
+      "adaptiveIcon": {
+        "backgroundColor": "#1E40AF"
+      },
       "package": "com.automatetrading.app",
-      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE"]
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
     "scheme": "automatetrading",
     "extra": {
-      "apiBaseUrl": "http://YOUR_EC2_PUBLIC_IP"
+      "apiBaseUrl": "http://YOUR_EC2_PUBLIC_IP",
+      "router": {},
+      "eas": {
+        "projectId": "36c4d8e8-7158-45df-9de4-44a629d105ad"
+      }
     }
   }
 }

@@ -63,11 +63,11 @@ export default function RegisterScreen() {
 
         <View style={styles.card}>
           {([
-            { key: 'name', label: 'Full Name', placeholder: 'John Doe', type: 'default' },
-            { key: 'email', label: 'Email Address', placeholder: 'you@email.com', type: 'email-address' },
-            { key: 'phone_number', label: 'Phone Number', placeholder: '+91 9876543210', type: 'phone-pad' },
-            { key: 'password', label: 'Password', placeholder: 'Min. 8 characters', type: 'default', secure: true },
-          ] as const).map(({ key, label, placeholder, type, secure }) => (
+            { key: 'name' as const, label: 'Full Name', placeholder: 'John Doe', type: 'default' as const, secure: false },
+            { key: 'email' as const, label: 'Email Address', placeholder: 'you@email.com', type: 'email-address' as const, secure: false },
+            { key: 'phone_number' as const, label: 'Phone Number', placeholder: '+91 9876543210', type: 'phone-pad' as const, secure: false },
+            { key: 'password' as const, label: 'Password', placeholder: 'Min. 8 characters', type: 'default' as const, secure: true },
+          ]).map(({ key, label, placeholder, type, secure }) => (
             <View key={key} style={styles.field}>
               <Text style={styles.label}>{label}</Text>
               <TextInput

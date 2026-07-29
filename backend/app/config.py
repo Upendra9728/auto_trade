@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     # Used for internal service-to-service calls (optional)
     internal_secret: str = "change-me"
 
-    # Session config
-    auth_session_hours: int = 24 * 7
+        # Session config
+    auth_session_hours: int = 24 * 30
     otp_expiry_minutes: int = 10
 
     # Email (for OTP password reset)
