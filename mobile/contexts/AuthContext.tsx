@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { authApi } from '../services/api';
+import { authApi, userApi } from '../services/api';
 import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
 import type { User } from '../types';
@@ -69,6 +69,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    try {
+      // Clear FCM token first so this device stops receiving notifications for this account.
+      await userApi.clearFcmToken();
+    } catch {}
     try {
       await authApi.logout();
     } catch {}

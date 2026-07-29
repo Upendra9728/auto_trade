@@ -76,6 +76,8 @@ export const userApi = {
     put<User>('/api/users/me', data),
   updateFcmToken: (fcm_token: string) =>
     put<{ status: string }>('/api/users/me/fcm-token', { fcm_token }),
+  clearFcmToken: () =>
+    del<{ status: string }>('/api/users/me/fcm-token'),
   testPush: () =>
     post<{ status: string; token_suffix: string }>('/api/users/me/test-push'),
   getDhanCredential: () => get<DhanCredential | null>('/api/users/me/dhan'),

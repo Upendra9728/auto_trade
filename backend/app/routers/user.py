@@ -110,6 +110,18 @@ def update_fcm_token(
     return {"status": "updated"}
 
 
+@router.delete("/me/fcm-token")
+def clear_fcm_token(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Clear the FCM token on logout so the device stops receiving notifications for this account."""
+    current_user.fcm_token = None
+    current_user.updated_at = dt.datetime.utcnow()
+    db.commit()
+    return {"status": "cleared"}
+
+
 # ---------------------------------------------------------------------------
 # Dhan credentials
 # ---------------------------------------------------------------------------

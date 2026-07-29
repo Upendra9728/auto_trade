@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
-import { registerForPushNotifications } from '../../services/notifications';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import type { DhanCredential } from '../../types';
 
@@ -18,8 +17,6 @@ export default function ProfileScreen() {
   const [savingDhan, setSavingDhan] = useState(false);
   const [showDhanForm, setShowDhanForm] = useState(false);
   const [testingIp, setTestingIp] = useState(false);
-  const [testingPush, setTestingPush] = useState(false);
-  const [reregistering, setReregistering] = useState(false);
 
   useEffect(() => {
     userApi.getDhanCredential().then(setDhan).catch(() => {});
@@ -209,55 +206,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Notifications section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Push Notifications</Text>
-
-          <TouchableOpacity
-            style={[styles.actionRow, reregistering && { opacity: 0.6 }]}
-            onPress={async () => {
-              setReregistering(true);
-              try {
-                const token = await registerForPushNotifications();
-                if (token) {
-                  Alert.alert('✅ Registered', 'FCM token updated on server. Push notifications are set up.');
-                } else {
-                  Alert.alert('⚠️ Failed', 'Could not get FCM token. Check notification permissions in Settings.');
-                }
-              } catch (e: any) {
-                Alert.alert('Error', e.message);
-              } finally {
-                setReregistering(false);
-              }
-            }}
-            disabled={reregistering}
-          >
-            {reregistering
-              ? <ActivityIndicator size="small" color={Colors.primary} />
-              : <Text style={styles.actionText}>Re-register Device Token</Text>}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionRow, testingPush && { opacity: 0.6 }]}
-            onPress={async () => {
-              setTestingPush(true);
-              try {
-                await userApi.testPush();
-                Alert.alert('✅ Sent!', 'Test notification sent. You should receive it on your device now — even if the app is closed.');
-              } catch (e: any) {
-                Alert.alert('❌ FCM Error', e.message);
-              } finally {
-                setTestingPush(false);
-              }
-            }}
-            disabled={testingPush}
-          >
-            {testingPush
-              ? <ActivityIndicator size="small" color={Colors.primary} />
-              : <Text style={styles.actionText}>Send Test Push Notification</Text>}
-          </TouchableOpacity>
-        </View>
-
         {/* Test IP */}
         <TouchableOpacity
           style={[styles.testIpBtn, testingIp && { opacity: 0.6 }]}
@@ -336,17 +284,6 @@ const styles = StyleSheet.create({
   },
   saveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.primaryBg,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  actionText: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
   testIpBtn: {
     backgroundColor: Colors.primaryBg, borderRadius: Radius.sm,
     paddingVertical: 14, alignItems: 'center', marginTop: 4,
