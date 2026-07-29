@@ -29,11 +29,12 @@ export default function SignalCreateScreen() {
     trailing_jump: '0',
   });
   const [loading, setLoading] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   const set = (key: keyof typeof form) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
 
-  const parseAndPrefill = () => {
+  const parseAndPrefill = async () => {
     const lines = rawSignal
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -59,14 +60,20 @@ export default function SignalCreateScreen() {
     const parsedQty = pickValue('QTY') || pickValue('QUANTITY');
     const parsedExpiry = pickValue('EXPIRY');
 
-    const parsedSegment = first.includes('SENSEX') ? 'BSE_FNO' : 'NSE_FNO';
+    const parsedSegment = first.includes('SENSEX') || first.includes('BANKEX') ? 'BSE_FNO' : 'NSE_FNO';
     const parsedDirection = second.endsWith('PE') || second.endsWith('CE') ? 'BUY' : form.transaction_type;
 
+    // Extract strike + option type from e.g. "23800PE" → strike=23800, optionType="PE"
+    const optionMatch = second.match(/^(\d+(?:\.\d+)?)(PE|CE)$/);
+    const parsedStrike = optionMatch ? optionMatch[1] : '';
+    const parsedOptionType = optionMatch ? optionMatch[2] : '';
+
+    // Pre-fill what we already know — security_id starts as symbol so the field isn't blank
     setForm((prev) => ({
       ...prev,
       title: parsedExpiry ? `${first} ${second} ${parsedExpiry}` : `${first} ${second}`,
       exchange_segment: parsedSegment,
-      security_id: second,
+      security_id: '',
       transaction_type: parsedDirection,
       quantity: parsedQty || prev.quantity,
       price: parsedPrice || prev.price,
@@ -76,7 +83,40 @@ export default function SignalCreateScreen() {
     }));
 
     setEntryMode('form');
-    Alert.alert('Parsed', 'Signal text parsed and form prefilled. Verify values before broadcasting.');
+
+    // Auto-lookup numeric security ID if we have all required fields
+    if (parsedStrike && parsedOptionType && parsedExpiry) {
+      setLookingUp(true);
+      try {
+        const results = await adminApi.scripSearch({
+          symbol: first,
+          strike: parseFloat(parsedStrike),
+          option_type: parsedOptionType,
+          expiry: parsedExpiry,
+          exchange: parsedSegment === 'BSE_FNO' ? 'BSE' : 'NSE',
+        });
+        if (results.length > 0) {
+          const match = results[0];
+          setForm((prev) => ({
+            ...prev,
+            security_id: match.security_id,
+            exchange_segment: match.exchange_segment,
+          }));
+          Alert.alert(
+            '✅ Security ID Found',
+            `${match.trading_symbol}\nSecurity ID: ${match.security_id}\nLot size: ${match.lot_size}`,
+          );
+        } else {
+          Alert.alert('⚠️ Security ID Not Found', `Could not find ${first} ${second} expiry ${parsedExpiry} in scrip master. Enter the security ID manually.`);
+        }
+      } catch (e: any) {
+        Alert.alert('⚠️ Scrip Lookup Failed', `${e.message}\nEnter the security ID manually.`);
+      } finally {
+        setLookingUp(false);
+      }
+    } else {
+      Alert.alert('Parsed', 'Form prefilled. Enter the security ID manually (scrip lookup needs strike, option type, and expiry).');
+    }
   };
 
   const handleCreate = async () => {
@@ -160,8 +200,10 @@ export default function SignalCreateScreen() {
                 autoCapitalize="characters"
                 autoCorrect={false}
               />
-              <TouchableOpacity style={styles.parseBtn} onPress={parseAndPrefill}>
-                <Text style={styles.parseBtnText}>Parse & Prefill Form</Text>
+              <TouchableOpacity style={[styles.parseBtn, lookingUp && { opacity: 0.6 }]} onPress={parseAndPrefill} disabled={lookingUp}>
+                {lookingUp
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.parseBtnText}>Parse &amp; Prefill Form</Text>}
               </TouchableOpacity>
             </View>
           )}

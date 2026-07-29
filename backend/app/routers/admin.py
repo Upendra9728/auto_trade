@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..deps import get_current_admin, get_db
 from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
 from ..notifications import send_signal_notifications
+from ..scrip_lookup import search as scrip_search_fn
 from ..schemas import (
     AdminSignalDetailResponse,
     AdminUpdateUserRequest,
@@ -20,6 +21,39 @@ from ..schemas import (
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/scrip-search")
+def scrip_search(
+    symbol: str,
+    strike: float,
+    option_type: str,
+    expiry: str,
+    exchange: str | None = None,
+    _: User = Depends(get_current_admin),
+) -> list[dict]:
+    """
+    Look up Dhan numeric security IDs from the local scrip master CSV.
+    symbol:      index name, e.g. NIFTY, SENSEX, BANKNIFTY
+    strike:      strike price as a number, e.g. 23800
+    option_type: PE or CE
+    expiry:      YYYY-MM-DD
+    exchange:    optional NSE or BSE filter
+    """
+    results = scrip_search_fn(
+        symbol=symbol,
+        strike=strike,
+        option_type=option_type,
+        expiry_date=expiry,
+        exchange=exchange,
+    )
+    if not results:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No instrument found: {symbol} {strike}{option_type} expiry {expiry}. "
+                   "Check symbol spelling, strike price, expiry date, and that the scrip master CSV is deployed.",
+        )
+    return results
 
 
 def _to_admin_user(u: User, db: Session) -> AdminUserResponse:

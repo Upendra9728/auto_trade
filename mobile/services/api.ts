@@ -107,4 +107,23 @@ export const adminApi = {
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),
+  scripSearch: (params: { symbol: string; strike: number; option_type: string; expiry: string; exchange?: string }) => {
+    const q = new URLSearchParams({
+      symbol: params.symbol,
+      strike: String(params.strike),
+      option_type: params.option_type,
+      expiry: params.expiry,
+      ...(params.exchange ? { exchange: params.exchange } : {}),
+    });
+    return get<Array<{
+      security_id: string;
+      trading_symbol: string;
+      exchange: string;
+      exchange_segment: string;
+      expiry_date: string;
+      lot_size: number;
+      strike_price: number;
+      option_type: string;
+    }>>(`/api/admin/scrip-search?${q.toString()}`);
+  },
 };
