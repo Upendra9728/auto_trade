@@ -16,6 +16,7 @@ async def place_order_for_notification(
     *,
     notification: SignalNotification,
     db: Session,
+    quantity_override: int | None = None,
 ) -> None:
     """
     Execute the Dhan super order for a confirmed notification.
@@ -23,6 +24,7 @@ async def place_order_for_notification(
     - Looks up the user's assigned IPv6 address and Dhan credentials.
     - Binds the outbound HTTP request to the user's IPv6 address.
     - Updates notification.status to 'placed' or 'failed'.
+    - quantity_override: if set, replaces the signal's quantity for this order.
     """
     signal: Signal = notification.signal
     user: User = notification.user
@@ -58,7 +60,7 @@ async def place_order_for_notification(
             access_token=access_token,
             exchange_segment=signal.exchange_segment,
             security_id=signal.security_id,
-            quantity=signal.quantity,
+            quantity=quantity_override if quantity_override is not None else signal.quantity,
             price=signal.price,
             target_price=signal.target_price,
             stop_loss_price=signal.stop_loss_price,

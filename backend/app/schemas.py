@@ -139,6 +139,11 @@ class SignalNotificationResponse(BaseModel):
     created_at: str
 
 
+class ConfirmNotificationRequest(BaseModel):
+    """Optional body for the confirm endpoint — lets users override quantity."""
+    quantity: int | None = Field(default=None, ge=1)
+
+
 # ---------------------------------------------------------------------------
 # Admin user management
 # ---------------------------------------------------------------------------

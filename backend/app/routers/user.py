@@ -15,6 +15,7 @@ from ..order_service import place_order_for_notification
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
+    ConfirmNotificationRequest,
     SignalNotificationResponse,
     SignalResponse,
     UpdateFcmTokenRequest,
@@ -212,6 +213,7 @@ def list_notifications(
 @router.post("/me/notifications/{notification_id}/confirm", response_model=SignalNotificationResponse)
 async def confirm_notification(
     notification_id: int,
+    req: ConfirmNotificationRequest = ConfirmNotificationRequest(),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SignalNotificationResponse:
@@ -240,7 +242,7 @@ async def confirm_notification(
     db.commit()
 
     # Place the Dhan order immediately
-    await place_order_for_notification(notification=notif, db=db)
+    await place_order_for_notification(notification=notif, db=db, quantity_override=req.quantity)
     db.refresh(notif)
     return _to_notification_response(notif)
 

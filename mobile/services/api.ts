@@ -85,8 +85,8 @@ export const userApi = {
     post<DhanCredential>('/api/users/me/dhan', data),
   getNotifications: (status?: string) =>
     get<SignalNotification[]>(`/api/users/me/notifications${status ? `?status=${status}` : ''}`),
-  confirmNotification: (id: number) =>
-    post<SignalNotification>(`/api/users/me/notifications/${id}/confirm`),
+  confirmNotification: (id: number, quantity?: number) =>
+    post<SignalNotification>(`/api/users/me/notifications/${id}/confirm`, quantity != null ? { quantity } : undefined),
   rejectNotification: (id: number) =>
     post<SignalNotification>(`/api/users/me/notifications/${id}/reject`),
   getOrders: (limit = 50) =>

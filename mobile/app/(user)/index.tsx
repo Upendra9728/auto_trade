@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet,
-  TouchableOpacity, RefreshControl, Alert, ActivityIndicator,
+  View, Text, FlatList, StyleSheet, Modal,
+  TouchableOpacity, RefreshControl, Alert, ActivityIndicator, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -11,11 +11,18 @@ import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import type { SignalNotification } from '../../types';
 
+const QTY_PRESETS = [5, 15, 20, 25, 30];
+
 export default function NotificationsScreen() {
   const [items, setItems] = useState<SignalNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
+
+  // Quantity picker modal state
+  const [qtyModal, setQtyModal] = useState<{ notification: SignalNotification } | null>(null);
+  const [customQty, setCustomQty] = useState('');
+  const [selectedQty, setSelectedQty] = useState<number | null>(null);
 
   const load = useCallback(async (showError = true) => {
     try {
@@ -43,34 +50,39 @@ export default function NotificationsScreen() {
     }, [load]),
   );
 
-  const handleConfirm = async (n: SignalNotification) => {
-    Alert.alert(
-      'Confirm Order',
-      `Place order for "${n.signal.title}"?\n\n${n.signal.transaction_type} ${n.signal.quantity} × ${n.signal.exchange_segment}\nEntry ₹${n.signal.price}  SL ₹${n.signal.stop_loss_price}  Target ₹${n.signal.target_price}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          style: 'default',
-          onPress: async () => {
-            setActionId(n.id);
-            try {
-              const updated = await userApi.confirmNotification(n.id);
-              setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-              if (updated.status === 'placed') {
-                Alert.alert('✅ Order Placed', `Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}`);
-              } else {
-                Alert.alert('❌ Order Failed', updated.error_message ?? 'Unknown error');
-              }
-            } catch (err: any) {
-              Alert.alert('Error', err.message);
-            } finally {
-              setActionId(null);
-            }
-          },
-        },
-      ],
-    );
+  const handleConfirm = (n: SignalNotification) => {
+    // Open quantity picker modal — default to admin's quantity
+    setSelectedQty(n.signal.quantity);
+    setCustomQty('');
+    setQtyModal({ notification: n });
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!qtyModal) return;
+    const n = qtyModal.notification;
+    const finalQty = customQty.trim() ? parseInt(customQty.trim(), 10) : selectedQty;
+    if (!finalQty || isNaN(finalQty) || finalQty < 1) {
+      Alert.alert('Invalid quantity', 'Please select or enter a valid quantity.');
+      return;
+    }
+    setQtyModal(null);
+    setActionId(n.id);
+    try {
+      const updated = await userApi.confirmNotification(
+        n.id,
+        finalQty !== n.signal.quantity ? finalQty : undefined,
+      );
+      setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      if (updated.status === 'placed') {
+        Alert.alert('✅ Order Placed', `Qty: ${finalQty} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}`);
+      } else {
+        Alert.alert('❌ Order Failed', updated.error_message ?? 'Unknown error');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setActionId(null);
+    }
   };
 
   const handleReject = async (n: SignalNotification) => {
@@ -177,6 +189,78 @@ export default function NotificationsScreen() {
         ListEmptyComponent={<EmptyState icon="bell-off" title="No signals yet" subtitle="When the admin sends a trading signal, it will appear here." />}
         showsVerticalScrollIndicator={false}
       />
+
+      {/* ── Quantity picker modal ───────────────────────────────────────── */}
+      <Modal visible={!!qtyModal} transparent animationType="slide" onRequestClose={() => setQtyModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            {qtyModal && (() => {
+              const n = qtyModal.notification;
+              const isBuy = n.signal.transaction_type === 'BUY';
+              return (
+                <>
+                  <Text style={styles.modalTitle}>{n.signal.title}</Text>
+                  <Text style={styles.modalSub}>
+                    {n.signal.transaction_type} · {n.signal.exchange_segment} · Entry ₹{n.signal.price}
+                  </Text>
+
+                  <Text style={styles.qtyLabel}>Select Quantity</Text>
+
+                  {/* Preset buttons */}
+                  <View style={styles.presets}>
+                    {[...QTY_PRESETS, n.signal.quantity].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b).map((qty) => (
+                      <TouchableOpacity
+                        key={qty}
+                        style={[
+                          styles.presetBtn,
+                          selectedQty === qty && !customQty && styles.presetBtnActive,
+                          qty === n.signal.quantity && styles.presetBtnAdmin,
+                          selectedQty === qty && !customQty && qty === n.signal.quantity && styles.presetBtnAdminActive,
+                        ]}
+                        onPress={() => { setSelectedQty(qty); setCustomQty(''); }}
+                      >
+                        <Text style={[
+                          styles.presetText,
+                          selectedQty === qty && !customQty && styles.presetTextActive,
+                        ]}>
+                          {qty}{qty === n.signal.quantity ? '\n(admin)' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Custom input */}
+                  <View style={styles.customRow}>
+                    <Text style={styles.customLabel}>Custom:</Text>
+                    <TextInput
+                      style={[styles.customInput, customQty ? styles.customInputActive : null]}
+                      value={customQty}
+                      onChangeText={(v) => { setCustomQty(v.replace(/[^0-9]/g, '')); setSelectedQty(null); }}
+                      placeholder="Enter quantity"
+                      placeholderTextColor={Colors.textMuted}
+                      keyboardType="numeric"
+                    />
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQtyModal(null)}>
+                      <Text style={styles.modalCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalConfirmBtn, { backgroundColor: isBuy ? Colors.buy : Colors.sell }]}
+                      onPress={handlePlaceOrder}
+                    >
+                      <Text style={styles.modalConfirmText}>
+                        Place {n.signal.transaction_type} · Qty {customQty || selectedQty}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -231,4 +315,45 @@ const styles = StyleSheet.create({
   rejectText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
   confirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
   time: { ...Typography.caption, textAlign: 'right' },
+
+  // Quantity picker modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: Spacing.lg, paddingBottom: 32, gap: Spacing.md,
+  },
+  modalTitle: { ...Typography.h3 },
+  modalSub: { ...Typography.bodySmall, marginTop: -8 },
+  qtyLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 },
+  presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  presetBtn: {
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.sm,
+    borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center', minWidth: 56,
+  },
+  presetBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  presetBtnAdmin: { borderColor: Colors.primaryLight, borderStyle: 'dashed' },
+  presetBtnAdminActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  presetText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, textAlign: 'center' },
+  presetTextActive: { color: '#fff' },
+  customRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  customLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5, width: 64 },
+  customInput: {
+    flex: 1, borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, fontSize: 15, color: Colors.text,
+  },
+  customInputActive: { borderColor: Colors.primary },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: 4 },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: 13, borderRadius: Radius.sm, alignItems: 'center',
+    borderWidth: 1.5, borderColor: Colors.border,
+  },
+  modalCancelText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+  modalConfirmBtn: {
+    flex: 2, paddingVertical: 13, borderRadius: Radius.sm, alignItems: 'center',
+  },
+  modalConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });
