@@ -164,12 +164,27 @@ async def ensure_scrip_master_fresh() -> None:
 
 async def scrip_master_refresh_loop() -> None:
     """
-    Background loop that re-downloads and reloads the scrip master once every
-    24 hours so new weekly/monthly contracts are always available.
+    Background loop that re-downloads and reloads the scrip master once per day
+    at 07:30 IST (before market open at 09:15 IST), regardless of when the
+    server last restarted.  This ensures new weekly/monthly contracts added by
+    Dhan on Thursday nights are available before Friday's session.
     """
-    logger.info("Scrip master refresh loop started (interval=24 h)")
+    _IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
+    _REFRESH_HOUR = 7
+    _REFRESH_MINUTE = 30
+
     while True:
-        await asyncio.sleep(86_400)   # 24 hours
+        now = dt.datetime.now(_IST)
+        target = now.replace(hour=_REFRESH_HOUR, minute=_REFRESH_MINUTE, second=0, microsecond=0)
+        if now >= target:
+            target += dt.timedelta(days=1)
+        sleep_seconds = (target - now).total_seconds()
+        logger.info(
+            "Scrip master next refresh scheduled at %s IST (in %.1f h)",
+            target.strftime("%Y-%m-%d %H:%M"),
+            sleep_seconds / 3600,
+        )
+        await asyncio.sleep(sleep_seconds)
         logger.info("Scrip master daily refresh: downloading...")
         if await download_scrip_master():
             reload()
