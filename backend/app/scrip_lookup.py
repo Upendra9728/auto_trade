@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import csv
+import datetime as dt
 import logging
+import os
 from pathlib import Path
 from typing import TypedDict
+
+import httpx
+
+SCRIP_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +30,22 @@ class ScripMatch(TypedDict):
     option_type: str       # PE | CE
 
 
+def _csv_path() -> Path:
+    env = os.environ.get("SCRIP_MASTER_PATH")
+    return Path(env) if env else Path(__file__).parent.parent / "api-scrip-master.csv"
+
+
 def _load() -> None:
     global _LOADED
     if _LOADED:
         return
 
-    # Configurable path: SCRIP_MASTER_PATH env var, otherwise sibling of app/
-    import os
-    env_path = os.environ.get("SCRIP_MASTER_PATH")
-    csv_path = Path(env_path) if env_path else Path(__file__).parent.parent / "api-scrip-master.csv"
+    csv_path = _csv_path()
 
     if not csv_path.exists():
         logger.warning(
             "api-scrip-master.csv not found at %s — scrip auto-lookup disabled. "
-            "Download from https://images.dhan.co/api-data/api-scrip-master.csv and place "
-            "it next to the backend/ folder, or set SCRIP_MASTER_PATH.",
+            "It will be downloaded automatically on next startup if internet is available.",
             csv_path,
         )
         _LOADED = True
@@ -91,6 +99,80 @@ def _load() -> None:
 
     logger.info("Scrip master loaded: %d option contracts indexed from %s", count, csv_path)
     _LOADED = True
+
+
+def reload() -> None:
+    """Clear the in-memory index and rebuild it from the CSV on disk."""
+    global _LOADED, _INDEX
+    _INDEX = {}
+    _LOADED = False
+    _load()
+
+
+async def download_scrip_master() -> bool:
+    """
+    Download the latest scrip master CSV from Dhan into the configured path.
+    Uses an atomic write (download → temp file → rename) so the old file
+    remains readable while the download is in progress.
+    Returns True on success, False on any failure.
+    """
+    path = _csv_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            resp = await client.get(SCRIP_MASTER_URL)
+            resp.raise_for_status()
+            tmp.write_bytes(resp.content)
+        tmp.replace(path)
+        logger.info(
+            "Scrip master downloaded: %.1f MB → %s",
+            len(resp.content) / 1_048_576,
+            path,
+        )
+        return True
+    except Exception as exc:
+        logger.error("Failed to download scrip master: %s", exc)
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        return False
+
+
+async def ensure_scrip_master_fresh() -> None:
+    """
+    Called at startup.  Downloads the scrip master if:
+    - the file does not exist, OR
+    - the file is older than 23 hours (stale contracts).
+    After a successful download the in-memory index is rebuilt.
+    """
+    path = _csv_path()
+    needs_download = not path.exists()
+    if not needs_download:
+        age = dt.datetime.utcnow() - dt.datetime.utcfromtimestamp(path.stat().st_mtime)
+        needs_download = age > dt.timedelta(hours=23)
+        if needs_download:
+            logger.info("Scrip master is %.1f hours old — refreshing", age.total_seconds() / 3600)
+
+    if needs_download:
+        ok = await download_scrip_master()
+        if ok:
+            reload()
+    else:
+        logger.info("Scrip master is fresh (last modified: %s UTC)",
+                    dt.datetime.utcfromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"))
+
+
+async def scrip_master_refresh_loop() -> None:
+    """
+    Background loop that re-downloads and reloads the scrip master once every
+    24 hours so new weekly/monthly contracts are always available.
+    """
+    logger.info("Scrip master refresh loop started (interval=24 h)")
+    while True:
+        await asyncio.sleep(86_400)   # 24 hours
+        logger.info("Scrip master daily refresh: downloading...")
+        if await download_scrip_master():
+            reload()
 
 
 def search(

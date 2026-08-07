@@ -10,6 +10,7 @@ from .config import settings
 from .db import init_db
 from .routers import auth, admin, user
 from .token_refresh import token_refresh_loop
+from .scrip_lookup import ensure_scrip_master_fresh, scrip_master_refresh_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,6 +45,15 @@ app.include_router(admin.router)
 async def _startup() -> None:
     init_db()
     asyncio.create_task(token_refresh_loop())
+    # Run scrip master download in the background so it never blocks startup
+    # within systemd's TimeoutStartSec. The daily refresh loop starts after
+    # the initial download finishes.
+    asyncio.create_task(_scrip_startup())
+
+
+async def _scrip_startup() -> None:
+    await ensure_scrip_master_fresh()
+    asyncio.create_task(scrip_master_refresh_loop())
 
 
 @app.get("/health")
