@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .crypto import decrypt_token
 from .dhan_client import DhanApiError, DhanClient
 from .models import DhanCredential, Signal, SignalNotification, User
+from .token_refresh import renew_and_save_credential
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,25 @@ async def place_order_for_notification(
         db.commit()
         logger.error("No active Dhan credential for user %s (notification %s)", user.id, notification.id)
         return
+
+    # Just-in-time renewal: renew before the token expires so the order
+    # is never rejected by Dhan with an auth error.
+    now = dt.datetime.utcnow()
+    token_age = now - cred.updated_at
+    near_expiry = (
+        cred.token_expires_at is not None
+        and (cred.token_expires_at - now) < dt.timedelta(minutes=30)
+    )
+    old_enough = (
+        cred.token_expires_at is None
+        and token_age > dt.timedelta(hours=23, minutes=30)
+    )
+    if near_expiry or old_enough:
+        logger.info(
+            "Token for user %s is near expiry (expires=%s, age=%s); attempting renewal",
+            user.id, cred.token_expires_at, token_age,
+        )
+        await renew_and_save_credential(cred, db)
 
     try:
         access_token = decrypt_token(cred.access_token_encrypted)

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import type { SignalNotification } from '../../types';
@@ -63,7 +64,7 @@ export default function OrdersScreen() {
         {o.status === 'placed' && (
           <View style={styles.resultBox}>
             <Text style={styles.successText}>✅ Order ID: {o.dhan_order_id}</Text>
-            {o.placed_at && <Text style={styles.timeText}>Placed at {new Date(o.placed_at).toLocaleString()}</Text>}
+            {o.placed_at && <Text style={styles.timeText}>Placed at {formatDateTimeIST(o.placed_at)}</Text>}
           </View>
         )}
         {o.status === 'failed' && (

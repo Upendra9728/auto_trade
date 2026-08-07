@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import type { SignalNotification } from '../../types';
@@ -168,7 +169,7 @@ export default function NotificationsScreen() {
           </View>
         )}
 
-        <Text style={styles.time}>{new Date(n.created_at).toLocaleString()}</Text>
+        <Text style={styles.time}>{formatDateTimeIST(n.created_at)}</Text>
       </View>
     );
   };

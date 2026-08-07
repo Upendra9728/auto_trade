@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import { formatDateIST } from '../../../utils/time';
 import type { AdminUser } from '../../../types';
 
 export default function UserDetailScreen() {
@@ -83,7 +84,7 @@ export default function UserDetailScreen() {
           <Text style={styles.userName}>{user.name}</Text>
           <Text style={styles.userEmail}>{user.email}</Text>
           <Text style={styles.userPhone}>{user.phone_number}</Text>
-          <Text style={styles.joinDate}>Joined {new Date(user.created_at).toLocaleDateString()}</Text>
+          <Text style={styles.joinDate}>Joined {formatDateIST(user.created_at)}</Text>
         </View>
 
         {/* Editable fields */}

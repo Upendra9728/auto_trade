@@ -44,6 +44,8 @@ class DhanCredential(Base):
     dhan_client_id: Mapped[str] = mapped_column(String(64))
     access_token_encrypted: Mapped[str] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # UTC datetime when the Dhan access token expires (None if unknown)
+    token_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
     user: Mapped[User] = relationship(back_populates="dhan_credential")

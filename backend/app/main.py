@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import init_db
 from .routers import auth, admin, user
+from .token_refresh import token_refresh_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,8 +41,9 @@ app.include_router(admin.router)
 
 
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
     init_db()
+    asyncio.create_task(token_refresh_loop())
 
 
 @app.get("/health")

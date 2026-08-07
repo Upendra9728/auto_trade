@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
+DHAN_RENEW_TOKEN_URL = "https://api.dhan.co/v2/RenewToken"
 
 EXCHANGE_SEGMENT_MAP = {
     "NSE_FO": "NSE_FNO",
@@ -47,6 +48,37 @@ def _verify_ipv6_bindable(ipv6: str) -> None:
 
 
 class DhanClient:
+    @staticmethod
+    async def renew_token(*, dhan_client_id: str, access_token: str) -> dict[str, Any]:
+        """
+        Call Dhan's RenewToken API to obtain a fresh token with a new 24-hour expiry.
+        Only works for active tokens originally generated via Dhan Web.
+        Returns the response dict containing 'accessToken' and 'expiryTime'.
+        """
+        headers = {
+            "access-token": access_token,
+            "dhanClientId": dhan_client_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(DHAN_RENEW_TOKEN_URL, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error calling RenewToken: {exc}") from exc
+
+        logger.info("RenewToken response status=%s body=%s", resp.status_code, resp.text[:500])
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(
+                f"RenewToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
+            )
+
+        if resp.status_code >= 400:
+            raise DhanApiError(f"RenewToken error HTTP {resp.status_code}: {data}")
+
+        return data
+
     @staticmethod
     def _format_error_message(data: Any, status_code: int) -> str:
         if isinstance(data, dict):

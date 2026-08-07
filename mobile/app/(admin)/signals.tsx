@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import { Feather } from '@expo/vector-icons';
@@ -71,7 +72,7 @@ export default function AdminSignalsScreen() {
         )}
 
         <View style={styles.cardFooter}>
-          <Text style={styles.timeText}>{new Date(s.created_at).toLocaleString()}</Text>
+          <Text style={styles.timeText}>{formatDateTimeIST(s.created_at)}</Text>
           {s.status === 'active' && (
             <TouchableOpacity onPress={() => handleCancel(s)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.cancelLink}>Cancel</Text>

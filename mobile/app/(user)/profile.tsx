@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { formatDateIST } from '../../utils/time';
 import type { DhanCredential } from '../../types';
 
 export default function ProfileScreen() {
@@ -133,7 +134,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Updated</Text>
-                <Text style={styles.monoValue}>{new Date(dhan.updated_at).toLocaleDateString()}</Text>
+                <Text style={styles.monoValue}>{formatDateIST(dhan.updated_at)}</Text>
               </View>
             </View>
           ) : !dhan && !showDhanForm ? (

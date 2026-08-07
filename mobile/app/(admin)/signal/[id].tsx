@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator,
+  Modal, Pressable, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import type { AdminSignalDetail, AdminSignalNotificationRow } from '../../../types';
 
@@ -13,6 +15,7 @@ export default function SignalDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [detail, setDetail] = useState<AdminSignalDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedNotif, setSelectedNotif] = useState<AdminSignalNotificationRow | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -46,7 +49,7 @@ export default function SignalDetailScreen() {
   }, {} as Record<string, number>);
 
   const renderRow = ({ item: n }: { item: AdminSignalNotificationRow }) => (
-    <View style={styles.row}>
+    <TouchableOpacity style={styles.row} onPress={() => setSelectedNotif(n)} activeOpacity={0.75}>
       <View style={styles.rowLeft}>
         <Text style={styles.userName}>{n.user_name}</Text>
         <Text style={styles.userEmail}>{n.user_email}</Text>
@@ -54,10 +57,11 @@ export default function SignalDetailScreen() {
       </View>
       <View style={styles.rowRight}>
         <StatusBadge status={n.status} size="sm" />
-        {n.dhan_order_id && <Text style={styles.orderId}>{n.dhan_order_id}</Text>}
-        {n.error_message && <Text style={styles.errorText} numberOfLines={2}>{n.error_message}</Text>}
+        {n.dhan_order_id && <Text style={styles.orderId} numberOfLines={1}>{n.dhan_order_id}</Text>}
+        {n.error_message && <Text style={styles.errorText} numberOfLines={1}>{n.error_message}</Text>}
+        <Text style={styles.chevron}>›</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -90,7 +94,7 @@ export default function SignalDetailScreen() {
                 <PriceChip label="SL" value={`₹${signal.stop_loss_price}`} color={Colors.error} />
                 <PriceChip label="Target" value={`₹${signal.target_price}`} color={Colors.success} />
               </View>
-              <Text style={styles.timeText}>{new Date(signal.created_at).toLocaleString()}</Text>
+              <Text style={styles.timeText}>{formatDateTimeIST(signal.created_at)}</Text>
             </View>
 
             {/* Summary */}
@@ -108,6 +112,79 @@ export default function SignalDetailScreen() {
         )}
         contentContainerStyle={styles.list}
       />
+
+      {/* ── Per-user detail modal ───────────────────────────────────── */}
+      <Modal
+        visible={selectedNotif !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedNotif(null)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setSelectedNotif(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalName}>{selectedNotif?.user_name}</Text>
+                <Text style={styles.modalEmail}>{selectedNotif?.user_email}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedNotif(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={styles.closeBtn}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {/* Status */}
+              <View style={styles.modalStatusRow}>
+                <StatusBadge status={selectedNotif?.status ?? ''} />
+              </View>
+
+              {/* Order ID */}
+              {selectedNotif?.dhan_order_id && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Order ID</Text>
+                  <Text style={styles.modalMono} selectable>{selectedNotif.dhan_order_id}</Text>
+                </View>
+              )}
+
+              {/* Error */}
+              {selectedNotif?.error_message && (
+                <View style={styles.modalErrorBox}>
+                  <Text style={styles.modalErrorLabel}>Error</Text>
+                  <Text style={styles.modalErrorText} selectable>{selectedNotif.error_message}</Text>
+                </View>
+              )}
+
+              {/* Timestamps */}
+              <View style={styles.modalDivider} />
+              <View style={styles.modalRow}>
+                <Text style={styles.modalLabel}>Received</Text>
+                <Text style={styles.modalValue}>{formatDateTimeIST(selectedNotif?.created_at)}</Text>
+              </View>
+              {selectedNotif?.confirmed_at && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Confirmed</Text>
+                  <Text style={styles.modalValue}>{formatDateTimeIST(selectedNotif.confirmed_at)}</Text>
+                </View>
+              )}
+              {selectedNotif?.placed_at && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Placed</Text>
+                  <Text style={[styles.modalValue, { color: Colors.success }]}>{formatDateTimeIST(selectedNotif.placed_at)}</Text>
+                </View>
+              )}
+
+              {/* IPv6 */}
+              {selectedNotif?.assigned_ipv6 && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>IPv6</Text>
+                  <Text style={styles.modalMono} selectable>{selectedNotif.assigned_ipv6}</Text>
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -164,4 +241,34 @@ const styles = StyleSheet.create({
   ipText: { fontSize: 11, fontFamily: 'monospace', color: Colors.info },
   orderId: { fontSize: 11, fontFamily: 'monospace', color: Colors.success },
   errorText: { fontSize: 11, color: Colors.error, textAlign: 'right' },
+  chevron: { fontSize: 18, color: Colors.textMuted, marginTop: 2 },
+
+  // ── Modal ──────────────────────────────────────────────────────────────────
+  backdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', padding: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    padding: Spacing.lg, width: '100%', ...Shadow.card,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
+  modalName: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  modalEmail: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  closeBtn: { fontSize: 18, color: Colors.textMuted, fontWeight: '600', paddingLeft: Spacing.sm },
+  modalStatusRow: { alignItems: 'flex-start', marginBottom: Spacing.md },
+  modalRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingVertical: 6, gap: Spacing.sm,
+  },
+  modalLabel: { fontSize: 12, color: Colors.textMuted, flex: 1 },
+  modalValue: { fontSize: 13, color: Colors.text, fontWeight: '500', flex: 2, textAlign: 'right' },
+  modalMono: { fontSize: 12, fontFamily: 'monospace', color: Colors.info, flex: 2, textAlign: 'right' },
+  modalErrorBox: {
+    backgroundColor: Colors.errorBg, borderRadius: Radius.sm,
+    padding: Spacing.sm, marginBottom: Spacing.sm,
+  },
+  modalErrorLabel: { fontSize: 11, color: Colors.error, fontWeight: '700', marginBottom: 4 },
+  modalErrorText: { fontSize: 13, color: Colors.error, lineHeight: 18 },
+  modalDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.sm },
 });

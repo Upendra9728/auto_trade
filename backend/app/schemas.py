@@ -69,12 +69,16 @@ class UpdateFcmTokenRequest(BaseModel):
 class DhanCredentialUpsertRequest(BaseModel):
     dhan_client_id: str = Field(min_length=1, max_length=64)
     access_token: str = Field(min_length=10)
+    # Optional: client can pass the expiryTime from Dhan's generateAccessToken response
+    # so the backend knows exactly when to renew.  Format: ISO 8601 UTC.
+    token_expires_at: dt.datetime | None = None
 
 
 class DhanCredentialResponse(BaseModel):
     dhan_client_id: str
     is_active: bool
     updated_at: str
+    token_expires_at: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -140,6 +140,7 @@ def get_dhan_credential(
         dhan_client_id=cred.dhan_client_id,
         is_active=cred.is_active,
         updated_at=cred.updated_at.isoformat(),
+        token_expires_at=cred.token_expires_at.isoformat() if cred.token_expires_at else None,
     )
 
 
@@ -158,12 +159,15 @@ def upsert_dhan_credential(
             dhan_client_id=req.dhan_client_id.strip(),
             access_token_encrypted=encrypted,
             is_active=True,
+            token_expires_at=req.token_expires_at,
         )
         db.add(cred)
     else:
         cred.dhan_client_id = req.dhan_client_id.strip()
         cred.access_token_encrypted = encrypted
         cred.is_active = True
+        if req.token_expires_at is not None:
+            cred.token_expires_at = req.token_expires_at
         cred.updated_at = dt.datetime.utcnow()
 
     db.commit()
@@ -172,6 +176,7 @@ def upsert_dhan_credential(
         dhan_client_id=cred.dhan_client_id,
         is_active=cred.is_active,
         updated_at=cred.updated_at.isoformat(),
+        token_expires_at=cred.token_expires_at.isoformat() if cred.token_expires_at else None,
     )
 
 
