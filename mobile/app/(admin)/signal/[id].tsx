@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Modal, Pressable, ScrollView,
+  Modal, Pressable, ScrollView, Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -16,6 +16,41 @@ export default function SignalDetailScreen() {
   const [detail, setDetail] = useState<AdminSignalDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedNotif, setSelectedNotif] = useState<AdminSignalNotificationRow | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const animOpacity = useRef(new Animated.Value(0)).current;
+  const animScale  = useRef(new Animated.Value(0.88)).current;
+
+  const openModal = (notif: AdminSignalNotificationRow) => {
+    setSelectedNotif(notif);
+    setModalVisible(true);
+    animOpacity.setValue(0);
+    animScale.setValue(0.88);
+    Animated.parallel([
+      Animated.timing(animOpacity, {
+        toValue: 1, duration: 220,
+        easing: Easing.out(Easing.cubic), useNativeDriver: true,
+      }),
+      Animated.spring(animScale, {
+        toValue: 1, damping: 18, stiffness: 280, useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeModal = () => {
+    Animated.parallel([
+      Animated.timing(animOpacity, {
+        toValue: 0, duration: 160,
+        easing: Easing.in(Easing.cubic), useNativeDriver: true,
+      }),
+      Animated.timing(animScale, {
+        toValue: 0.88, duration: 160,
+        easing: Easing.in(Easing.cubic), useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setModalVisible(false);
+      setSelectedNotif(null);
+    });
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -49,7 +84,7 @@ export default function SignalDetailScreen() {
   }, {} as Record<string, number>);
 
   const renderRow = ({ item: n }: { item: AdminSignalNotificationRow }) => (
-    <TouchableOpacity style={styles.row} onPress={() => setSelectedNotif(n)} activeOpacity={0.75}>
+    <TouchableOpacity style={styles.row} onPress={() => openModal(n)} activeOpacity={0.75}>
       <View style={styles.rowLeft}>
         <Text style={styles.userName}>{n.user_name}</Text>
         <Text style={styles.userEmail}>{n.user_email}</Text>
@@ -115,20 +150,24 @@ export default function SignalDetailScreen() {
 
       {/* ── Per-user detail modal ───────────────────────────────────── */}
       <Modal
-        visible={selectedNotif !== null}
+        visible={modalVisible}
         transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedNotif(null)}
+        animationType="none"
+        onRequestClose={closeModal}
       >
-        <Pressable style={styles.backdrop} onPress={() => setSelectedNotif(null)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Animated.View style={[styles.backdrop, { opacity: animOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
+          <Animated.View
+            style={[styles.modalCard, { transform: [{ scale: animScale }] }]}
+            onStartShouldSetResponder={() => true}
+          >
             {/* Header */}
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalName}>{selectedNotif?.user_name}</Text>
                 <Text style={styles.modalEmail}>{selectedNotif?.user_email}</Text>
               </View>
-              <TouchableOpacity onPress={() => setSelectedNotif(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={closeModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -182,8 +221,8 @@ export default function SignalDetailScreen() {
                 </View>
               )}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </Animated.View>
+        </Animated.View>
       </Modal>
     </SafeAreaView>
   );

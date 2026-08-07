@@ -28,6 +28,7 @@ It also lets admins:
 - Push notification registration: mobile/services/notifications.ts
 - Shared types: mobile/types/index.ts
 - Theme constants: mobile/constants/theme.ts
+- IST date/time helpers: mobile/utils/time.ts
 
 ## App structure
 ### Auth screens
@@ -48,6 +49,7 @@ It also lets admins:
 - mobile/app/(admin)/signals.tsx
 - mobile/app/(admin)/signal-create.tsx
 - mobile/app/(admin)/signal/[id].tsx
+  - per-user status list; tap any row to open a detail modal (status, order ID, full error, IST timestamps, IPv6)
 - mobile/app/(admin)/users.tsx
 - mobile/app/(admin)/user/[id].tsx
 
@@ -74,6 +76,11 @@ From mobile/:
 - npm start
 - npm run android
 
+Build release APK (from mobile/android/):
+```
+$env:EXPO_PUBLIC_API_URL = "http://13.126.206.167"; .\gradlew assembleRelease
+```
+
 ## Notes for future LLMs
 - The mobile app is mostly a thin client; most business logic lives in the backend.
 - The most important files for understanding user/admin workflows are:
@@ -82,5 +89,13 @@ From mobile/:
   - mobile/app/(user)/index.tsx
   - mobile/app/(admin)/signals.tsx
 
+## Timestamp handling
+- All backend timestamps are UTC naive ISO strings (no `Z` suffix).
+- Use `formatDateTimeIST` or `formatDateIST` from `mobile/utils/time.ts` everywhere a date/time is shown.
+- These helpers append `Z` before parsing so UTC is never misread as local time, then format in `Asia/Kolkata`.
+- Do NOT use `new Date(...).toLocaleString()` directly in screens.
 
-$env:EXPO_PUBLIC_API_URL = "http://13.126.206.167"; .\gradlew assembleRelease
+## Safe area handling
+- Both tab layouts (`(admin)/_layout.tsx`, `(user)/_layout.tsx`) use `useSafeAreaInsets` to add `insets.bottom` to tab bar height and padding, covering devices with software navigation buttons.
+- All screens use `SafeAreaView` from `react-native-safe-area-context` (NOT from `react-native`). The `react-native` one is iOS-only.
+- Auth screens (`login.tsx`, `register.tsx`) wrap their `KeyboardAvoidingView` in `SafeAreaView` to handle the status bar.
