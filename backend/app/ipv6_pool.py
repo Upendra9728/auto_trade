@@ -37,9 +37,11 @@ def _provision_ipv6(ipv6: str, interface: str) -> bool:
     Returns True on success, False if the process lacks privileges.
     """
     # ── 1. Add live to the interface ──────────────────────────────────────────
+    # Use full path — systemd services don't have /usr/sbin in PATH.
+    IP_BIN = "/usr/sbin/ip"
     try:
         result = subprocess.run(
-            ["ip", "addr", "add", f"{ipv6}/128", "dev", interface],
+            [IP_BIN, "addr", "add", f"{ipv6}/128", "dev", interface],
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode != 0:
@@ -47,7 +49,7 @@ def _provision_ipv6(ipv6: str, interface: str) -> bool:
             if "exists" not in result.stderr.lower():
                 # Try with sudo as fallback
                 result2 = subprocess.run(
-                    ["sudo", "ip", "addr", "add", f"{ipv6}/128", "dev", interface],
+                    ["sudo", IP_BIN, "addr", "add", f"{ipv6}/128", "dev", interface],
                     capture_output=True, text=True, timeout=10,
                 )
                 if result2.returncode != 0 and "exists" not in result2.stderr.lower():
