@@ -59,3 +59,12 @@ async def _scrip_startup() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/app-version")
+def app_version() -> dict:
+    return {
+        "latest_version": settings.app_latest_version,
+        "apk_url": settings.app_apk_url,
+        "force_update": settings.app_force_update,
+    }

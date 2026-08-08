@@ -53,5 +53,11 @@ class Settings(BaseSettings):
     # Requires the process to have CAP_NET_ADMIN or passwordless sudo for 'ip'.
     ipv6_auto_provision: bool = True
 
+    # Mobile app update distribution (bump when releasing a new APK)
+    # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
+    app_latest_version: str = "1.0.1"
+    app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
+    app_force_update: bool = False
+
 
 settings = Settings()

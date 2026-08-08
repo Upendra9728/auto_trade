@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { authApi, userApi } from '../services/api';
+import { Alert, Linking } from 'react-native';
+import Constants from 'expo-constants';
+import { authApi, userApi, systemApi } from '../services/api';
 import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
 import type { User } from '../types';
@@ -19,6 +21,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // APK version check — prompts user to download a new APK when the native shell changes
+  useEffect(() => {
+    (async () => {
+      try {
+        const { latest_version, apk_url, force_update } = await systemApi.getAppVersion();
+        const current = Constants.expoConfig?.version ?? '0.0.0';
+        if (latest_version === current || !apk_url) return;
+        Alert.alert(
+          'App Update Available',
+          `Version ${latest_version} is available (you have ${current}). Please update to continue.`,
+          [
+            { text: 'Download', onPress: () => Linking.openURL(apk_url) },
+            ...(force_update ? [] : [{ text: 'Later', style: 'cancel' as const }]),
+          ],
+          { cancelable: !force_update },
+        );
+      } catch {
+        // Non-fatal — ignore if backend unreachable
+      }
+    })();
+  }, []);
 
   // Re-hydrate from secure storage on startup
   useEffect(() => {

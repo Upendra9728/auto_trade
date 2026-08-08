@@ -96,6 +96,18 @@ export const userApi = {
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
+// ── System ───────────────────────────────────────────────────────────────────
+
+export const systemApi = {
+  getAppVersion: () =>
+    request<{ latest_version: string; apk_url: string; force_update: boolean }>(
+      '/api/app-version',
+      { method: 'GET' },
+    ),
+};
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
 export const adminApi = {
   getDashboard: () => get<Dashboard>('/api/admin/dashboard'),
   getUsers: () => get<AdminUser[]>('/api/admin/users'),
