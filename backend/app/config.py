@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Used for internal service-to-service calls (optional)
     internal_secret: str = "change-me"
 
-        # Session config
+    # Session config
     auth_session_hours: int = 24 * 30
     otp_expiry_minutes: int = 10
 
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # If set, takes precedence over firebase_credentials_path
     firebase_credentials_json: str | None = None
 
-    # IPv6 pool â€” prefix (without trailing number) carved from the AWS ENI delegation.
+    # IPv6 pool Ã¢â‚¬â€ prefix (without trailing number) carved from the AWS ENI delegation.
     # Example: '2406:da1a:c1e:f000:a79e::'
     # When set, each new user is automatically assigned the next free address.
     # Leave empty to disable auto-assignment (admin assigns manually).
@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     ipv6_auto_provision: bool = True
 
     # Mobile app update distribution (bump when releasing a new APK)
-    # Must include the bucket's region â€” ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.0.3"
+    # Must include the bucket's region Ã¢â‚¬â€ ap-south-1 here, not the global s3.amazonaws.com host.
+    app_latest_version: str = "1.0.4"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
 

@@ -1,43 +1,41 @@
-﻿{
-    "expo":  {
-                 "name":  "Automate Trading",
-                 "slug":  "automate-trading",
-                 "version":  "1.0.3",
-                 "orientation":  "portrait",
-                 "userInterfaceStyle":  "light",
-                 "assetBundlePatterns":  [
-                                             "**/*"
-                                         ],
-                 "ios":  {
-                             "supportsTablet":  true,
-                             "bundleIdentifier":  "com.automatetrading.app",
-                             "googleServicesFile":  "./GoogleService-Info.plist"
-                         },
-                 "android":  {
-                                 "adaptiveIcon":  {
-                                                      "backgroundColor":  "#1E40AF"
-                                                  },
-                                 "package":  "com.automatetrading.app",
-                                 "permissions":  [
-                                                     "RECEIVE_BOOT_COMPLETED",
-                                                     "VIBRATE"
-                                                 ],
-                                 "googleServicesFile":  "./google-services.json"
-                             },
-                 "plugins":  [
-                                 "expo-router",
-                                 "expo-secure-store",
-                                 "expo-notifications"
-                             ],
-                 "scheme":  "automatetrading",
-                 "extra":  {
-                               "apiBaseUrl":  "http://13.126.206.167",
-                               "router":  {
-
-                                          },
-                               "eas":  {
-                                           "projectId":  "36c4d8e8-7158-45df-9de4-44a629d105ad"
-                                       }
-                           }
-             }
+{
+  "expo": {
+    "name": "Automate Trading",
+    "slug": "automate-trading",
+    "version": "1.0.4",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.automatetrading.app",
+      "googleServicesFile": "./GoogleService-Info.plist"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1E40AF"
+      },
+      "package": "com.automatetrading.app",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "scheme": "automatetrading",
+    "extra": {
+      "apiBaseUrl": "http://13.126.206.167",
+      "router": {},
+      "eas": {
+        "projectId": "36c4d8e8-7158-45df-9de4-44a629d105ad"
+      }
+    }
+  }
 }

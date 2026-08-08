@@ -31,7 +31,28 @@ $configPath  = Join-Path $repoRoot "backend\app\config.py"
 $s3Bucket    = "apk-buket"
 $s3Key       = "app-release.apk"
 
-# ── 1. Build ────────────────────────────────────────────────────────────────
+# Windows PowerShell 5.1's "-Encoding utf8" always prepends a BOM and
+# ConvertTo-Json reformats/reflows the whole file. Write raw text back
+# with plain UTF-8 (no BOM) via regex so the rest of the file is untouched.
+function Set-FileContentUtf8NoBom([string]$Path, [string]$Content) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+# ── 1. Bump mobile/app.json ──────────────────────────────────────────────────
+# Done before the build so the version baked into the JS bundle matches $Version.
+Write-Host "Updating mobile/app.json version -> $Version" -ForegroundColor Cyan
+$appJsonText = Get-Content $appJsonPath -Raw
+$appJsonText = $appJsonText -replace '("version":\s*)"[^"]*"', "`${1}`"$Version`""
+Set-FileContentUtf8NoBom -Path $appJsonPath -Content $appJsonText
+
+# ── 2. Bump backend/app/config.py ────────────────────────────────────────────
+Write-Host "Updating backend/app/config.py app_latest_version -> $Version" -ForegroundColor Cyan
+$configText = Get-Content $configPath -Raw
+$configText = $configText -replace 'app_latest_version: str = "[^"]*"', "app_latest_version: str = `"$Version`""
+Set-FileContentUtf8NoBom -Path $configPath -Content $configText
+
+# ── 3. Build ────────────────────────────────────────────────────────────────
 if (-not $SkipBuild) {
     Write-Host "Building release APK ($Version)..." -ForegroundColor Cyan
     Push-Location $androidDir
@@ -46,18 +67,6 @@ if (-not $SkipBuild) {
 if (-not (Test-Path $apkPath)) {
     throw "APK not found at $apkPath"
 }
-
-# ── 2. Bump mobile/app.json ──────────────────────────────────────────────────
-Write-Host "Updating mobile/app.json version -> $Version" -ForegroundColor Cyan
-$appJson = Get-Content $appJsonPath -Raw | ConvertFrom-Json
-$appJson.expo.version = $Version
-$appJson | ConvertTo-Json -Depth 20 | Set-Content -Path $appJsonPath -Encoding utf8
-
-# ── 3. Bump backend/app/config.py ────────────────────────────────────────────
-Write-Host "Updating backend/app/config.py app_latest_version -> $Version" -ForegroundColor Cyan
-$configText = Get-Content $configPath -Raw
-$configText = $configText -replace 'app_latest_version: str = "[^"]*"', "app_latest_version: str = `"$Version`""
-Set-Content -Path $configPath -Value $configText -Encoding utf8 -NoNewline
 
 # ── 4. Upload to S3 ───────────────────────────────────────────────────────────
 Write-Host "Uploading APK to s3://$s3Bucket/$s3Key ..." -ForegroundColor Cyan
