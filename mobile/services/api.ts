@@ -17,6 +17,9 @@ const BASE_URL: string =
   (Constants.expoConfig?.extra?.apiBaseUrl as string) ??
   'http://localhost:8000';
 
+// Exposed so screens can display the resolved backend URL for on-device diagnostics.
+export const API_BASE_URL = BASE_URL;
+
 // ── Core fetch wrapper ────────────────────────────────────────────────────────
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -31,7 +34,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   } catch (networkErr: any) {
-    throw new Error(`Network error: ${networkErr?.message ?? String(networkErr)}`);
+    // Include the target URL so failures are diagnosable from the on-device alert alone.
+    throw new Error(
+      `Network error calling ${BASE_URL}${path}: ${networkErr?.message ?? String(networkErr)}`,
+    );
   }
 
   if (!res.ok) {

@@ -9,6 +9,10 @@
 .PARAMETER SkipBuild
     Skip the gradlew assembleRelease step (use the existing APK on disk).
 
+.PARAMETER ApiBaseUrl
+    Backend base URL baked into the release build via EXPO_PUBLIC_API_URL.
+    Defaults to the production EC2 host on port 80 (through Nginx).
+
 .EXAMPLE
     .\release-apk.ps1 -Version 1.0.3
 #>
@@ -16,7 +20,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+
+    [string]$ApiBaseUrl = "http://13.126.206.167"
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,9 +37,13 @@ $configPath  = Join-Path $repoRoot "backend\app\config.py"
 $s3Bucket    = "apk-buket"
 $s3Key       = "app-release.apk"
 
-# Windows PowerShell 5.1's "-Encoding utf8" always prepends a BOM and
-# ConvertTo-Json reformats/reflows the whole file. Write raw text back
-# with plain UTF-8 (no BOM) via regex so the rest of the file is untouched.
+# Windows PowerShell 5.1's Get-Content/Set-Content -Encoding utf8 either
+# misreads BOM-less files as the system ANSI codepage or writes a BOM back
+# in. Read and write with an explicit BOM-less UTF-8 codec via .NET instead.
+function Get-FileContentUtf8([string]$Path) {
+    return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+}
+
 function Set-FileContentUtf8NoBom([string]$Path, [string]$Content) {
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Path, $Content, $encoding)
@@ -42,24 +52,26 @@ function Set-FileContentUtf8NoBom([string]$Path, [string]$Content) {
 # ── 1. Bump mobile/app.json ──────────────────────────────────────────────────
 # Done before the build so the version baked into the JS bundle matches $Version.
 Write-Host "Updating mobile/app.json version -> $Version" -ForegroundColor Cyan
-$appJsonText = Get-Content $appJsonPath -Raw
+$appJsonText = Get-FileContentUtf8 -Path $appJsonPath
 $appJsonText = $appJsonText -replace '("version":\s*)"[^"]*"', "`${1}`"$Version`""
 Set-FileContentUtf8NoBom -Path $appJsonPath -Content $appJsonText
 
 # ── 2. Bump backend/app/config.py ────────────────────────────────────────────
 Write-Host "Updating backend/app/config.py app_latest_version -> $Version" -ForegroundColor Cyan
-$configText = Get-Content $configPath -Raw
+$configText = Get-FileContentUtf8 -Path $configPath
 $configText = $configText -replace 'app_latest_version: str = "[^"]*"', "app_latest_version: str = `"$Version`""
 Set-FileContentUtf8NoBom -Path $configPath -Content $configText
 
 # ── 3. Build ────────────────────────────────────────────────────────────────
 if (-not $SkipBuild) {
-    Write-Host "Building release APK ($Version)..." -ForegroundColor Cyan
+    Write-Host "Building release APK ($Version) for $ApiBaseUrl..." -ForegroundColor Cyan
     Push-Location $androidDir
     try {
+        $env:EXPO_PUBLIC_API_URL = $ApiBaseUrl
         .\gradlew.bat assembleRelease
         if ($LASTEXITCODE -ne 0) { throw "gradlew assembleRelease failed with exit code $LASTEXITCODE" }
     } finally {
+        Remove-Item Env:\EXPO_PUBLIC_API_URL -ErrorAction SilentlyContinue
         Pop-Location
     }
 }

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
+import { API_BASE_URL } from '../../services/api';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -31,6 +32,7 @@ export default function LoginScreen() {
         router.replace('/(user)/');
       }
     } catch (err: any) {
+      console.log('Login error:', err);
       Alert.alert('Login failed', err.message ?? 'Invalid credentials.');
     } finally {
       setLoading(false);
@@ -56,6 +58,7 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.appName}>Automate Trading</Text>
           <Text style={styles.tagline}>Smart signals. Instant orders.</Text>
+          <Text style={styles.debugUrl}>{API_BASE_URL}</Text>
         </View>
 
         {/* Card */}
@@ -130,6 +133,7 @@ const styles = StyleSheet.create({
   logoText: { color: '#fff', fontSize: 28, fontWeight: '800' },
   appName: { ...Typography.h2, color: Colors.primary, marginBottom: 4 },
   tagline: { ...Typography.bodySmall },
+  debugUrl: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2, fontSize: 11 },
 
   card: {
     backgroundColor: Colors.surface,
