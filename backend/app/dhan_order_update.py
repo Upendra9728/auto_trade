@@ -23,6 +23,9 @@ Design
   dhan_order_id == OrderNo and update the live status fields. If the exchange
   reports a terminal failure (REJECTED/CANCELLED/EXPIRED), the notification's
   workflow status is flipped to "failed" so it is no longer counted as placed.
+- Safety net: dhan_order_status_poll_loop() periodically REST-polls any
+  'placed' order whose live status hasn't updated recently, in case a user's
+  WebSocket connection dropped silently and the reconnect hasn't caught up yet.
 """
 from __future__ import annotations
 
@@ -32,10 +35,12 @@ import json
 import logging
 
 import websockets
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
 
 from .crypto import decrypt_token
 from .db import SessionLocal
+from .dhan_client import DhanApiError, DhanClient
 from .models import DhanCredential, SignalNotification, User
 
 logger = logging.getLogger(__name__)
@@ -49,6 +54,40 @@ CONFIRMED_LIVE_STATUSES = {"TRANSIT", "PENDING", "TRADED"}
 
 _RECONCILE_INTERVAL_SECONDS = 300  # re-check which users need a connection
 _RECONNECT_BACKOFF_SECONDS = 15
+
+
+def apply_live_status(
+    db: Session,
+    notif: SignalNotification,
+    *,
+    status: str | None,
+    exchange_order_no: str | None = None,
+    reason_description: str | None = None,
+    traded_qty: int | None = None,
+    traded_price: float | None = None,
+) -> None:
+    """Apply a live/exchange status update to a notification and commit. Shared
+    by both the WebSocket handler and the REST poll fallback."""
+    status = (status or "").upper()
+    if status:
+        notif.live_status = status
+    if exchange_order_no:
+        notif.exchange_order_no = exchange_order_no
+    if reason_description:
+        notif.reason_description = reason_description
+    if traded_qty:
+        notif.traded_qty = traded_qty
+    if traded_price:
+        notif.traded_price = traded_price
+    notif.live_updated_at = dt.datetime.utcnow()
+
+    # The exchange truly rejected/cancelled/expired the order — this overrides
+    # the earlier "placed" status set right after HTTP acceptance.
+    if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed":
+        notif.status = "failed"
+        notif.error_message = f"Rejected by exchange: {reason_description or status}"
+
+    db.commit()
 
 
 class DhanOrderUpdateManager:
@@ -156,7 +195,6 @@ class DhanOrderUpdateManager:
         order_no = data.get("OrderNo")
         if not order_no:
             return
-        status = str(data.get("Status") or "").upper()
 
         db: Session = SessionLocal()
         try:
@@ -168,24 +206,15 @@ class DhanOrderUpdateManager:
             if notif is None:
                 return
 
-            notif.live_status = status or notif.live_status
-            notif.exchange_order_no = data.get("ExchOrderNo") or notif.exchange_order_no
-            notif.reason_description = data.get("ReasonDescription") or notif.reason_description
-            traded_qty = data.get("TradedQty")
-            if traded_qty:
-                notif.traded_qty = traded_qty
-            traded_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
-            if traded_price:
-                notif.traded_price = traded_price
-            notif.live_updated_at = dt.datetime.utcnow()
-
-            # The exchange truly rejected/cancelled/expired the order — this
-            # overrides the earlier "placed" status set right after HTTP acceptance.
-            if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed":
-                notif.status = "failed"
-                notif.error_message = f"Rejected by exchange: {data.get('ReasonDescription') or status}"
-
-            db.commit()
+            status = str(data.get("Status") or "").upper()
+            apply_live_status(
+                db, notif,
+                status=status,
+                exchange_order_no=data.get("ExchOrderNo"),
+                reason_description=data.get("ReasonDescription"),
+                traded_qty=data.get("TradedQty"),
+                traded_price=data.get("TradedPrice") or data.get("AvgTradedPrice"),
+            )
             logger.info("Live order update: order %s -> %s (notification %s)", order_no, status, notif.id)
         finally:
             db.close()
@@ -197,3 +226,93 @@ _manager = DhanOrderUpdateManager()
 async def dhan_order_update_loop() -> None:
     """Entry point to run as a background asyncio task from main.py."""
     await _manager.run_forever()
+
+
+# ---------------------------------------------------------------------------
+# REST poll fallback — catches orders whose WebSocket update never arrived
+# (e.g. the per-user connection silently dropped for a while).
+# ---------------------------------------------------------------------------
+
+_POLL_INTERVAL_SECONDS = 30
+_STALE_THRESHOLD = dt.timedelta(minutes=2)
+_MIN_AGE_BEFORE_POLL = dt.timedelta(seconds=20)  # give the WS a head start
+
+
+async def dhan_order_status_poll_loop() -> None:
+    """Entry point to run as a background asyncio task from main.py."""
+    logger.info("Dhan order status poll fallback started (interval=%ds)", _POLL_INTERVAL_SECONDS)
+    while True:
+        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        try:
+            await _poll_stale_orders()
+        except Exception:
+            logger.exception("Dhan order status poll: iteration failed")
+
+
+async def _poll_stale_orders() -> None:
+    now = dt.datetime.utcnow()
+    db: Session = SessionLocal()
+    try:
+        stale = (
+            db.query(SignalNotification)
+            .options(joinedload(SignalNotification.user).joinedload(User.dhan_credential))
+            .filter(
+                SignalNotification.status == "placed",
+                SignalNotification.dhan_order_id.isnot(None),
+                SignalNotification.placed_at.isnot(None),
+                SignalNotification.placed_at <= now - _MIN_AGE_BEFORE_POLL,
+                or_(
+                    SignalNotification.live_updated_at.is_(None),
+                    SignalNotification.live_updated_at <= now - _STALE_THRESHOLD,
+                ),
+            )
+            .all()
+        )
+        for notif in stale:
+            await _poll_one(db, notif)
+    finally:
+        db.close()
+
+
+async def _poll_one(db: Session, notif: SignalNotification) -> None:
+    user = notif.user
+    cred = user.dhan_credential if user else None
+    if cred is None or not cred.is_active:
+        return
+    try:
+        access_token = decrypt_token(cred.access_token_encrypted)
+        data = await DhanClient.get_order_status(
+            access_token=access_token,
+            order_id=notif.dhan_order_id,
+            source_ipv6=user.assigned_ipv6,
+        )
+        item = _extract_order_item(data, notif.dhan_order_id)
+        if item is None:
+            return
+        status = item.get("orderStatus") or item.get("Status")
+        apply_live_status(
+            db, notif,
+            status=status,
+            exchange_order_no=item.get("exchangeOrderId") or item.get("ExchOrderNo"),
+            reason_description=item.get("omsErrorDescription") or item.get("ReasonDescription"),
+            traded_qty=item.get("filledQty") or item.get("TradedQty"),
+            traded_price=item.get("averageTradedPrice") or item.get("AvgTradedPrice") or item.get("TradedPrice"),
+        )
+        logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, status, notif.id)
+    except DhanApiError as exc:
+        logger.warning("Order status poll failed for notification %s: %s", notif.id, exc)
+    except Exception:
+        logger.exception("Order status poll: unexpected error for notification %s", notif.id)
+
+
+def _extract_order_item(data: object, order_id: str) -> dict | None:
+    """Dhan's GET /v2/orders/{id} can return a single object or a list of legs
+    (for super orders); normalize to the entry matching our order_id."""
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict) and str(item.get("orderId")) == str(order_id):
+                return item
+        return data[0] if data and isinstance(data[0], dict) else None
+    if isinstance(data, dict):
+        return data
+    return None

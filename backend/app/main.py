@@ -10,7 +10,7 @@ from .config import settings
 from .db import init_db
 from .routers import auth, admin, user
 from .token_refresh import token_refresh_loop
-from .dhan_order_update import dhan_order_update_loop
+from .dhan_order_update import dhan_order_update_loop, dhan_order_status_poll_loop
 from .scrip_lookup import ensure_scrip_master_fresh, scrip_master_refresh_loop
 
 logging.basicConfig(
@@ -49,6 +49,8 @@ async def _startup() -> None:
     # Live order status tracking via Dhan's order-update WebSocket, so we know
     # whether an order is *really* placed/traded at the exchange or was rejected.
     asyncio.create_task(dhan_order_update_loop())
+    # Safety net in case a user's WebSocket connection silently drops.
+    asyncio.create_task(dhan_order_status_poll_loop())
     # Run scrip master download in the background so it never blocks startup
     # within systemd's TimeoutStartSec. The daily refresh loop starts after
     # the initial download finishes.

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
 DHAN_RENEW_TOKEN_URL = "https://api.dhan.co/v2/RenewToken"
+DHAN_ORDER_BY_ID_URL = "https://api.dhan.co/v2/orders/{order_id}"
 
 EXCHANGE_SEGMENT_MAP = {
     "NSE_FO": "NSE_FNO",
@@ -165,5 +166,45 @@ class DhanClient:
 
         if resp.status_code >= 400:
             raise DhanApiError(self._format_error_message(data, resp.status_code))
+
+        return data
+
+    @staticmethod
+    async def get_order_status(
+        *,
+        access_token: str,
+        order_id: str,
+        source_ipv6: str | None = None,
+    ) -> Any:
+        """
+        Fallback REST lookup (GET /v2/orders/{order-id}) used when the Live Order
+        Update WebSocket hasn't reported a status for an order recently — e.g. the
+        connection dropped silently. Dhan returns either a single object or a list
+        of leg objects for super orders; caller is responsible for picking the
+        right one.
+        """
+        headers = {"access-token": access_token}
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=15) as client:
+                resp = await client.get(DHAN_ORDER_BY_ID_URL.format(order_id=order_id), headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error fetching order status: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(
+                f"Order status returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
+            )
+
+        if resp.status_code >= 400:
+            raise DhanApiError(f"Order status error HTTP {resp.status_code}: {data}")
 
         return data
