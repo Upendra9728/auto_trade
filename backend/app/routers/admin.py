@@ -4,17 +4,21 @@ import datetime as dt
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_current_admin, get_db
 from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
 from ..notifications import send_signal_notifications
+from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
 from ..schemas import (
     AdminSignalDetailResponse,
     AdminUpdateUserRequest,
     AdminUserResponse,
+    PaginatedSignalsResponse,
+    PaginatedUsersResponse,
     SignalCreateRequest,
     SignalResponse,
 )
@@ -121,13 +125,37 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
 # User management
 # ---------------------------------------------------------------------------
 
-@router.get("/users", response_model=list[AdminUserResponse])
+@router.get("/users", response_model=PaginatedUsersResponse)
 def list_users(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    search: str | None = Query(default=None, description="Match against name or email"),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
-) -> list[AdminUserResponse]:
-    users = db.query(User).order_by(User.created_at.desc()).all()
-    return [_to_admin_user(u, db) for u in users]
+) -> PaginatedUsersResponse:
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = db.query(User)
+    if search:
+        like = f"%{search.strip()}%"
+        query = query.filter(or_(User.name.ilike(like), User.email.ilike(like)))
+    if start_utc is not None:
+        query = query.filter(User.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(User.created_at < end_utc)
+
+    total = query.count()
+    users = (
+        query.order_by(User.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return PaginatedUsersResponse(
+        items=[_to_admin_user(u, db) for u in users],
+        meta=paginate_meta(page=page, page_size=page_size, total=total),
+    )
 
 
 @router.get("/users/{user_id}", response_model=AdminUserResponse)
@@ -269,19 +297,33 @@ def create_signal(
     return _to_signal_response(signal, db)
 
 
-@router.get("/signals", response_model=list[SignalResponse])
+@router.get("/signals", response_model=PaginatedSignalsResponse)
 def list_signals(
-    limit: int = 50,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
-) -> list[SignalResponse]:
+) -> PaginatedSignalsResponse:
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = db.query(Signal)
+    if start_utc is not None:
+        query = query.filter(Signal.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(Signal.created_at < end_utc)
+
+    total = query.count()
     signals = (
-        db.query(Signal)
-        .order_by(Signal.created_at.desc())
-        .limit(limit)
+        query.order_by(Signal.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
-    return [_to_signal_response(s, db) for s in signals]
+    return PaginatedSignalsResponse(
+        items=[_to_signal_response(s, db) for s in signals],
+        meta=paginate_meta(page=page, page_size=page_size, total=total),
+    )
 
 
 @router.get("/signals/{signal_id}", response_model=AdminSignalDetailResponse)

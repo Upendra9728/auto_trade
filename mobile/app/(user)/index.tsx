@@ -10,7 +10,9 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/the
 import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
-import type { SignalNotification } from '../../types';
+import Pagination from '../../components/Pagination';
+import DateRangeFilter from '../../components/DateRangeFilter';
+import type { SignalNotification, PaginationMeta } from '../../types';
 
 const QTY_PRESETS = [5, 15, 20, 25, 30];
 
@@ -21,6 +23,10 @@ function lotsToQty(lots: number, lotSize: number | null): number {
 
 export default function NotificationsScreen() {
   const [items, setItems] = useState<SignalNotification[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionId, setActionId] = useState<number | null>(null);
@@ -32,8 +38,9 @@ export default function NotificationsScreen() {
 
   const load = useCallback(async (showError = true) => {
     try {
-      const data = await userApi.getNotifications();
-      setItems(data);
+      const data = await userApi.getNotifications({ page, date_from: dateFrom, date_to: dateTo });
+      setItems(data.items);
+      setMeta(data.meta);
     } catch (err: any) {
       if (showError) {
         Alert.alert('Error', err.message);
@@ -42,7 +49,7 @@ export default function NotificationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [page, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -55,6 +62,12 @@ export default function NotificationsScreen() {
       return () => clearInterval(intervalId);
     }, [load]),
   );
+
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
 
   const handleConfirm = (n: SignalNotification) => {
     const lotSize = n.signal.lot_size ?? null;
@@ -191,6 +204,10 @@ export default function NotificationsScreen() {
         </Text>
       </View>
 
+      <View style={styles.filterBar}>
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
+      </View>
+
       <FlatList
         data={items}
         keyExtractor={(i) => String(i.id)}
@@ -200,6 +217,8 @@ export default function NotificationsScreen() {
         ListEmptyComponent={<EmptyState icon="bell-off" title="No signals yet" subtitle="When the admin sends a trading signal, it will appear here." />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
 
       {/* ── Quantity picker modal ───────────────────────────────────────── */}
       <Modal visible={!!qtyModal} transparent animationType="slide" onRequestClose={() => setQtyModal(null)}>
@@ -319,6 +338,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  filterBar: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   pageTitle: { ...Typography.h3 },
   pendingCount: { fontSize: 13, color: Colors.warning, fontWeight: '700' },

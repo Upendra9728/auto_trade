@@ -192,6 +192,32 @@ class AdminSignalDetailResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Pagination (admin/user list endpoints)
+# ---------------------------------------------------------------------------
+
+class PaginationMeta(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class PaginatedSignalsResponse(BaseModel):
+    items: list[SignalResponse]
+    meta: PaginationMeta
+
+
+class PaginatedUsersResponse(BaseModel):
+    items: list[AdminUserResponse]
+    meta: PaginationMeta
+
+
+class PaginatedNotificationsResponse(BaseModel):
+    items: list[SignalNotificationResponse]
+    meta: PaginationMeta
+
+
+# ---------------------------------------------------------------------------
 # Admin bootstrapping (create first admin via secret)
 # ---------------------------------------------------------------------------
 

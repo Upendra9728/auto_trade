@@ -5,17 +5,19 @@ import logging
 import socket
 import http.client
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session, joinedload
 
 from ..crypto import decrypt_token, encrypt_token
 from ..deps import get_current_user, get_db
 from ..models import DhanCredential, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
+from ..pagination import paginate_meta, parse_ist_date_range
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
     ConfirmNotificationRequest,
+    PaginatedNotificationsResponse,
     SignalNotificationResponse,
     SignalResponse,
     UpdateFcmTokenRequest,
@@ -190,18 +192,23 @@ def upsert_dhan_credential(
 # Signal notifications
 # ---------------------------------------------------------------------------
 
-@router.get("/me/notifications", response_model=list[SignalNotificationResponse])
+@router.get("/me/notifications", response_model=PaginatedNotificationsResponse)
 def list_notifications(
     status: str | None = None,
-    limit: int = 50,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[SignalNotificationResponse]:
+) -> PaginatedNotificationsResponse:
     """
     Return signal notifications for the current user.
-    Optional ?status=pending|confirmed|placed|rejected|failed filter.
+    Optional ?status=pending|confirmed|placed|rejected|failed filter, and
+    ?date_from=/?date_to= (YYYY-MM-DD, IST) to filter by when the signal was received.
     Sorted newest first, pending first.
     """
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
     query = (
         db.query(SignalNotification)
         .options(joinedload(SignalNotification.signal))
@@ -209,17 +216,26 @@ def list_notifications(
     )
     if status:
         query = query.filter(SignalNotification.status == status)
+    if start_utc is not None:
+        query = query.filter(SignalNotification.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(SignalNotification.created_at < end_utc)
 
+    total = query.count()
     # Pending notifications first, then most recent
     notifications = (
         query.order_by(
             (SignalNotification.status == "pending").desc(),
             SignalNotification.created_at.desc(),
         )
-        .limit(limit)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
-    return [_to_notification_response(n) for n in notifications]
+    return PaginatedNotificationsResponse(
+        items=[_to_notification_response(n) for n in notifications],
+        meta=paginate_meta(page=page, page_size=page_size, total=total),
+    )
 
 
 @router.post("/me/notifications/{notification_id}/confirm", response_model=SignalNotificationResponse)
@@ -285,25 +301,41 @@ def reject_notification(
     return _to_notification_response(notif)
 
 
-@router.get("/me/orders", response_model=list[SignalNotificationResponse])
+@router.get("/me/orders", response_model=PaginatedNotificationsResponse)
 def list_orders(
-    limit: int = 50,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[SignalNotificationResponse]:
+) -> PaginatedNotificationsResponse:
     """Return placed/failed order history for the current user."""
-    notifications = (
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = (
         db.query(SignalNotification)
         .options(joinedload(SignalNotification.signal))
         .filter(
             SignalNotification.user_id == current_user.id,
             SignalNotification.status.in_(["placed", "failed"]),
         )
-        .order_by(SignalNotification.created_at.desc())
-        .limit(limit)
+    )
+    if start_utc is not None:
+        query = query.filter(SignalNotification.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(SignalNotification.created_at < end_utc)
+
+    total = query.count()
+    notifications = (
+        query.order_by(SignalNotification.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
-    return [_to_notification_response(n) for n in notifications]
+    return PaginatedNotificationsResponse(
+        items=[_to_notification_response(n) for n in notifications],
+        meta=paginate_meta(page=page, page_size=page_size, total=total),
+    )
 
 
 @router.post("/me/test-push")

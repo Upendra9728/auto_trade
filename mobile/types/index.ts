@@ -155,3 +155,23 @@ export interface Dashboard {
     pending: number;
   };
 }
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
+export interface PaginationMeta {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  meta: PaginationMeta;
+}
+
+export interface DateRangeFilter {
+  // YYYY-MM-DD, IST calendar date, inclusive on both ends
+  date_from?: string | null;
+  date_to?: string | null;
+}

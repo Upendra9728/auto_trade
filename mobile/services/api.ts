@@ -10,6 +10,8 @@ import type {
   AdminUser,
   AdminSignalDetail,
   Dashboard,
+  Paginated,
+  DateRangeFilter,
 } from '../types';
 
 const BASE_URL: string =
@@ -61,6 +63,16 @@ const put = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined });
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
+/** Builds a query string, skipping null/undefined/empty values. */
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') q.append(key, String(value));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -89,14 +101,25 @@ export const userApi = {
   getDhanCredential: () => get<DhanCredential | null>('/api/users/me/dhan'),
   saveDhanCredential: (data: { dhan_client_id: string; access_token: string }) =>
     post<DhanCredential>('/api/users/me/dhan', data),
-  getNotifications: (status?: string) =>
-    get<SignalNotification[]>(`/api/users/me/notifications${status ? `?status=${status}` : ''}`),
+  getNotifications: (params: { status?: string; page?: number; pageSize?: number } & DateRangeFilter = {}) =>
+    get<Paginated<SignalNotification>>(`/api/users/me/notifications${buildQuery({
+      status: params.status,
+      page: params.page,
+      page_size: params.pageSize,
+      date_from: params.date_from,
+      date_to: params.date_to,
+    })}`),
   confirmNotification: (id: number, quantity?: number) =>
     post<SignalNotification>(`/api/users/me/notifications/${id}/confirm`, quantity != null ? { quantity } : undefined),
   rejectNotification: (id: number) =>
     post<SignalNotification>(`/api/users/me/notifications/${id}/reject`),
-  getOrders: (limit = 50) =>
-    get<SignalNotification[]>(`/api/users/me/orders?limit=${limit}`),
+  getOrders: (params: { page?: number; pageSize?: number } & DateRangeFilter = {}) =>
+    get<Paginated<SignalNotification>>(`/api/users/me/orders${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
+      date_from: params.date_from,
+      date_to: params.date_to,
+    })}`),
   testIp: () => get<{ bound_ipv6: string | null; status: string }>('/api/users/test-ip'),
 };
 
@@ -116,12 +139,25 @@ export const systemApi = {
 
 export const adminApi = {
   getDashboard: () => get<Dashboard>('/api/admin/dashboard'),
-  getUsers: () => get<AdminUser[]>('/api/admin/users'),
+  getUsers: (params: { page?: number; pageSize?: number; search?: string } & DateRangeFilter = {}) =>
+    get<Paginated<AdminUser>>(`/api/admin/users${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
+      search: params.search,
+      date_from: params.date_from,
+      date_to: params.date_to,
+    })}`),
   getUser: (id: number) => get<AdminUser>(`/api/admin/users/${id}`),
   updateUser: (id: number, data: { assigned_ipv6?: string | null; role?: string; is_active?: boolean }) =>
     put<AdminUser>(`/api/admin/users/${id}`, data),
   deleteUser: (id: number) => del<{ status: string }>(`/api/admin/users/${id}`),
-  getSignals: (limit = 50) => get<Signal[]>(`/api/admin/signals?limit=${limit}`),
+  getSignals: (params: { page?: number; pageSize?: number } & DateRangeFilter = {}) =>
+    get<Paginated<Signal>>(`/api/admin/signals${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
+      date_from: params.date_from,
+      date_to: params.date_to,
+    })}`),
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, RefreshControl, ActivityIndicator,
@@ -8,35 +8,49 @@ import { router } from 'expo-router';
 import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import EmptyState from '../../components/EmptyState';
+import Pagination from '../../components/Pagination';
+import DateRangeFilter from '../../components/DateRangeFilter';
 import { Feather } from '@expo/vector-icons';
-import type { AdminUser } from '../../types';
+import type { AdminUser, PaginationMeta } from '../../types';
 
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [filtered, setFiltered] = useState<AdminUser[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetPage: number, q: string, from: string | null, to: string | null) => {
     try {
-      const data = await adminApi.getUsers();
-      setUsers(data);
-      setFiltered(data);
+      const data = await adminApi.getUsers({ page: targetPage, search: q || undefined, date_from: from, date_to: to });
+      setUsers(data.items);
+      setMeta(data.meta);
     } catch {}
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(page, search, dateFrom, dateTo); }, [load, page, search, dateFrom, dateTo]);
 
-  useEffect(() => {
-    const q = search.toLowerCase();
-    setFiltered(q ? users.filter((u) =>
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      (u.assigned_ipv6 ?? '').includes(q)
-    ) : users);
-  }, [search, users]);
+  // Debounce search text so we don't fire a request on every keystroke
+  const handleSearchChange = (q: string) => {
+    setSearchInput(q);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => {
+      setSearch(q);
+      setPage(1);
+    }, 400);
+  };
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
+
 
   const renderItem = ({ item: u }: { item: AdminUser }) => (
     <TouchableOpacity
@@ -85,36 +99,42 @@ export default function AdminUsersScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerBar}>
-        <Text style={styles.pageTitle}>Users ({users.length})</Text>
+        <Text style={styles.pageTitle}>Users ({meta?.total ?? users.length})</Text>
       </View>
 
       <View style={styles.searchBar}>
         <Feather name="search" size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search by name, email or IPv6…"
+          value={searchInput}
+          onChangeText={handleSearchChange}
+          placeholder="Search by name or email…"
           placeholderTextColor={Colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
         />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')}>
+        {searchInput.length > 0 && (
+          <TouchableOpacity onPress={() => handleSearchChange('')}>
             <Feather name="x" size={16} color={Colors.textMuted} />
           </TouchableOpacity>
         )}
       </View>
 
+      <View style={styles.filterBar}>
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
+      </View>
+
       <FlatList
-        data={filtered}
+        data={users}
         keyExtractor={(u) => String(u.id)}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, !filtered.length && { flex: 1 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[Colors.primary]} />}
+        contentContainerStyle={[styles.list, !users.length && { flex: 1 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(page, search, dateFrom, dateTo); }} colors={[Colors.primary]} />}
         ListEmptyComponent={<EmptyState icon="users" title="No users found" subtitle={search ? 'Try a different search.' : 'No users have registered yet.'} />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
     </SafeAreaView>
   );
 }
@@ -143,6 +163,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border,
   },
   searchInput: { flex: 1, fontSize: 14, color: Colors.text },
+  filterBar: { paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
   list: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, gap: Spacing.sm },
   card: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: Spacing.sm },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },

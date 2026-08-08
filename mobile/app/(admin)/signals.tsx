@@ -10,23 +10,38 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/the
 import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
+import Pagination from '../../components/Pagination';
+import DateRangeFilter from '../../components/DateRangeFilter';
 import { Feather } from '@expo/vector-icons';
-import type { Signal } from '../../types';
+import type { Signal, PaginationMeta } from '../../types';
 
 export default function AdminSignalsScreen() {
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetPage: number, from: string | null, to: string | null) => {
     try {
-      const data = await adminApi.getSignals();
-      setSignals(data);
+      const data = await adminApi.getSignals({ page: targetPage, date_from: from, date_to: to });
+      setSignals(data.items);
+      setMeta(data.meta);
     } catch {}
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(page, dateFrom, dateTo); }, [load, page, dateFrom, dateTo]);
+
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
+
+  const handleRefresh = () => { setRefreshing(true); load(page, dateFrom, dateTo); };
 
   const handleCancel = (s: Signal) => {
     Alert.alert('Cancel Signal', `Cancel "${s.title}"? All pending notifications will be rejected.`, [
@@ -36,7 +51,7 @@ export default function AdminSignalsScreen() {
         onPress: async () => {
           try {
             await adminApi.cancelSignal(s.id);
-            load();
+            load(page, dateFrom, dateTo);
           } catch (err: any) { Alert.alert('Error', err.message); }
         },
       },
@@ -101,15 +116,21 @@ export default function AdminSignalsScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.filterBar}>
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
+      </View>
+
       <FlatList
         data={signals}
         keyExtractor={(s) => String(s.id)}
         renderItem={renderItem}
         contentContainerStyle={[styles.list, !signals.length && { flex: 1 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
         ListEmptyComponent={<EmptyState icon="radio" title="No signals yet" subtitle='Tap "New Signal" to broadcast a trading signal to all users.' />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
     </SafeAreaView>
   );
 }
@@ -137,6 +158,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.sm,
   },
   createText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  filterBar: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
   list: { padding: Spacing.md, gap: Spacing.md },
   card: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: 8 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

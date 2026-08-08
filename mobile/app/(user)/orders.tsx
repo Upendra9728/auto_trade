@@ -11,20 +11,27 @@ import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import LiveStatusBadge from '../../components/LiveStatusBadge';
 import EmptyState from '../../components/EmptyState';
-import type { SignalNotification } from '../../types';
+import Pagination from '../../components/Pagination';
+import DateRangeFilter from '../../components/DateRangeFilter';
+import type { SignalNotification, PaginationMeta } from '../../types';
 
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<SignalNotification[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const data = await userApi.getOrders();
-      setOrders(data);
+      const data = await userApi.getOrders({ page, date_from: dateFrom, date_to: dateTo });
+      setOrders(data.items);
+      setMeta(data.meta);
     } catch {}
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [page, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -37,6 +44,12 @@ export default function OrdersScreen() {
       return () => clearInterval(intervalId);
     }, [load]),
   );
+
+  const handleDateChange = (from: string | null, to: string | null) => {
+    setDateFrom(from);
+    setDateTo(to);
+    setPage(1);
+  };
 
   const renderItem = ({ item: o }: { item: SignalNotification }) => {
     const isBuy = o.signal.transaction_type === 'BUY';
@@ -95,8 +108,13 @@ export default function OrdersScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.headerBar}>
         <Text style={styles.pageTitle}>Order History</Text>
-        <Text style={styles.count}>{orders.length} orders</Text>
+        <Text style={styles.count}>{meta?.total ?? orders.length} orders</Text>
       </View>
+
+      <View style={styles.filterBar}>
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
+      </View>
+
       <FlatList
         data={orders}
         keyExtractor={(o) => String(o.id)}
@@ -106,6 +124,8 @@ export default function OrdersScreen() {
         ListEmptyComponent={<EmptyState icon="shopping-bag" title="No orders yet" subtitle="Confirmed orders will appear here." />}
         showsVerticalScrollIndicator={false}
       />
+
+      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
     </SafeAreaView>
   );
 }
@@ -116,6 +136,10 @@ const styles = StyleSheet.create({
   headerBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  filterBar: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   pageTitle: { ...Typography.h3 },
