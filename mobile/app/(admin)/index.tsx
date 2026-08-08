@@ -68,9 +68,15 @@ export default function AdminDashboard() {
         <Text style={styles.sectionTitle}>Orders</Text>
         <View style={styles.grid}>
           <StatCard label="Pending" value={stats?.orders.pending ?? 0} color={Colors.warning} />
-          <StatCard label="Placed" value={stats?.orders.placed ?? 0} color={Colors.success} />
+          <StatCard label="Really Placed" value={stats?.orders.placed ?? 0} color={Colors.success} />
+          <StatCard label="Awaiting Confirm" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
+          <StatCard label="Exchange Rejected" value={stats?.orders.exchange_rejected ?? 0} color={Colors.error} />
           <StatCard label="Failed" value={stats?.orders.failed ?? 0} color={Colors.error} />
         </View>
+        <Text style={styles.helperText}>
+          "Really Placed" counts only orders confirmed live by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
+          not just requests that were accepted by the API.
+        </Text>
 
         {/* Readiness warning */}
         {(stats?.users.with_ipv6_assigned ?? 0) < (stats?.users.active ?? 0) && (
@@ -119,4 +125,5 @@ const styles = StyleSheet.create({
   statLabel: { ...Typography.caption, textTransform: 'uppercase', letterSpacing: 0.5 },
   warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.md },
   warnText: { fontSize: 13, color: Colors.warning, lineHeight: 18 },
+  helperText: { ...Typography.caption, lineHeight: 16 },
 });

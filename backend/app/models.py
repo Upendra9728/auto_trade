@@ -100,12 +100,24 @@ class SignalNotification(Base):
     signal_id: Mapped[int] = mapped_column(ForeignKey("signals.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     # 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed'
+    # NOTE: 'placed' only means Dhan's HTTP API accepted the request. It does NOT
+    # mean the exchange executed/confirmed it — see live_status below for that.
     status: Mapped[str] = mapped_column(String(16), default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     dhan_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    # ---- Real-time exchange status, populated by the Dhan Live Order Update
+    # WebSocket (see dhan_order_update.py). None until the first update arrives.
+    # Raw Dhan values: TRANSIT | PENDING | REJECTED | CANCELLED | TRADED | EXPIRED
+    live_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    exchange_order_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    traded_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    traded_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reason_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    live_updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     signal: Mapped[Signal] = relationship(back_populates="notifications")
     user: Mapped[User] = relationship(back_populates="notifications")

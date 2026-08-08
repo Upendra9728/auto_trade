@@ -51,6 +51,10 @@ export interface Signal {
   placed?: number;
   rejected?: number;
   failed?: number;
+  // Of the 'placed' ones, how many are really confirmed at the exchange
+  exchange_confirmed?: number;
+  exchange_rejected?: number;
+  awaiting_confirmation?: number;
 }
 
 export interface SignalNotification {
@@ -63,7 +67,17 @@ export interface SignalNotification {
   confirmed_at: string | null;
   placed_at: string | null;
   created_at: string;
+  // Real-time exchange status from Dhan's Live Order Update feed.
+  // null = no live update received yet.
+  live_status: LiveOrderStatus | null;
+  exchange_order_no: string | null;
+  traded_qty: number | null;
+  traded_price: number | null;
+  reason_description: string | null;
+  live_updated_at: string | null;
 }
+
+export type LiveOrderStatus = 'TRANSIT' | 'PENDING' | 'REJECTED' | 'CANCELLED' | 'TRADED' | 'EXPIRED';
 
 export interface SignalCreatePayload {
   title: string;
@@ -107,6 +121,12 @@ export interface AdminSignalNotificationRow {
   confirmed_at: string | null;
   placed_at: string | null;
   created_at: string;
+  live_status: LiveOrderStatus | null;
+  exchange_order_no: string | null;
+  traded_qty: number | null;
+  traded_price: number | null;
+  reason_description: string | null;
+  live_updated_at: string | null;
 }
 
 export interface AdminSignalDetail {
@@ -126,7 +146,11 @@ export interface Dashboard {
     active: number;
   };
   orders: {
+    // Really confirmed at the exchange (TRANSIT/PENDING/TRADED) — trust this
+    // number, not just "API accepted", as the count of orders really placed in Dhan.
     placed: number;
+    awaiting_confirmation: number;
+    exchange_rejected: number;
     failed: number;
     pending: number;
   };

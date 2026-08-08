@@ -22,14 +22,33 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 def _apply_migrations() -> None:
     """Idempotent column additions for databases created before a schema change."""
     inspector = inspect(engine)
-    if "dhan_credentials" not in inspector.get_table_names():
-        return  # table not yet created; create_all will handle it
-    existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
-    if "token_expires_at" not in existing:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE dhan_credentials ADD COLUMN token_expires_at TIMESTAMP"))
-            conn.commit()
-        logger.info("Migration: added token_expires_at column to dhan_credentials")
+    table_names = inspector.get_table_names()
+
+    if "dhan_credentials" in table_names:
+        existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
+        if "token_expires_at" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE dhan_credentials ADD COLUMN token_expires_at TIMESTAMP"))
+                conn.commit()
+            logger.info("Migration: added token_expires_at column to dhan_credentials")
+
+    if "signal_notifications" in table_names:
+        existing = {c["name"] for c in inspector.get_columns("signal_notifications")}
+        live_status_columns = {
+            "live_status": "VARCHAR(16)",
+            "exchange_order_no": "VARCHAR(64)",
+            "traded_qty": "INTEGER",
+            "traded_price": "FLOAT",
+            "reason_description": "TEXT",
+            "live_updated_at": "TIMESTAMP",
+        }
+        missing = {name: ddl for name, ddl in live_status_columns.items() if name not in existing}
+        if missing:
+            with engine.connect() as conn:
+                for name, ddl in missing.items():
+                    conn.execute(text(f"ALTER TABLE signal_notifications ADD COLUMN {name} {ddl}"))
+                conn.commit()
+            logger.info("Migration: added live order status columns to signal_notifications: %s", list(missing))
 
 
 def init_db() -> None:

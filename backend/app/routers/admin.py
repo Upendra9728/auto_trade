@@ -74,10 +74,19 @@ def _to_admin_user(u: User, db: Session) -> AdminUserResponse:
 
 def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True) -> SignalResponse:
     counts: dict[str, int] = {}
+    exchange_confirmed = exchange_rejected = awaiting_confirmation = None
     if include_counts:
         rows = db.query(SignalNotification).filter(SignalNotification.signal_id == signal.id).all()
+        exchange_confirmed = exchange_rejected = awaiting_confirmation = 0
         for row in rows:
             counts[row.status] = counts.get(row.status, 0) + 1
+            if row.status == "placed":
+                if row.live_status in ("TRANSIT", "PENDING", "TRADED"):
+                    exchange_confirmed += 1
+                else:
+                    awaiting_confirmation += 1
+            elif row.live_status in ("REJECTED", "CANCELLED", "EXPIRED"):
+                exchange_rejected += 1
 
     return SignalResponse(
         id=signal.id,
@@ -102,6 +111,9 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
         placed=counts.get("placed"),
         rejected=counts.get("rejected"),
         failed=counts.get("failed"),
+        exchange_confirmed=exchange_confirmed,
+        exchange_rejected=exchange_rejected,
+        awaiting_confirmation=awaiting_confirmation,
     )
 
 
@@ -303,6 +315,12 @@ def get_signal(
             "confirmed_at": n.confirmed_at.isoformat() if n.confirmed_at else None,
             "placed_at": n.placed_at.isoformat() if n.placed_at else None,
             "created_at": n.created_at.isoformat(),
+            "live_status": n.live_status,
+            "exchange_order_no": n.exchange_order_no,
+            "traded_qty": n.traded_qty,
+            "traded_price": n.traded_price,
+            "reason_description": n.reason_description,
+            "live_updated_at": n.live_updated_at.isoformat() if n.live_updated_at else None,
         })
 
     return AdminSignalDetailResponse(
@@ -349,9 +367,25 @@ def dashboard(
     users_with_dhan = db.query(DhanCredential).filter(DhanCredential.is_active.is_(True)).count()
     total_signals = db.query(Signal).count()
     active_signals = db.query(Signal).filter(Signal.status == "active").count()
-    total_placed = db.query(SignalNotification).filter(SignalNotification.status == "placed").count()
+
     total_failed = db.query(SignalNotification).filter(SignalNotification.status == "failed").count()
     total_pending = db.query(SignalNotification).filter(SignalNotification.status == "pending").count()
+
+    # 'placed' only means Dhan's HTTP API accepted the request. Split it further
+    # using the live order status from Dhan's order-update WebSocket so the admin
+    # can see how many orders are *really* confirmed at the exchange.
+    placed_rows = (
+        db.query(SignalNotification.live_status)
+        .filter(SignalNotification.status == "placed")
+        .all()
+    )
+    exchange_confirmed = sum(1 for (ls,) in placed_rows if ls in ("TRANSIT", "PENDING", "TRADED"))
+    awaiting_confirmation = len(placed_rows) - exchange_confirmed
+    total_exchange_rejected = (
+        db.query(SignalNotification)
+        .filter(SignalNotification.live_status.in_(["REJECTED", "CANCELLED", "EXPIRED"]))
+        .count()
+    )
 
     return {
         "users": {
@@ -365,7 +399,11 @@ def dashboard(
             "active": active_signals,
         },
         "orders": {
-            "placed": total_placed,
+            # Really confirmed at the exchange (TRANSIT/PENDING/TRADED) — this is
+            # the number that should be trusted as "actually placed in Dhan".
+            "placed": exchange_confirmed,
+            "awaiting_confirmation": awaiting_confirmation,
+            "exchange_rejected": total_exchange_rejected,
             "failed": total_failed,
             "pending": total_pending,
         },

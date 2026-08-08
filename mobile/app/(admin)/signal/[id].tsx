@@ -9,6 +9,7 @@ import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
+import LiveStatusBadge from '../../../components/LiveStatusBadge';
 import type { AdminSignalDetail, AdminSignalNotificationRow } from '../../../types';
 
 export default function SignalDetailScreen() {
@@ -92,6 +93,7 @@ export default function SignalDetailScreen() {
       </View>
       <View style={styles.rowRight}>
         <StatusBadge status={n.status} size="sm" />
+        {n.status === 'placed' && <LiveStatusBadge liveStatus={n.live_status} size="sm" />}
         {n.dhan_order_id && <Text style={styles.orderId} numberOfLines={1}>{n.dhan_order_id}</Text>}
         {n.error_message && <Text style={styles.errorText} numberOfLines={1}>{n.error_message}</Text>}
         <Text style={styles.chevron}>›</Text>
@@ -141,6 +143,22 @@ export default function SignalDetailScreen() {
                 </View>
               ))}
             </View>
+            {signal.placed != null && signal.placed > 0 && (
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryCell}>
+                  <Text style={[styles.summaryCount, { color: Colors.success }]}>{signal.exchange_confirmed ?? 0}</Text>
+                  <Text style={styles.summaryLabel}>really placed</Text>
+                </View>
+                <View style={styles.summaryCell}>
+                  <Text style={[styles.summaryCount, { color: Colors.info }]}>{signal.awaiting_confirmation ?? 0}</Text>
+                  <Text style={styles.summaryLabel}>awaiting confirm</Text>
+                </View>
+                <View style={styles.summaryCell}>
+                  <Text style={[styles.summaryCount, { color: Colors.error }]}>{signal.exchange_rejected ?? 0}</Text>
+                  <Text style={styles.summaryLabel}>exchange rejected</Text>
+                </View>
+              </View>
+            )}
 
             <Text style={styles.sectionLabel}>Per-User Status ({notifications.length})</Text>
           </View>
@@ -176,6 +194,11 @@ export default function SignalDetailScreen() {
               {/* Status */}
               <View style={styles.modalStatusRow}>
                 <StatusBadge status={selectedNotif?.status ?? ''} />
+                {selectedNotif?.status === 'placed' && (
+                  <View style={{ marginTop: 6 }}>
+                    <LiveStatusBadge liveStatus={selectedNotif?.live_status} />
+                  </View>
+                )}
               </View>
 
               {/* Order ID */}
@@ -183,6 +206,26 @@ export default function SignalDetailScreen() {
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Order ID</Text>
                   <Text style={styles.modalMono} selectable>{selectedNotif.dhan_order_id}</Text>
+                </View>
+              )}
+
+              {/* Exchange order details */}
+              {selectedNotif?.exchange_order_no && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Exchange Order No</Text>
+                  <Text style={styles.modalMono} selectable>{selectedNotif.exchange_order_no}</Text>
+                </View>
+              )}
+              {selectedNotif?.traded_price != null && selectedNotif.traded_price > 0 && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Traded Price</Text>
+                  <Text style={styles.modalValue}>₹{selectedNotif.traded_price} × {selectedNotif.traded_qty ?? 0}</Text>
+                </View>
+              )}
+              {selectedNotif?.reason_description && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Exchange Reason</Text>
+                  <Text style={styles.modalValue}>{selectedNotif.reason_description}</Text>
                 </View>
               )}
 
@@ -210,6 +253,12 @@ export default function SignalDetailScreen() {
                 <View style={styles.modalRow}>
                   <Text style={styles.modalLabel}>Placed</Text>
                   <Text style={[styles.modalValue, { color: Colors.success }]}>{formatDateTimeIST(selectedNotif.placed_at)}</Text>
+                </View>
+              )}
+              {selectedNotif?.live_updated_at && (
+                <View style={styles.modalRow}>
+                  <Text style={styles.modalLabel}>Last Live Update</Text>
+                  <Text style={styles.modalValue}>{formatDateTimeIST(selectedNotif.live_updated_at)}</Text>
                 </View>
               )}
 

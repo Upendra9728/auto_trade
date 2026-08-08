@@ -72,6 +72,12 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
         confirmed_at=notif.confirmed_at.isoformat() if notif.confirmed_at else None,
         placed_at=notif.placed_at.isoformat() if notif.placed_at else None,
         created_at=notif.created_at.isoformat(),
+        live_status=notif.live_status,
+        exchange_order_no=notif.exchange_order_no,
+        traded_qty=notif.traded_qty,
+        traded_price=notif.traded_price,
+        reason_description=notif.reason_description,
+        live_updated_at=notif.live_updated_at.isoformat() if notif.live_updated_at else None,
     )
 
 

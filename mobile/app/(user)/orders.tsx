@@ -9,6 +9,7 @@ import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
+import LiveStatusBadge from '../../components/LiveStatusBadge';
 import EmptyState from '../../components/EmptyState';
 import type { SignalNotification } from '../../types';
 
@@ -65,6 +66,12 @@ export default function OrdersScreen() {
           <View style={styles.resultBox}>
             <Text style={styles.successText}>✅ Order ID: {o.dhan_order_id}</Text>
             {o.placed_at && <Text style={styles.timeText}>Placed at {formatDateTimeIST(o.placed_at)}</Text>}
+            <View style={{ marginTop: 4 }}>
+              <LiveStatusBadge liveStatus={o.live_status} size="sm" />
+            </View>
+            {o.live_status === 'TRADED' && o.traded_price != null && (
+              <Text style={styles.timeText}>Traded @ ₹{o.traded_price} × {o.traded_qty ?? 0}</Text>
+            )}
           </View>
         )}
         {o.status === 'failed' && (

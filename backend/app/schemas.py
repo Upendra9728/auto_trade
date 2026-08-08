@@ -127,6 +127,11 @@ class SignalResponse(BaseModel):
     placed: int | None = None
     rejected: int | None = None
     failed: int | None = None
+    # Of the 'placed' ones, how many are actually confirmed live at the exchange
+    # (TRANSIT/PENDING/TRADED) vs still awaiting confirmation or since rejected.
+    exchange_confirmed: int | None = None
+    exchange_rejected: int | None = None
+    awaiting_confirmation: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +148,14 @@ class SignalNotificationResponse(BaseModel):
     confirmed_at: str | None = None
     placed_at: str | None = None
     created_at: str
+    # Real-time exchange status from Dhan's Live Order Update feed.
+    # live_status: TRANSIT | PENDING | REJECTED | CANCELLED | TRADED | EXPIRED (None = no update yet)
+    live_status: str | None = None
+    exchange_order_no: str | None = None
+    traded_qty: int | None = None
+    traded_price: float | None = None
+    reason_description: str | None = None
+    live_updated_at: str | None = None
 
 
 class ConfirmNotificationRequest(BaseModel):
