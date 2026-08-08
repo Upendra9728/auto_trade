@@ -99,3 +99,11 @@ $env:EXPO_PUBLIC_API_URL = "http://13.126.206.167"; .\gradlew assembleRelease
 - Both tab layouts (`(admin)/_layout.tsx`, `(user)/_layout.tsx`) use `useSafeAreaInsets` to add `insets.bottom` to tab bar height and padding, covering devices with software navigation buttons.
 - All screens use `SafeAreaView` from `react-native-safe-area-context` (NOT from `react-native`). The `react-native` one is iOS-only.
 - Auth screens (`login.tsx`, `register.tsx`) wrap their `KeyboardAvoidingView` in `SafeAreaView` to handle the status bar.
+
+
+aws command: aws s3 cp ".\app\build\outputs\apk\release\app-release.apk" "s3://apk-buket/app-release.apk" --content-type "application/vnd.android.package-archive"
+
+
+
+cd mobile\scripts
+.\release-apk.ps1 -Version 1.0.3

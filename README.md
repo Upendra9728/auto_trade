@@ -221,3 +221,10 @@ rule: ENTRY ABOVE 6
 Notes:
 - Backend places **the same GTT** for every consented client token stored in DB.
 - For SELL legs, Upstox may require EDIS authorization (per Upstox docs).
+
+
+
+<!-- access key: AKIASUZssssRIJXDVD6Y2KX2
+secret key: pri4Ft8BTPNXBvgJY1zYmx+d0Tk5QaHWaX3HGZXp -->
+
+
