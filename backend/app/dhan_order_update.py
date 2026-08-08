@@ -236,6 +236,12 @@ async def dhan_order_update_loop() -> None:
 _POLL_INTERVAL_SECONDS = 30
 _STALE_THRESHOLD = dt.timedelta(minutes=2)
 _MIN_AGE_BEFORE_POLL = dt.timedelta(seconds=20)  # give the WS a head start
+_MAX_AGE_TO_POLL = dt.timedelta(hours=24)  # Dhan's order-status API only knows about the current trading day
+_REQUEST_DELAY_SECONDS = 0.3  # throttle so bursts of stale orders don't trip Dhan's rate limit (DH-904)
+_AUTH_FAILURE_COOLDOWN = dt.timedelta(minutes=15)  # stop retrying a user whose token is known-bad (DH-901)
+
+# user_id -> UTC time until which we skip polling (set after an auth failure for that user)
+_auth_cooldown_until: dict[int, dt.datetime] = {}
 
 
 async def dhan_order_status_poll_loop() -> None:
@@ -261,6 +267,7 @@ async def _poll_stale_orders() -> None:
                 SignalNotification.dhan_order_id.isnot(None),
                 SignalNotification.placed_at.isnot(None),
                 SignalNotification.placed_at <= now - _MIN_AGE_BEFORE_POLL,
+                SignalNotification.placed_at >= now - _MAX_AGE_TO_POLL,
                 or_(
                     SignalNotification.live_updated_at.is_(None),
                     SignalNotification.live_updated_at <= now - _STALE_THRESHOLD,
@@ -269,7 +276,11 @@ async def _poll_stale_orders() -> None:
             .all()
         )
         for notif in stale:
+            cooldown_until = _auth_cooldown_until.get(notif.user_id)
+            if cooldown_until and cooldown_until > now:
+                continue
             await _poll_one(db, notif)
+            await asyncio.sleep(_REQUEST_DELAY_SECONDS)
     finally:
         db.close()
 
@@ -300,7 +311,16 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
         )
         logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, status, notif.id)
     except DhanApiError as exc:
-        logger.warning("Order status poll failed for notification %s: %s", notif.id, exc)
+        if "DH-901" in str(exc):
+            # Known-bad/expired token — retrying every cycle just burns Dhan's rate
+            # limit for no benefit until the user pastes a fresh token. Back off.
+            _auth_cooldown_until[notif.user_id] = dt.datetime.utcnow() + _AUTH_FAILURE_COOLDOWN
+            logger.warning(
+                "Order status poll: user %s has an invalid/expired Dhan token; pausing polls for %s",
+                notif.user_id, _AUTH_FAILURE_COOLDOWN,
+            )
+        else:
+            logger.warning("Order status poll failed for notification %s: %s", notif.id, exc)
     except Exception:
         logger.exception("Order status poll: unexpected error for notification %s", notif.id)
 
