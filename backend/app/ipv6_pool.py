@@ -39,6 +39,7 @@ def _provision_ipv6(ipv6: str, interface: str) -> bool:
     # ── 1. Add live to the interface ──────────────────────────────────────────
     # Use full path — systemd services don't have /usr/sbin in PATH.
     IP_BIN = "/usr/sbin/ip"
+    SUDO_BIN = "/usr/bin/sudo"
     try:
         result = subprocess.run(
             [IP_BIN, "addr", "add", f"{ipv6}/128", "dev", interface],
@@ -49,7 +50,7 @@ def _provision_ipv6(ipv6: str, interface: str) -> bool:
             if "exists" not in result.stderr.lower():
                 # Try with sudo as fallback
                 result2 = subprocess.run(
-                    ["sudo", IP_BIN, "addr", "add", f"{ipv6}/128", "dev", interface],
+                    [SUDO_BIN, IP_BIN, "addr", "add", f"{ipv6}/128", "dev", interface],
                     capture_output=True, text=True, timeout=10,
                 )
                 if result2.returncode != 0 and "exists" not in result2.stderr.lower():
