@@ -42,6 +42,13 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="approvals"
+        options={{
+          title: 'Approvals',
+          tabBarIcon: ({ color, size }) => <Feather name="user-check" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

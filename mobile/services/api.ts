@@ -66,7 +66,7 @@ const put = <T>(path: string, body?: unknown) =>
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 /** Builds a query string, skipping null/undefined/empty values. */
-function buildQuery(params: Record<string, string | number | undefined | null>): string {
+function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
   const q = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') q.append(key, String(value));
@@ -164,17 +164,19 @@ export const systemApi = {
 
 export const adminApi = {
   getDashboard: () => get<Dashboard>('/api/admin/dashboard'),
-  getUsers: (params: { page?: number; pageSize?: number; search?: string } & DateRangeFilter = {}) =>
+  getUsers: (params: { page?: number; pageSize?: number; search?: string; isActive?: boolean } & DateRangeFilter = {}) =>
     get<Paginated<AdminUser>>(`/api/admin/users${buildQuery({
       page: params.page,
       page_size: params.pageSize,
       search: params.search,
       date_from: params.date_from,
       date_to: params.date_to,
+      is_active: params.isActive,
     })}`),
   getUser: (id: number) => get<AdminUser>(`/api/admin/users/${id}`),
   updateUser: (id: number, data: { assigned_ipv6?: string | null; role?: string; is_active?: boolean }) =>
     put<AdminUser>(`/api/admin/users/${id}`, data),
+  approveUser: (id: number) => post<AdminUser>(`/api/admin/users/${id}/approve`),
   deleteUser: (id: number) => del<{ status: string }>(`/api/admin/users/${id}`),
   getSignals: (params: { page?: number; pageSize?: number } & DateRangeFilter = {}) =>
     get<Paginated<Signal>>(`/api/admin/signals${buildQuery({

@@ -16,7 +16,6 @@ from ..auth import (
 )
 from ..config import settings
 from ..deps import get_current_user, get_db, _utcnow
-from ..ipv6_pool import assign_next_ipv6
 from ..mailer import send_password_reset_email
 from ..models import PasswordResetOtp, User, UserSession
 from ..schemas import (
@@ -68,14 +67,17 @@ def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -
     if existing is not None:
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    # New sign-ups are inactive with no IPv6 until an admin approves them via
+    # POST /api/admin/users/{user_id}/approve. This stops anyone who gets a copy
+    # of the APK from self-registering and using the app before review.
     user = User(
         name=req.name.strip(),
         email=email,
         phone_number=req.phone_number.strip(),
         password_hash=hash_password(req.password),
         role="user",
-        is_active=True,
-        assigned_ipv6=assign_next_ipv6(db),
+        is_active=False,
+        assigned_ipv6=None,
     )
     db.add(user)
     db.commit()
@@ -86,9 +88,11 @@ def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -
 @router.post("/login", response_model=UserAuthResponse)
 def login_user(req: UserLoginRequest, db: Session = Depends(get_db)) -> UserAuthResponse:
     email = _normalize_email(req.email)
-    user = db.query(User).filter(User.email == email, User.is_active.is_(True)).one_or_none()
+    user = db.query(User).filter(User.email == email).one_or_none()
     if user is None or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Your account is pending admin approval")
 
     expires_at = _utcnow() + dt.timedelta(hours=settings.auth_session_hours)
     raw_token = generate_session_token()

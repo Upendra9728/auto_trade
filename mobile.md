@@ -63,6 +63,8 @@ It also lets admins:
   - per-user status list; tap any row to open a detail modal (status, order ID, full error, IST timestamps, IPv6)
 - mobile/app/(admin)/users.tsx
   - has an "Export" button that downloads the (filtered) users list as an .xlsx file
+- mobile/app/(admin)/approvals.tsx
+  - lists pending (`is_active=false`) sign-ups; admin can Approve (activates + assigns IPv6) or Reject (deletes)
 - mobile/app/(admin)/user/[id].tsx
 
 ## How data flows
@@ -75,6 +77,7 @@ It also lets admins:
 - Login saves the access token and user profile in secure storage.
 - The app rehydrates auth on app launch.
 - If the token is invalid or expired, the app clears stored auth.
+- New registrations are pending until an admin approves them (see Approvals screen); login returns 403 "pending admin approval" until then.
 
 ## API base URL
 The app uses:

@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_current_admin, get_db
+from ..ipv6_pool import assign_next_ipv6
 from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
 from ..notifications import send_signal_notifications
 from ..pagination import paginate_meta, parse_ist_date_range
@@ -133,6 +134,7 @@ def list_users(
     search: str | None = Query(default=None, description="Match against name or email"),
     date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
     date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    is_active: bool | None = Query(default=None, description="Filter by active/pending-approval status"),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> PaginatedUsersResponse:
@@ -145,6 +147,8 @@ def list_users(
         query = query.filter(User.created_at >= start_utc)
     if end_utc is not None:
         query = query.filter(User.created_at < end_utc)
+    if is_active is not None:
+        query = query.filter(User.is_active.is_(is_active))
 
     total = query.count()
     users = (
@@ -235,6 +239,25 @@ def update_user(
     if req.is_active is not None:
         user.is_active = req.is_active
 
+    user.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return _to_admin_user(user, db)
+
+
+@router.post("/users/{user_id}/approve", response_model=AdminUserResponse)
+def approve_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> AdminUserResponse:
+    """Activates a pending self-registered user and assigns an IPv6 if it doesn't have one yet."""
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = True
+    if not user.assigned_ipv6:
+        user.assigned_ipv6 = assign_next_ipv6(db)
     user.updated_at = dt.datetime.utcnow()
     db.commit()
     db.refresh(user)

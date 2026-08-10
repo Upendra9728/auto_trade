@@ -46,6 +46,8 @@ The key business flow is:
 ## Key behaviors
 ### Authentication
 - Registration and login are handled by the auth router.
+- New sign-ups start `is_active=False` with no IPv6 assigned (`POST /api/admin/users/{user_id}/approve` activates them and assigns an IPv6). This prevents anyone who obtains the APK from self-registering and using the app before an admin reviews them.
+- Login checks the password first, then rejects inactive/pending accounts with 403 "Your account is pending admin approval".
 - Login creates a session token stored in the DB.
 - The mobile client sends the token in the Authorization header.
 
@@ -113,6 +115,11 @@ From backend/:
 - `GET /api/admin/orders/export` — all `SignalNotification` rows across all signals (respects `date_from`/`date_to`, filtered on notification `created_at`) as `.xlsx`, one row per user/signal with quantity, status, live exchange status, traded qty/price, etc.
 - Both return a `StreamingResponse` built by `backend/app/xlsx_export.py` (`openpyxl`), with `Content-Disposition: attachment`.
 - Route ordering note: `/users/export` must be declared before `/users/{user_id}` or FastAPI/Starlette will try to match it as a user_id path param first.
+
+### Admin approval (pending registrations)
+- `GET /api/admin/users?is_active=false` — lists users awaiting approval.
+- `POST /api/admin/users/{user_id}/approve` — sets `is_active=True` and assigns an IPv6 (via `assign_next_ipv6`) if the user doesn't already have one.
+- Rejecting a pending user reuses the existing `DELETE /api/admin/users/{user_id}`.
 
 ## Notes for future LLMs
 - Do not assume this is an Upstox/GTT project; the current implementation is centered on Dhan super-order placement.

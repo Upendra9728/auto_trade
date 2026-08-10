@@ -35,7 +35,7 @@ export default function RegisterScreen() {
       });
       Alert.alert(
         'Account created!',
-        'You can now sign in with your credentials.',
+        'An admin needs to approve your account before you can sign in.',
         [{ text: 'Sign In', onPress: () => router.replace('/(auth)/login') }],
       );
     } catch (err: any) {
@@ -93,7 +93,7 @@ export default function RegisterScreen() {
 
           <View style={styles.note}>
             <Text style={styles.noteText}>
-              📍 An IPv6 address will be automatically assigned to your account for order placement.
+              � New accounts require admin approval before you can sign in.
             </Text>
           </View>
 
