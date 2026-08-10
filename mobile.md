@@ -20,6 +20,16 @@ It also lets admins:
 - Expo Notifications for push notifications
 - React Native Paper for UI components
 
+## Dependency policy
+- New Expo packages (e.g. `expo-file-system`, `expo-sharing`) may be added when needed,
+  e.g. for downloading/saving/sharing exported files (admin excel reports).
+
+## File downloads (admin excel exports)
+- `mobile/services/api.ts` has a `downloadAndShareFile(path, filename)` helper that uses
+  `File.downloadFileAsync` (expo-file-system's new `File`/`Paths` API, with an `Authorization`
+  header) to download to `Paths.cache`, then opens the native share sheet via `expo-sharing`.
+- `adminApi.exportUsers(...)` and `adminApi.exportOrders(...)` use this helper.
+
 ## Important architecture
 - App entry / routing: mobile/app/
 - Authentication provider: mobile/contexts/AuthContext.tsx
@@ -47,10 +57,12 @@ It also lets admins:
 ### Admin screens
 - mobile/app/(admin)/index.tsx
 - mobile/app/(admin)/signals.tsx
+  - has an "Export Report" button next to the date filter that downloads all orders (across signals) in that date range as an .xlsx file
 - mobile/app/(admin)/signal-create.tsx
 - mobile/app/(admin)/signal/[id].tsx
   - per-user status list; tap any row to open a detail modal (status, order ID, full error, IST timestamps, IPv6)
 - mobile/app/(admin)/users.tsx
+  - has an "Export" button that downloads the (filtered) users list as an .xlsx file
 - mobile/app/(admin)/user/[id].tsx
 
 ## How data flows
@@ -106,4 +118,4 @@ aws command: aws s3 cp ".\app\build\outputs\apk\release\app-release.apk" "s3://a
 
 
 cd mobile\scripts
-.\release-apk.ps1 -Version 1.0.3
+.\release-apk.ps1 -Version 1.0.5

@@ -1,4 +1,6 @@
 import Constants from 'expo-constants';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { getToken } from './auth';
 import type {
   AuthResponse,
@@ -71,6 +73,29 @@ function buildQuery(params: Record<string, string | number | undefined | null>):
   }
   const s = q.toString();
   return s ? `?${s}` : '';
+}
+
+const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Downloads a file from an authenticated backend endpoint and opens the native share sheet for it. */
+async function downloadAndShareFile(path: string, filename: string): Promise<void> {
+  const token = await getToken();
+  const destination = new File(Paths.cache, filename);
+  if (destination.exists) destination.delete();
+
+  let file: File;
+  try {
+    file = await File.downloadFileAsync(`${BASE_URL}${path}`, destination, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+  } catch (err: any) {
+    throw new Error(`Download failed: ${err?.message ?? String(err)}`);
+  }
+
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error('Sharing is not available on this device');
+  }
+  await Sharing.shareAsync(file.uri, { mimeType: XLSX_MIME_TYPE, dialogTitle: filename });
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -161,6 +186,20 @@ export const adminApi = {
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),
+  exportUsers: (params: { search?: string } & DateRangeFilter = {}) =>
+    downloadAndShareFile(
+      `/api/admin/users/export${buildQuery({
+        search: params.search,
+        date_from: params.date_from,
+        date_to: params.date_to,
+      })}`,
+      `users_${Date.now()}.xlsx`,
+    ),
+  exportOrders: (params: DateRangeFilter = {}) =>
+    downloadAndShareFile(
+      `/api/admin/orders/export${buildQuery({ date_from: params.date_from, date_to: params.date_to })}`,
+      `orders_${Date.now()}.xlsx`,
+    ),
   scripSearch: (params: { symbol: string; strike: number; option_type: string; expiry: string; exchange?: string }) => {
     const q = new URLSearchParams({
       symbol: params.symbol,

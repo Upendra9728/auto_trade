@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  TextInput, RefreshControl, ActivityIndicator,
+  TextInput, RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,6 +23,7 @@ export default function AdminUsersScreen() {
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (targetPage: number, q: string, from: string | null, to: string | null) => {
@@ -51,6 +52,16 @@ export default function AdminUsersScreen() {
     setPage(1);
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await adminApi.exportUsers({ search: search || undefined, date_from: dateFrom, date_to: dateTo });
+    } catch (err: any) {
+      Alert.alert('Export failed', err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const renderItem = ({ item: u }: { item: AdminUser }) => (
     <TouchableOpacity
@@ -100,6 +111,14 @@ export default function AdminUsersScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.headerBar}>
         <Text style={styles.pageTitle}>Users ({meta?.total ?? users.length})</Text>
+        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} disabled={exporting}>
+          {exporting ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Feather name="download" size={14} color={Colors.primary} />
+          )}
+          <Text style={styles.exportText}>Export</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchBar}>
@@ -152,10 +171,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   headerBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
     backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   pageTitle: { ...Typography.h3 },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radius.sm,
+    backgroundColor: Colors.primaryBg,
+  },
+  exportText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   searchBar: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: Colors.surface, margin: Spacing.md,

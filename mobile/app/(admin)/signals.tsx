@@ -23,6 +23,7 @@ export default function AdminSignalsScreen() {
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (targetPage: number, from: string | null, to: string | null) => {
     try {
@@ -42,6 +43,17 @@ export default function AdminSignalsScreen() {
   };
 
   const handleRefresh = () => { setRefreshing(true); load(page, dateFrom, dateTo); };
+
+  const handleExportOrders = async () => {
+    setExporting(true);
+    try {
+      await adminApi.exportOrders({ date_from: dateFrom, date_to: dateTo });
+    } catch (err: any) {
+      Alert.alert('Export failed', err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleCancel = (s: Signal) => {
     Alert.alert('Cancel Signal', `Cancel "${s.title}"? All pending notifications will be rejected.`, [
@@ -118,6 +130,14 @@ export default function AdminSignalsScreen() {
 
       <View style={styles.filterBar}>
         <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
+        <TouchableOpacity style={styles.exportBtn} onPress={handleExportOrders} disabled={exporting}>
+          {exporting ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Feather name="download" size={14} color={Colors.primary} />
+          )}
+          <Text style={styles.exportText}>Export Report</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -161,7 +181,14 @@ const styles = StyleSheet.create({
   filterBar: {
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm,
   },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radius.sm,
+    backgroundColor: Colors.primaryBg,
+  },
+  exportText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   list: { padding: Spacing.md, gap: Spacing.md },
   card: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: 8 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

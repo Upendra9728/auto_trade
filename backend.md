@@ -108,6 +108,12 @@ From backend/:
 - Admin: /api/admin/*
 - Health: /health
 
+### Admin excel exports
+- `GET /api/admin/users/export` — all users (respects `search`/`date_from`/`date_to`) as `.xlsx`.
+- `GET /api/admin/orders/export` — all `SignalNotification` rows across all signals (respects `date_from`/`date_to`, filtered on notification `created_at`) as `.xlsx`, one row per user/signal with quantity, status, live exchange status, traded qty/price, etc.
+- Both return a `StreamingResponse` built by `backend/app/xlsx_export.py` (`openpyxl`), with `Content-Disposition: attachment`.
+- Route ordering note: `/users/export` must be declared before `/users/{user_id}` or FastAPI/Starlette will try to match it as a user_id path param first.
+
 ## Notes for future LLMs
 - Do not assume this is an Upstox/GTT project; the current implementation is centered on Dhan super-order placement.
 - The most important files for order behavior are:

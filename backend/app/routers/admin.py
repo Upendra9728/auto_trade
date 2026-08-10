@@ -22,6 +22,7 @@ from ..schemas import (
     SignalCreateRequest,
     SignalResponse,
 )
+from ..xlsx_export import build_xlsx_response, to_ist_str
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -156,6 +157,43 @@ def list_users(
         items=[_to_admin_user(u, db) for u in users],
         meta=paginate_meta(page=page, page_size=page_size, total=total),
     )
+
+
+@router.get("/users/export")
+def export_users(
+    search: str | None = Query(default=None, description="Match against name or email"),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Downloads all users (matching the given filters) as an .xlsx file."""
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = db.query(User)
+    if search:
+        like = f"%{search.strip()}%"
+        query = query.filter(or_(User.name.ilike(like), User.email.ilike(like)))
+    if start_utc is not None:
+        query = query.filter(User.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(User.created_at < end_utc)
+    users = query.order_by(User.created_at.desc()).all()
+
+    headers = [
+        "ID", "Name", "Email", "Phone Number", "Role", "Assigned IPv6",
+        "Active", "Has Dhan Credential", "Created At (IST)", "Updated At (IST)",
+    ]
+    rows = []
+    for u in users:
+        has_cred = db.query(DhanCredential).filter(DhanCredential.user_id == u.id).count() > 0
+        rows.append([
+            u.id, u.name, u.email, u.phone_number, u.role, u.assigned_ipv6 or "",
+            "Yes" if u.is_active else "No", "Yes" if has_cred else "No",
+            to_ist_str(u.created_at), to_ist_str(u.updated_at),
+        ])
+
+    filename = f"users_{dt.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return build_xlsx_response(filename=filename, sheet_title="Users", headers=headers, rows=rows)
 
 
 @router.get("/users/{user_id}", response_model=AdminUserResponse)
@@ -392,6 +430,53 @@ def cancel_signal(
 
     db.commit()
     return {"status": "cancelled", "signal_id": str(signal_id)}
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+@router.get("/orders/export")
+def export_orders(
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Downloads all per-user order notifications (across all signals) in the given date range as an .xlsx file."""
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user), joinedload(SignalNotification.signal))
+    )
+    if start_utc is not None:
+        query = query.filter(SignalNotification.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(SignalNotification.created_at < end_utc)
+    notifications = query.order_by(SignalNotification.created_at.desc()).all()
+
+    headers = [
+        "Notification ID", "Signal ID", "Signal Title", "Security ID", "Exchange Segment",
+        "Transaction Type", "Product Type", "Order Type", "Quantity", "Price",
+        "Target Price", "Stop Loss", "User Name", "User Email", "Status",
+        "Dhan Order ID", "Live Status", "Exchange Order No", "Traded Qty", "Traded Price",
+        "Error Message", "Reason Description", "Confirmed At (IST)", "Placed At (IST)", "Created At (IST)",
+    ]
+    rows = []
+    for n in notifications:
+        s = n.signal
+        rows.append([
+            n.id, s.id, s.title, s.security_id, s.exchange_segment,
+            s.transaction_type, s.product_type, s.order_type, s.quantity, s.price,
+            s.target_price, s.stop_loss_price, n.user.name, n.user.email, n.status,
+            n.dhan_order_id or "", n.live_status or "", n.exchange_order_no or "",
+            n.traded_qty if n.traded_qty is not None else "", n.traded_price if n.traded_price is not None else "",
+            n.error_message or "", n.reason_description or "",
+            to_ist_str(n.confirmed_at), to_ist_str(n.placed_at), to_ist_str(n.created_at),
+        ])
+
+    filename = f"orders_{dt.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return build_xlsx_response(filename=filename, sheet_title="Orders", headers=headers, rows=rows)
 
 
 # ---------------------------------------------------------------------------
