@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..deps import get_current_admin, get_db
 from ..ipv6_pool import assign_next_ipv6
 from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
-from ..notifications import send_signal_notifications
+from ..notifications import send_signal_cancelled_notifications, send_signal_notifications
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
 from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_fn
@@ -456,6 +456,19 @@ def cancel_signal(
     if signal.status == "cancelled":
         return {"status": "already_cancelled"}
 
+    # Grab tokens of users about to lose their pending notification, before the bulk update
+    affected_tokens = [
+        token
+        for (token,) in db.query(User.fcm_token)
+        .join(SignalNotification, SignalNotification.user_id == User.id)
+        .filter(
+            SignalNotification.signal_id == signal_id,
+            SignalNotification.status == "pending",
+            User.fcm_token.isnot(None),
+        )
+        .all()
+    ]
+
     signal.status = "cancelled"
     # Mark all pending notifications as rejected
     db.query(SignalNotification).filter(
@@ -464,6 +477,18 @@ def cancel_signal(
     ).update({"status": "rejected"}, synchronize_session=False)
 
     db.commit()
+
+    if affected_tokens:
+        result = send_signal_cancelled_notifications(
+            signal_id=signal_id,
+            signal_title=signal.title,
+            fcm_tokens=affected_tokens,
+        )
+        logger.info(
+            "Signal %s cancelled: notified %d users, FCM sent=%d failed=%d",
+            signal_id, len(affected_tokens), result["sent"], result["failed"],
+        )
+
     return {"status": "cancelled", "signal_id": str(signal_id)}
 
 

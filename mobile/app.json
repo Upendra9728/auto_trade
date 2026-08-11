@@ -1,10 +1,16 @@
 {
   "expo": {
-    "name": "Automate Trading",
+    "name": "TradingFloor",
     "slug": "automate-trading",
-    "version": "1.0.9",
+    "version": "1.2.0",
     "orientation": "portrait",
+    "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#141D2C"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -15,7 +21,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1E40AF"
+        "foregroundImage": "./assets/logo.jpeg",
+        "backgroundColor": "#141D2C"
       },
       "package": "com.automatetrading.app",
       "permissions": [

@@ -131,3 +131,33 @@ def send_signal_notifications(
             failed += 1
 
     return {"sent": sent, "failed": failed, "total": len(fcm_tokens)}
+
+
+def send_signal_cancelled_notifications(
+    *,
+    signal_id: int,
+    signal_title: str,
+    fcm_tokens: list[str],
+) -> dict[str, Any]:
+    """
+    Notify users whose pending signal was cancelled by the admin before they acted on it.
+    """
+    sent = 0
+    failed = 0
+
+    for token in fcm_tokens:
+        ok = send_push_notification(
+            fcm_token=token,
+            title="Signal Cancelled",
+            body=f'"{signal_title}" was cancelled by admin.',
+            data={
+                "signal_id": str(signal_id),
+                "type": "SIGNAL_CANCELLED",
+            },
+        )
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    return {"sent": sent, "failed": failed, "total": len(fcm_tokens)}

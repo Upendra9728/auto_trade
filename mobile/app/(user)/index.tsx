@@ -130,6 +130,7 @@ export default function NotificationsScreen() {
     const isBusy = actionId === n.id;
     const isPending = n.status === 'pending';
     const isBuy = n.signal.transaction_type === 'BUY';
+    const isAdminCancelled = n.status === 'rejected' && n.signal.status === 'cancelled';
 
     return (
       <View style={styles.card}>
@@ -140,7 +141,7 @@ export default function NotificationsScreen() {
               {n.signal.transaction_type}
             </Text>
           </View>
-          <StatusBadge status={n.status} size="sm" />
+          <StatusBadge status={isAdminCancelled ? 'cancelled' : n.status} size="sm" />
         </View>
 
         {/* Title */}
@@ -166,6 +167,11 @@ export default function NotificationsScreen() {
         {n.status === 'failed' && (
           <View style={styles.resultRow}>
             <Text style={styles.resultError}>❌ {n.error_message}</Text>
+          </View>
+        )}
+        {isAdminCancelled && (
+          <View style={styles.resultRow}>
+            <Text style={styles.resultMuted}>⚠️ Cancelled by admin before you acted on it</Text>
           </View>
         )}
 
@@ -369,6 +375,7 @@ const styles = StyleSheet.create({
   resultRow: { backgroundColor: Colors.background, borderRadius: Radius.sm, padding: Spacing.sm },
   resultSuccess: { fontSize: 13, color: Colors.success, fontWeight: '600' },
   resultError: { fontSize: 13, color: Colors.error, fontWeight: '600' },
+  resultMuted: { fontSize: 13, color: Colors.textMuted, fontWeight: '600' },
   actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: 4 },
   actionBtn: { flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
   rejectBtn: { backgroundColor: Colors.background, borderWidth: 1.5, borderColor: Colors.border },

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
-  ScrollView, Alert,
+  ScrollView, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -53,10 +53,8 @@ export default function LoginScreen() {
       >
         {/* Logo area */}
         <View style={styles.header}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>AT</Text>
-          </View>
-          <Text style={styles.appName}>Automate Trading</Text>
+          <Image source={require('../../assets/logo.jpeg')} style={styles.logo} />
+          <Text style={styles.appName}>TradingFloor</Text>
           <Text style={styles.tagline}>Smart signals. Instant orders.</Text>
           <Text style={styles.debugUrl}>{API_BASE_URL}</Text>
         </View>
@@ -124,13 +122,10 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.lg, paddingBottom: Spacing.xl },
 
   header: { alignItems: 'center', marginBottom: Spacing.xl },
-  logoCircle: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
+  logo: {
+    width: 84, height: 84, borderRadius: 20,
     marginBottom: Spacing.md,
   },
-  logoText: { color: '#fff', fontSize: 28, fontWeight: '800' },
   appName: { ...Typography.h2, color: Colors.primary, marginBottom: 4 },
   tagline: { ...Typography.bodySmall },
   debugUrl: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2, fontSize: 11 },
