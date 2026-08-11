@@ -14,7 +14,9 @@ const ORDER_TYPES = ['LIMIT', 'MARKET'];
 
 export default function SignalCreateScreen() {
   const [entryMode, setEntryMode] = useState<'form' | 'paste'>('form');
-  const [rawSignal, setRawSignal] = useState('');
+  const [rawSignal, setRawSignal] = useState(
+    'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300',
+  );
   const [lotSize, setLotSize] = useState<number | null>(null);
   const [form, setForm] = useState({
     title: '',
@@ -59,7 +61,7 @@ export default function SignalCreateScreen() {
     const parsedStop = pickValue('STOPLOSS') || pickValue('STOP_LOSS');
     const parsedTarget = pickValue('TARGETS') || pickValue('TARGET');
     const parsedQty = pickValue('QTY') || pickValue('QUANTITY');
-    const parsedExpiry = pickValue('EXPIRY');
+    const parsedExpiry = pickValue('EXPIRY'); // optional override — expiry is normally auto-fetched
 
     const parsedSegment = first.includes('SENSEX') || first.includes('BANKEX') ? 'BSE_FNO' : 'NSE_FNO';
     const parsedDirection = second.endsWith('PE') || second.endsWith('CE') ? 'BUY' : form.transaction_type;
@@ -69,7 +71,7 @@ export default function SignalCreateScreen() {
     const parsedStrike = optionMatch ? optionMatch[1] : '';
     const parsedOptionType = optionMatch ? optionMatch[2] : '';
 
-    // Pre-fill what we already know — security_id starts as symbol so the field isn't blank
+    // Pre-fill what we already know — security_id starts blank until scrip lookup resolves it
     setForm((prev) => ({
       ...prev,
       title: parsedExpiry ? `${first} ${second} ${parsedExpiry}` : `${first} ${second}`,
@@ -85,15 +87,15 @@ export default function SignalCreateScreen() {
 
     setEntryMode('form');
 
-    // Auto-lookup numeric security ID if we have all required fields
-    if (parsedStrike && parsedOptionType && parsedExpiry) {
+    // Auto-lookup numeric security ID (and expiry, if not explicitly given) once we have strike + option type
+    if (parsedStrike && parsedOptionType) {
       setLookingUp(true);
       try {
         const results = await adminApi.scripSearch({
           symbol: first,
           strike: parseFloat(parsedStrike),
           option_type: parsedOptionType,
-          expiry: parsedExpiry,
+          ...(parsedExpiry ? { expiry: parsedExpiry } : {}),
           exchange: parsedSegment === 'BSE_FNO' ? 'BSE' : 'NSE',
         });
         if (results.length > 0) {
@@ -101,6 +103,7 @@ export default function SignalCreateScreen() {
           setLotSize(match.lot_size);
           setForm((prev) => ({
             ...prev,
+            title: `${first} ${second} ${match.expiry_date}`,
             security_id: match.security_id,
             exchange_segment: match.exchange_segment,
             // Auto-fill quantity from lot_size if not already set by admin
@@ -108,10 +111,10 @@ export default function SignalCreateScreen() {
           }));
           Alert.alert(
             '✅ Security ID Found',
-            `${match.trading_symbol}\nSecurity ID: ${match.security_id}\nLot size: ${match.lot_size}`,
+            `${match.trading_symbol}\nSecurity ID: ${match.security_id}\nExpiry: ${match.expiry_date}\nLot size: ${match.lot_size}`,
           );
         } else {
-          Alert.alert('⚠️ Security ID Not Found', `Could not find ${first} ${second} expiry ${parsedExpiry} in scrip master. Enter the security ID manually.`);
+          Alert.alert('⚠️ Security ID Not Found', `Could not find ${first} ${second}${parsedExpiry ? ` expiry ${parsedExpiry}` : ''} in scrip master. Enter the security ID manually.`);
         }
       } catch (e: any) {
         Alert.alert('⚠️ Scrip Lookup Failed', `${e.message}\nEnter the security ID manually.`);
@@ -119,7 +122,7 @@ export default function SignalCreateScreen() {
         setLookingUp(false);
       }
     } else {
-      Alert.alert('Parsed', 'Form prefilled. Enter the security ID manually (scrip lookup needs strike, option type, and expiry).');
+      Alert.alert('Parsed', 'Form prefilled. Enter the security ID manually (scrip lookup needs strike and option type).');
     }
   };
 
@@ -200,7 +203,7 @@ export default function SignalCreateScreen() {
                 style={styles.pasteInput}
                 value={rawSignal}
                 onChangeText={setRawSignal}
-                placeholder={'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300\nEXPIRY: 2026-07-21\nDhann BO'}
+                placeholder={'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300'}
                 placeholderTextColor={Colors.textMuted}
                 multiline
                 textAlignVertical="top"

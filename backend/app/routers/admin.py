@@ -14,6 +14,7 @@ from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotificatio
 from ..notifications import send_signal_notifications
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
+from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_fn
 from ..schemas import (
     AdminSignalDetailResponse,
     AdminUpdateUserRequest,
@@ -34,7 +35,7 @@ def scrip_search(
     symbol: str,
     strike: float,
     option_type: str,
-    expiry: str,
+    expiry: str | None = None,
     exchange: str | None = None,
     _: User = Depends(get_current_admin),
 ) -> list[dict]:
@@ -43,20 +44,31 @@ def scrip_search(
     symbol:      index name, e.g. NIFTY, SENSEX, BANKNIFTY
     strike:      strike price as a number, e.g. 23800
     option_type: PE or CE
-    expiry:      YYYY-MM-DD
+    expiry:      optional YYYY-MM-DD; if omitted, the nearest upcoming expiry is auto-selected
     exchange:    optional NSE or BSE filter
     """
-    results = scrip_search_fn(
-        symbol=symbol,
-        strike=strike,
-        option_type=option_type,
-        expiry_date=expiry,
-        exchange=exchange,
-    )
+    if expiry:
+        results = scrip_search_fn(
+            symbol=symbol,
+            strike=strike,
+            option_type=option_type,
+            expiry_date=expiry,
+            exchange=exchange,
+        )
+        expiry_desc = f"expiry {expiry}"
+    else:
+        results = scrip_search_nearest_expiry_fn(
+            symbol=symbol,
+            strike=strike,
+            option_type=option_type,
+            exchange=exchange,
+        )
+        expiry_desc = "nearest upcoming expiry"
+
     if not results:
         raise HTTPException(
             status_code=404,
-            detail=f"No instrument found: {symbol} {strike}{option_type} expiry {expiry}. "
+            detail=f"No instrument found: {symbol} {strike}{option_type} ({expiry_desc}). "
                    "Check symbol spelling, strike price, expiry date, and that the scrip master CSV is deployed.",
         )
     return results

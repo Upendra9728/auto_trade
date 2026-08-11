@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 # In-memory index: (SYMBOL, strike_float, OPTION_TYPE, YYYY-MM-DD) → list[ScripMatch]
 _INDEX: dict[tuple[str, float, str, str], list["ScripMatch"]] = {}
+# Secondary index without expiry: (SYMBOL, strike_float, OPTION_TYPE) → list[ScripMatch]
+# Used to auto-fetch the nearest upcoming expiry when none is supplied.
+_BY_CONTRACT: dict[tuple[str, float, str], list["ScripMatch"]] = {}
 _LOADED = False
 
 
@@ -95,6 +98,7 @@ def _load() -> None:
 
             key = (symbol, strike, opt_type, expiry)
             _INDEX.setdefault(key, []).append(entry)
+            _BY_CONTRACT.setdefault((symbol, strike, opt_type), []).append(entry)
             count += 1
 
     logger.info("Scrip master loaded: %d option contracts indexed from %s", count, csv_path)
@@ -103,8 +107,9 @@ def _load() -> None:
 
 def reload() -> None:
     """Clear the in-memory index and rebuild it from the CSV on disk."""
-    global _LOADED, _INDEX
+    global _LOADED, _INDEX, _BY_CONTRACT
     _INDEX = {}
+    _BY_CONTRACT = {}
     _LOADED = False
     _load()
 
@@ -219,3 +224,34 @@ def search(
         matches = [m for m in matches if m["exchange"] == exc_filter]
 
     return matches
+
+
+def search_nearest_expiry(
+    *,
+    symbol: str,
+    strike: float,
+    option_type: str,
+    exchange: str | None = None,
+) -> list[ScripMatch]:
+    """
+    Same as search(), but auto-picks the nearest upcoming expiry instead of
+    requiring the caller to supply one.
+
+    Returns matches for the closest expiry_date >= today, or [] if none found.
+    """
+    _load()
+
+    key = (symbol.upper().strip(), round(float(strike), 2), option_type.upper().strip())
+    candidates = list(_BY_CONTRACT.get(key, []))
+
+    if exchange:
+        exc_filter = "BSE" if exchange.upper() in ("BSE", "BSE_FNO") else "NSE"
+        candidates = [m for m in candidates if m["exchange"] == exc_filter]
+
+    today = dt.date.today().isoformat()
+    upcoming = sorted((m for m in candidates if m["expiry_date"] >= today), key=lambda m: m["expiry_date"])
+    if not upcoming:
+        return []
+
+    nearest_date = upcoming[0]["expiry_date"]
+    return [m for m in upcoming if m["expiry_date"] == nearest_date]

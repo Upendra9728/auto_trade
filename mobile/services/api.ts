@@ -202,12 +202,12 @@ export const adminApi = {
       `/api/admin/orders/export${buildQuery({ date_from: params.date_from, date_to: params.date_to })}`,
       `orders_${Date.now()}.xlsx`,
     ),
-  scripSearch: (params: { symbol: string; strike: number; option_type: string; expiry: string; exchange?: string }) => {
+  scripSearch: (params: { symbol: string; strike: number; option_type: string; expiry?: string; exchange?: string }) => {
     const q = new URLSearchParams({
       symbol: params.symbol,
       strike: String(params.strike),
       option_type: params.option_type,
-      expiry: params.expiry,
+      ...(params.expiry ? { expiry: params.expiry } : {}),
       ...(params.exchange ? { exchange: params.exchange } : {}),
     });
     return get<Array<{
