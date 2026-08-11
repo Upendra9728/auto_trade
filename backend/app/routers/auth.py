@@ -95,6 +95,8 @@ def login_user(req: UserLoginRequest, db: Session = Depends(get_db)) -> UserAuth
         raise HTTPException(status_code=403, detail="Your account is pending admin approval")
 
     expires_at = _utcnow() + dt.timedelta(hours=settings.auth_session_hours)
+    if user.role != "admin":
+        db.query(UserSession).filter(UserSession.user_id == user.id).delete(synchronize_session=False)
     raw_token = generate_session_token()
     session = UserSession(
         user_id=user.id,

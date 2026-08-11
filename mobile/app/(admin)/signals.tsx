@@ -92,7 +92,7 @@ export default function AdminSignalsScreen() {
         {s.total_notified !== undefined && (
           <View style={styles.progress}>
             <ProgressPill label="Notified" value={s.total_notified} color={Colors.primary} />
-            <ProgressPill label="Placed" value={s.placed ?? 0} color={Colors.success} />
+            <ProgressPill label="Submitted" value={s.placed ?? 0} color={Colors.success} />
             <ProgressPill label="Pending" value={(s.total_notified ?? 0) - (s.placed ?? 0) - (s.rejected ?? 0) - (s.failed ?? 0) - (s.confirmed ?? 0)} color={Colors.warning} />
             <ProgressPill label="Failed" value={s.failed ?? 0} color={Colors.error} />
           </View>

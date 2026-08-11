@@ -98,7 +98,12 @@ export default function NotificationsScreen() {
       );
       setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
       if (updated.status === 'placed') {
-        Alert.alert('✅ Order Placed', `Qty: ${finalQty} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}`);
+        Alert.alert(
+          '✅ Order submitted to Dhan',
+          updated.live_status
+            ? `Live status: ${updated.live_status} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}`
+            : `Qty: ${finalQty} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}\nWaiting for live exchange confirmation.`,
+        );
       } else {
         Alert.alert('❌ Order Failed', updated.error_message ?? 'Unknown error');
       }
@@ -153,7 +158,9 @@ export default function NotificationsScreen() {
         {/* Result info */}
         {n.status === 'placed' && (
           <View style={styles.resultRow}>
-            <Text style={styles.resultSuccess}>✅ Placed · Order ID: {n.dhan_order_id}</Text>
+            <Text style={styles.resultSuccess}>
+              {n.live_status ? `✅ ${n.live_status} · Order ID: ${n.dhan_order_id ?? 'N/A'}` : `✅ Order submitted · Order ID: ${n.dhan_order_id ?? 'N/A'}`}
+            </Text>
           </View>
         )}
         {n.status === 'failed' && (

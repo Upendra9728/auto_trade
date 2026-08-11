@@ -68,14 +68,14 @@ export default function AdminDashboard() {
         <Text style={styles.sectionTitle}>Orders</Text>
         <View style={styles.grid}>
           <StatCard label="Pending" value={stats?.orders.pending ?? 0} color={Colors.warning} />
-          <StatCard label="Really Placed" value={stats?.orders.placed ?? 0} color={Colors.success} />
-          <StatCard label="Awaiting Confirm" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
+          <StatCard label="Live Confirmed" value={stats?.orders.placed ?? 0} color={Colors.success} />
+          <StatCard label="Awaiting Live" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
           <StatCard label="Exchange Rejected" value={stats?.orders.exchange_rejected ?? 0} color={Colors.error} />
           <StatCard label="Failed" value={stats?.orders.failed ?? 0} color={Colors.error} />
         </View>
         <Text style={styles.helperText}>
-          "Really Placed" counts only orders confirmed live by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
-          not just requests that were accepted by the API.
+          "Live Confirmed" counts only orders confirmed by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
+          not just requests accepted by the API.
         </Text>
 
         {/* Readiness warning */}

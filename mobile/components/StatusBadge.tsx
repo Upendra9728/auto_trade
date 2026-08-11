@@ -5,13 +5,13 @@ import { Colors, Radius } from '../constants/theme';
 type StatusType = 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'active' | 'cancelled';
 
 const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> = {
-  pending:   { label: 'Pending',   bg: Colors.warningBg,  color: Colors.warning },
-  confirmed: { label: 'Confirmed', bg: Colors.infoBg,     color: Colors.info },
-  placed:    { label: 'Placed',    bg: Colors.successBg,  color: Colors.success },
-  failed:    { label: 'Failed',    bg: Colors.errorBg,    color: Colors.error },
-  rejected:  { label: 'Rejected',  bg: '#F3F4F6',         color: '#6B7280' },
-  active:    { label: 'Active',    bg: Colors.primaryBg,  color: Colors.primary },
-  cancelled: { label: 'Cancelled', bg: '#F3F4F6',         color: '#6B7280' },
+  pending:   { label: 'Pending',    bg: Colors.warningBg,  color: Colors.warning },
+  confirmed: { label: 'Confirmed',  bg: Colors.infoBg,     color: Colors.info },
+  placed:    { label: 'Submitted',  bg: Colors.successBg,  color: Colors.success },
+  failed:    { label: 'Failed',     bg: Colors.errorBg,    color: Colors.error },
+  rejected:  { label: 'Rejected',   bg: '#F3F4F6',         color: '#6B7280' },
+  active:    { label: 'Active',     bg: Colors.primaryBg,  color: Colors.primary },
+  cancelled: { label: 'Cancelled',  bg: '#F3F4F6',         color: '#6B7280' },
 };
 
 interface Props {

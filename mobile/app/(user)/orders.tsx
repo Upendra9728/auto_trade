@@ -61,7 +61,13 @@ export default function OrdersScreen() {
               {o.signal.transaction_type}
             </Text>
           </View>
-          <StatusBadge status={o.status} size="sm" />
+          {o.live_status ? (
+            <LiveStatusBadge liveStatus={o.live_status} size="sm" />
+          ) : o.status === 'failed' ? (
+            <StatusBadge status="failed" size="sm" />
+          ) : (
+            <StatusBadge status="confirmed" size="sm" />
+          )}
         </View>
 
         <Text style={styles.title}>{o.signal.title}</Text>
@@ -75,16 +81,20 @@ export default function OrdersScreen() {
           <Text style={[styles.price, { color: Colors.success }]}>Target ₹{o.signal.target_price}</Text>
         </View>
 
-        {o.status === 'placed' && (
-          <View style={styles.resultBox}>
-            <Text style={styles.successText}>✅ Order ID: {o.dhan_order_id}</Text>
-            {o.placed_at && <Text style={styles.timeText}>Placed at {formatDateTimeIST(o.placed_at)}</Text>}
+        {(o.status === 'placed' || !!o.live_status) && (
+          <View style={[styles.resultBox, o.live_status === 'REJECTED' || o.status === 'failed' ? { backgroundColor: Colors.errorBg } : null]}>
+            {o.dhan_order_id && <Text style={styles.successText}>✅ Order ID: {o.dhan_order_id}</Text>}
+            {o.placed_at && <Text style={styles.timeText}>Submitted at {formatDateTimeIST(o.placed_at)}</Text>}
             <View style={{ marginTop: 4 }}>
-              <LiveStatusBadge liveStatus={o.live_status} size="sm" />
+              <LiveStatusBadge liveStatus={o.live_status ?? 'PENDING'} size="sm" />
             </View>
             {o.live_status === 'TRADED' && o.traded_price != null && (
               <Text style={styles.timeText}>Traded @ ₹{o.traded_price} × {o.traded_qty ?? 0}</Text>
             )}
+            {o.live_status === 'REJECTED' && o.reason_description && (
+              <Text style={styles.timeText}>{o.reason_description}</Text>
+            )}
+            {!o.live_status && <Text style={styles.timeText}>Awaiting live Dhan confirmation</Text>}
           </View>
         )}
         {o.status === 'failed' && (

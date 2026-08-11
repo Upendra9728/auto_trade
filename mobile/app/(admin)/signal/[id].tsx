@@ -92,8 +92,11 @@ export default function SignalDetailScreen() {
         {n.assigned_ipv6 && <Text style={styles.ipText}>{n.assigned_ipv6}</Text>}
       </View>
       <View style={styles.rowRight}>
-        <StatusBadge status={n.status} size="sm" />
-        {n.status === 'placed' && <LiveStatusBadge liveStatus={n.live_status} size="sm" />}
+        {n.status === 'placed' ? (
+          n.live_status ? <LiveStatusBadge liveStatus={n.live_status} size="sm" /> : <Text style={styles.awaitingText}>Awaiting live status</Text>
+        ) : (
+          <StatusBadge status={n.status} size="sm" />
+        )}
         {n.dhan_order_id && <Text style={styles.orderId} numberOfLines={1}>{n.dhan_order_id}</Text>}
         {n.error_message && <Text style={styles.errorText} numberOfLines={1}>{n.error_message}</Text>}
         <Text style={styles.chevron}>›</Text>
@@ -147,11 +150,11 @@ export default function SignalDetailScreen() {
               <View style={styles.summaryRow}>
                 <View style={styles.summaryCell}>
                   <Text style={[styles.summaryCount, { color: Colors.success }]}>{signal.exchange_confirmed ?? 0}</Text>
-                  <Text style={styles.summaryLabel}>really placed</Text>
+                  <Text style={styles.summaryLabel}>live confirmed</Text>
                 </View>
                 <View style={styles.summaryCell}>
                   <Text style={[styles.summaryCount, { color: Colors.info }]}>{signal.awaiting_confirmation ?? 0}</Text>
-                  <Text style={styles.summaryLabel}>awaiting confirm</Text>
+                  <Text style={styles.summaryLabel}>awaiting live</Text>
                 </View>
                 <View style={styles.summaryCell}>
                   <Text style={[styles.summaryCount, { color: Colors.error }]}>{signal.exchange_rejected ?? 0}</Text>
@@ -193,11 +196,10 @@ export default function SignalDetailScreen() {
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
               {/* Status */}
               <View style={styles.modalStatusRow}>
-                <StatusBadge status={selectedNotif?.status ?? ''} />
-                {selectedNotif?.status === 'placed' && (
-                  <View style={{ marginTop: 6 }}>
-                    <LiveStatusBadge liveStatus={selectedNotif?.live_status} />
-                  </View>
+                {selectedNotif?.status === 'placed' ? (
+                  selectedNotif?.live_status ? <LiveStatusBadge liveStatus={selectedNotif.live_status} /> : <Text style={styles.awaitingText}>Awaiting live status</Text>
+                ) : (
+                  <StatusBadge status={selectedNotif?.status ?? ''} />
                 )}
               </View>
 
@@ -251,7 +253,7 @@ export default function SignalDetailScreen() {
               )}
               {selectedNotif?.placed_at && (
                 <View style={styles.modalRow}>
-                  <Text style={styles.modalLabel}>Placed</Text>
+                  <Text style={styles.modalLabel}>Submitted</Text>
                   <Text style={[styles.modalValue, { color: Colors.success }]}>{formatDateTimeIST(selectedNotif.placed_at)}</Text>
                 </View>
               )}
@@ -317,6 +319,7 @@ const styles = StyleSheet.create({
   summaryCell: { alignItems: 'center', gap: 2 },
   summaryCount: { fontSize: 22, fontWeight: '800', color: Colors.primary },
   summaryLabel: { fontSize: 10, color: Colors.textMuted, textTransform: 'capitalize' },
+  awaitingText: { fontSize: 11, color: Colors.textMuted, fontWeight: '600' },
   sectionLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5 },
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
