@@ -441,6 +441,7 @@ async def refresh_all_tokens(
             "refreshed": "success" if res.get("success") else "failure",
             "reason": res.get("reason"),
             "refreshed_at": res.get("refreshed_at"),
+            "ipv6": res.get("source_ipv6"),
         })
 
     return {"count": len(results), "results": results}

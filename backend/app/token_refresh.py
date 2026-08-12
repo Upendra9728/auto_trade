@@ -142,7 +142,7 @@ async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Sessio
         if not new_token:
             reason = f"no accessToken in response: {result}"
             logger.error("RenewToken for client %s: %s", cred.dhan_client_id, reason)
-            return {"success": False, "reason": reason, "refreshed_at": None}
+            return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
 
         expiry_str: str | None = result.get("expiryTime") or result.get("expiry_time")
         cred.access_token_encrypted = encrypt_token(new_token)
@@ -162,13 +162,14 @@ async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Sessio
     except DhanApiError as exc:
         reason = f"DhanApiError: {exc}"
         logger.error("RenewToken API error for client %s: %s", cred.dhan_client_id, exc)
-        return {"success": False, "reason": reason, "refreshed_at": None}
+        # Append the attempted ipv6 for easier debugging in admin responses
+        return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
     except Exception as exc:
         reason = str(exc)
         logger.exception(
             "Unexpected error renewing token for client %s: %s", cred.dhan_client_id, exc
         )
-        return {"success": False, "reason": reason, "refreshed_at": None}
+        return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
 
 
 async def token_refresh_loop() -> None:

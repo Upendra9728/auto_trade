@@ -132,6 +132,7 @@ export const userApi = {
       refreshed: 'success' | 'failure';
       reason?: string | null;
       refreshed_at?: string | null;
+      ipv6?: string | null;
     }>('/api/users/me/dhan/refresh'),
   getNotifications: (params: { status?: string; page?: number; pageSize?: number } & DateRangeFilter = {}) =>
     get<Paginated<SignalNotification>>(`/api/users/me/notifications${buildQuery({

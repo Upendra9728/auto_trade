@@ -171,6 +171,7 @@ async def refresh_my_dhan_credential(
         "refreshed": "success" if result.get("success") else "failure",
         "reason": result.get("reason"),
         "refreshed_at": result.get("refreshed_at"),
+        "ipv6": result.get("source_ipv6"),
     }
 
 
