@@ -17,6 +17,10 @@ DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
 DHAN_RENEW_TOKEN_URL = "https://api.dhan.co/v2/RenewToken"
 DHAN_ORDER_BY_ID_URL = "https://api.dhan.co/v2/orders/{order_id}"
+DHAN_PROFILE_URL = "https://api.dhan.co/v2/profile"
+DHAN_IP_GET_URL = "https://api.dhan.co/v2/ip/getIP"
+DHAN_IP_SET_URL = "https://api.dhan.co/v2/ip/setIP"
+DHAN_IP_MODIFY_URL = "https://api.dhan.co/v2/ip/modifyIP"
 
 EXCHANGE_SEGMENT_MAP = {
     "NSE_FO": "NSE_FNO",
@@ -201,3 +205,87 @@ class DhanClient:
             raise DhanApiError(f"Order status error HTTP {resp.status_code}: {data}")
 
         return data
+
+    @staticmethod
+    async def get_profile(*, access_token: str) -> dict[str, Any]:
+        """
+        GET /v2/profile — lightweight credential check. Returns dhanClientId,
+        tokenValidity, activeSegment, ddpi, mtf, dataPlan, dataValidity.
+        No IP whitelisting is required for this endpoint (only order placement
+        APIs require it), so this is safe to call before a user's IPv6 is set up.
+        """
+        headers = {"access-token": access_token}
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(DHAN_PROFILE_URL, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error fetching Dhan profile: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"Dhan profile returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+
+        return data
+
+    @staticmethod
+    async def get_ip(*, access_token: str) -> dict[str, Any]:
+        """GET /v2/ip/getIP — the primary/secondary static IP currently registered with Dhan."""
+        headers = {"access-token": access_token}
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(DHAN_IP_GET_URL, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error fetching Dhan registered IP: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"Dhan getIP returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+
+        return data
+
+    @staticmethod
+    async def _set_or_modify_ip(
+        url: str, method: str, *, access_token: str, dhan_client_id: str, ip: str, ip_flag: str,
+    ) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json", "access-token": access_token}
+        payload = {"dhanClientId": dhan_client_id, "ip": ip, "ipFlag": ip_flag}
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.request(method, url, headers=headers, json=payload)
+        except Exception as exc:
+            raise DhanApiError(f"Network error setting Dhan IP: {exc}") from exc
+
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"Dhan set/modify IP returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+
+        return data
+
+    @staticmethod
+    async def set_ip(*, access_token: str, dhan_client_id: str, ip: str, ip_flag: str = "PRIMARY") -> dict[str, Any]:
+        """POST /v2/ip/setIP — first-time static IP registration. Cannot be changed for 7 days after this."""
+        return await DhanClient._set_or_modify_ip(
+            DHAN_IP_SET_URL, "POST",
+            access_token=access_token, dhan_client_id=dhan_client_id, ip=ip, ip_flag=ip_flag,
+        )
+
+    @staticmethod
+    async def modify_ip(*, access_token: str, dhan_client_id: str, ip: str, ip_flag: str = "PRIMARY") -> dict[str, Any]:
+        """PUT /v2/ip/modifyIP — change an already-registered static IP (only allowed once every 7 days)."""
+        return await DhanClient._set_or_modify_ip(
+            DHAN_IP_MODIFY_URL, "PUT",
+            access_token=access_token, dhan_client_id=dhan_client_id, ip=ip, ip_flag=ip_flag,
+        )
+

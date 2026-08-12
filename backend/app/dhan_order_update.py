@@ -85,7 +85,13 @@ def apply_live_status(
     # the earlier "placed" status set right after HTTP acceptance.
     if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed":
         notif.status = "failed"
-        notif.error_message = f"Rejected by exchange: {reason_description or status}"
+        # Dhan reports "CONFIRMED" (or leaves the field blank) as the reason for
+        # CANCELLED orders that simply never got filled and were auto square-off
+        # cancelled — that's a normal market outcome, not a real rejection reason.
+        if status == "CANCELLED" and (not reason_description or reason_description.upper() == "CONFIRMED"):
+            notif.error_message = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
+        else:
+            notif.error_message = f"Rejected by exchange: {reason_description or status}"
 
     db.commit()
 

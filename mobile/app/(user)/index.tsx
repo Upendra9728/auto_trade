@@ -131,6 +131,8 @@ export default function NotificationsScreen() {
     const isPending = n.status === 'pending';
     const isBuy = n.signal.transaction_type === 'BUY';
     const isAdminCancelled = n.status === 'rejected' && n.signal.status === 'cancelled';
+    const isExpiredUnfilled = n.status === 'failed' && n.live_status === 'CANCELLED'
+      && (!n.reason_description || n.reason_description.toUpperCase() === 'CONFIRMED');
 
     return (
       <View style={styles.card}>
@@ -141,7 +143,7 @@ export default function NotificationsScreen() {
               {n.signal.transaction_type}
             </Text>
           </View>
-          <StatusBadge status={isAdminCancelled ? 'cancelled' : n.status} size="sm" />
+          <StatusBadge status={isAdminCancelled ? 'cancelled' : isExpiredUnfilled ? 'expired' : n.status} size="sm" />
         </View>
 
         {/* Title */}
@@ -166,7 +168,9 @@ export default function NotificationsScreen() {
         )}
         {n.status === 'failed' && (
           <View style={styles.resultRow}>
-            <Text style={styles.resultError}>❌ {n.error_message}</Text>
+            {isExpiredUnfilled
+              ? <Text style={styles.resultMuted}>⏱️ Order expired unfilled — entry price was never hit</Text>
+              : <Text style={styles.resultError}>❌ {n.error_message}</Text>}
           </View>
         )}
         {isAdminCancelled && (

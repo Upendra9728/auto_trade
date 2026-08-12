@@ -52,6 +52,19 @@ def parse_dhan_expiry(expiry_str: str) -> dt.datetime:
         return dt.datetime.utcnow() + dt.timedelta(hours=24)
 
 
+def parse_dhan_token_validity(validity_str: str) -> dt.datetime | None:
+    """
+    Convert Dhan's GET /v2/profile `tokenValidity` string (IST, 'DD/MM/YYYY HH:MM')
+    to a UTC naive datetime. Returns None if the format is unrecognized (caller
+    should leave token_expires_at unset rather than guess in that case).
+    """
+    try:
+        ist_naive = dt.datetime.strptime(validity_str.strip(), "%d/%m/%Y %H:%M")
+        return ist_naive - _IST_OFFSET
+    except (ValueError, AttributeError):
+        return None
+
+
 async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
     """
     Call Dhan RenewToken for *cred*, encrypt and persist the new token and expiry.
@@ -95,6 +108,51 @@ async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
             "Unexpected error renewing token for client %s: %s", cred.dhan_client_id, exc
         )
         return False
+
+
+async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Session) -> dict:
+    """
+    Like `renew_and_save_credential` but returns a dict with detailed result
+    information suitable for admin tooling. Returns:
+      {"success": bool, "reason": str|None, "refreshed_at": str|None}
+    """
+    try:
+        current_token = decrypt_token(cred.access_token_encrypted)
+        result = await DhanClient.renew_token(
+            dhan_client_id=cred.dhan_client_id,
+            access_token=current_token,
+        )
+        new_token: str | None = result.get("accessToken") or result.get("access_token")
+        if not new_token:
+            reason = f"no accessToken in response: {result}"
+            logger.error("RenewToken for client %s: %s", cred.dhan_client_id, reason)
+            return {"success": False, "reason": reason, "refreshed_at": None}
+
+        expiry_str: str | None = result.get("expiryTime") or result.get("expiry_time")
+        cred.access_token_encrypted = encrypt_token(new_token)
+        cred.token_expires_at = (
+            parse_dhan_expiry(expiry_str) if expiry_str
+            else dt.datetime.utcnow() + dt.timedelta(hours=24)
+        )
+        cred.updated_at = dt.datetime.utcnow()
+        db.commit()
+        refreshed_at = cred.updated_at.isoformat()
+        logger.info(
+            "Renewed Dhan token for client %s; new expiry (UTC): %s",
+            cred.dhan_client_id,
+            cred.token_expires_at,
+        )
+        return {"success": True, "reason": None, "refreshed_at": refreshed_at}
+    except DhanApiError as exc:
+        reason = f"DhanApiError: {exc}"
+        logger.error("RenewToken API error for client %s: %s", cred.dhan_client_id, exc)
+        return {"success": False, "reason": reason, "refreshed_at": None}
+    except Exception as exc:
+        reason = str(exc)
+        logger.exception(
+            "Unexpected error renewing token for client %s: %s", cred.dhan_client_id, exc
+        )
+        return {"success": False, "reason": reason, "refreshed_at": None}
 
 
 async def token_refresh_loop() -> None:

@@ -9,6 +9,9 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_current_admin, get_db
+from ..crypto import decrypt_token
+from ..dhan_client import DhanApiError, DhanClient
+from ..token_refresh import renew_and_save_credential_with_reason
 from ..ipv6_pool import assign_next_ipv6
 from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
 from ..notifications import send_signal_cancelled_notifications, send_signal_notifications
@@ -295,6 +298,152 @@ def delete_user(
     db.delete(user)
     db.commit()
     return {"status": "deleted", "user_id": str(user_id)}
+
+
+@router.get("/users/{user_id}/dhan-ip")
+async def get_user_dhan_ip(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """
+    Shows the static IP(s) currently registered with Dhan for this user, alongside
+    our own assigned_ipv6, so a mismatch (the usual cause of DH-905 'Invalid IP')
+    is obvious at a glance. Read-only — does not change anything on Dhan's side.
+    """
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    cred = db.query(DhanCredential).filter(DhanCredential.user_id == user_id).one_or_none()
+    if cred is None or not cred.is_active:
+        raise HTTPException(status_code=400, detail="User has no active Dhan credential on file")
+
+    access_token = decrypt_token(cred.access_token_encrypted)
+    try:
+        dhan_ip = await DhanClient.get_ip(access_token=access_token)
+    except DhanApiError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not fetch IP from Dhan: {exc}")
+
+    return {
+        "assigned_ipv6": user.assigned_ipv6,
+        "dhan_primary_ip": dhan_ip.get("primaryIP"),
+        "dhan_secondary_ip": dhan_ip.get("secondaryIP"),
+        "dhan_modify_date_primary": dhan_ip.get("modifyDatePrimary"),
+        "dhan_modify_date_secondary": dhan_ip.get("modifyDateSecondary"),
+        "matches": bool(user.assigned_ipv6) and user.assigned_ipv6 == dhan_ip.get("primaryIP"),
+    }
+
+
+@router.post("/users/{user_id}/dhan-ip/register")
+async def register_user_dhan_ip(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """
+    Registers our assigned_ipv6 as this user's PRIMARY static IP with Dhan —
+    calling setIP the first time, or modifyIP if one is already set (which Dhan
+    only allows once every 7 days). Returns the before/after state so the admin
+    can see exactly what changed.
+    """
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.assigned_ipv6:
+        raise HTTPException(status_code=400, detail="User has no assigned_ipv6 in our DB yet")
+    cred = db.query(DhanCredential).filter(DhanCredential.user_id == user_id).one_or_none()
+    if cred is None or not cred.is_active:
+        raise HTTPException(status_code=400, detail="User has no active Dhan credential on file")
+
+    access_token = decrypt_token(cred.access_token_encrypted)
+    target_ip = user.assigned_ipv6
+
+    try:
+        before = await DhanClient.get_ip(access_token=access_token)
+    except DhanApiError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not fetch current IP from Dhan: {exc}")
+
+    current_primary = before.get("primaryIP")
+    if current_primary == target_ip:
+        return {
+            "action": "already_correct",
+            "assigned_ipv6": target_ip,
+            "dhan_primary_ip": current_primary,
+        }
+
+    if not current_primary:
+        try:
+            await DhanClient.set_ip(
+                access_token=access_token, dhan_client_id=cred.dhan_client_id, ip=target_ip, ip_flag="PRIMARY",
+            )
+        except DhanApiError as exc:
+            raise HTTPException(status_code=502, detail=f"Dhan setIP failed: {exc}")
+        action = "set"
+    else:
+        modify_date = before.get("modifyDatePrimary")
+        today = dt.date.today().isoformat()
+        if modify_date and modify_date > today:
+            return {
+                "action": "cooldown_blocked",
+                "assigned_ipv6": target_ip,
+                "dhan_primary_ip": current_primary,
+                "modify_allowed_from": modify_date,
+                "detail": f"Dhan only allows changing the primary IP once every 7 days. "
+                          f"This account's IP can next be changed on {modify_date}.",
+            }
+        try:
+            await DhanClient.modify_ip(
+                access_token=access_token, dhan_client_id=cred.dhan_client_id, ip=target_ip, ip_flag="PRIMARY",
+            )
+        except DhanApiError as exc:
+            raise HTTPException(status_code=502, detail=f"Dhan modifyIP failed: {exc}")
+        action = "modified"
+
+    try:
+        after = await DhanClient.get_ip(access_token=access_token)
+    except DhanApiError as exc:
+        after = {}
+        logger.warning("Registered IP for user %s but could not re-fetch to confirm: %s", user_id, exc)
+
+    return {
+        "action": action,
+        "assigned_ipv6": target_ip,
+        "dhan_primary_ip_before": current_primary,
+        "dhan_primary_ip_after": after.get("primaryIP"),
+    }
+
+
+
+@router.post("/dhan/refresh-all-tokens")
+async def refresh_all_tokens(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict:
+    """Admin-only: attempt to renew Dhan tokens for all active credentials.
+
+    Returns a per-user result list with email, dhan_client_id, refreshed (success/failure),
+    reason (if any), and refreshed_at (ISO timestamp or null).
+    """
+    creds = (
+        db.query(DhanCredential)
+        .options(joinedload(DhanCredential.user))
+        .filter(DhanCredential.is_active.is_(True))
+        .all()
+    )
+
+    results: list[dict] = []
+    for cred in creds:
+        user_email = cred.user.email if cred.user is not None else None
+        res = await renew_and_save_credential_with_reason(cred, db)
+        results.append({
+            "email": user_email,
+            "dhan_client_id": cred.dhan_client_id,
+            "refreshed": "success" if res.get("success") else "failure",
+            "reason": res.get("reason"),
+            "refreshed_at": res.get("refreshed_at"),
+        })
+
+    return {"count": len(results), "results": results}
 
 
 # ---------------------------------------------------------------------------

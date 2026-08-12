@@ -53,6 +53,8 @@ export default function OrdersScreen() {
 
   const renderItem = ({ item: o }: { item: SignalNotification }) => {
     const isBuy = o.signal.transaction_type === 'BUY';
+    const isExpiredUnfilled = o.status === 'failed' && o.live_status === 'CANCELLED'
+      && (!o.reason_description || o.reason_description.toUpperCase() === 'CONFIRMED');
     return (
       <View style={styles.card}>
         <View style={styles.row}>
@@ -82,7 +84,7 @@ export default function OrdersScreen() {
         </View>
 
         {(o.status === 'placed' || !!o.live_status) && (
-          <View style={[styles.resultBox, o.live_status === 'REJECTED' || o.status === 'failed' ? { backgroundColor: Colors.errorBg } : null]}>
+          <View style={[styles.resultBox, (o.live_status === 'REJECTED' || (o.status === 'failed' && !isExpiredUnfilled)) ? { backgroundColor: Colors.errorBg } : null]}>
             {o.dhan_order_id && <Text style={styles.successText}>✅ Order ID: {o.dhan_order_id}</Text>}
             {o.placed_at && <Text style={styles.timeText}>Submitted at {formatDateTimeIST(o.placed_at)}</Text>}
             <View style={{ marginTop: 4 }}>
@@ -98,8 +100,10 @@ export default function OrdersScreen() {
           </View>
         )}
         {o.status === 'failed' && (
-          <View style={[styles.resultBox, { backgroundColor: Colors.errorBg }]}>
-            <Text style={styles.errorText}>❌ {o.error_message ?? 'Order failed'}</Text>
+          <View style={[styles.resultBox, isExpiredUnfilled ? null : { backgroundColor: Colors.errorBg }]}>
+            {isExpiredUnfilled
+              ? <Text style={styles.timeText}>⏱️ Order expired unfilled — entry price was never hit</Text>
+              : <Text style={styles.errorText}>❌ {o.error_message ?? 'Order failed'}</Text>}
           </View>
         )}
       </View>

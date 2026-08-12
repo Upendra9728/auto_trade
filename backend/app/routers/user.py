@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..crypto import decrypt_token, encrypt_token
 from ..deps import get_current_user, get_db
+from ..dhan_client import DhanApiError, DhanClient
 from ..models import DhanCredential, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
 from ..pagination import paginate_meta, parse_ist_date_range
+from ..token_refresh import parse_dhan_token_validity
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
@@ -153,11 +155,26 @@ def get_dhan_credential(
 
 
 @router.post("/me/dhan", response_model=DhanCredentialResponse, status_code=200)
-def upsert_dhan_credential(
+async def upsert_dhan_credential(
     req: DhanCredentialUpsertRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DhanCredentialResponse:
+    # Validate the client ID + token immediately with a lightweight Dhan call.
+    # This catches typos (wrong client ID, stale/invalid token) at save time
+    # instead of silently accepting bad credentials that only fail later when a
+    # signal comes in. This endpoint requires no IP whitelisting on Dhan's side.
+    try:
+        profile = await DhanClient.get_profile(access_token=req.access_token)
+    except DhanApiError as exc:
+        raise HTTPException(status_code=400, detail=f"Dhan rejected these credentials: {exc}")
+
+    token_expires_at = req.token_expires_at
+    if token_expires_at is None:
+        token_validity = profile.get("tokenValidity")
+        if token_validity:
+            token_expires_at = parse_dhan_token_validity(token_validity)
+
     cred = db.query(DhanCredential).filter(DhanCredential.user_id == current_user.id).one_or_none()
     encrypted = encrypt_token(req.access_token)
 
@@ -167,15 +184,14 @@ def upsert_dhan_credential(
             dhan_client_id=req.dhan_client_id.strip(),
             access_token_encrypted=encrypted,
             is_active=True,
-            token_expires_at=req.token_expires_at,
+            token_expires_at=token_expires_at,
         )
         db.add(cred)
     else:
         cred.dhan_client_id = req.dhan_client_id.strip()
         cred.access_token_encrypted = encrypted
         cred.is_active = True
-        if req.token_expires_at is not None:
-            cred.token_expires_at = req.token_expires_at
+        cred.token_expires_at = token_expires_at
         cred.updated_at = dt.datetime.utcnow()
 
     db.commit()

@@ -10,6 +10,7 @@ import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateIST } from '../../utils/time';
 import type { DhanCredential } from '../../types';
+import { Colors } from '../../constants/theme';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
@@ -128,9 +129,18 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Status</Text>
-                <Text style={[styles.monoValue, { color: dhan.is_active ? Colors.success : Colors.error }]}>
-                  {dhan.is_active ? '✅ Active' : '❌ Inactive'}
-                </Text>
+                <View style={styles.badgeRow}>
+                  <Text style={[styles.badge, { backgroundColor: dhan.is_active ? Colors.successBg : Colors.errorBg, color: dhan.is_active ? Colors.success : Colors.error }]}> 
+                    {dhan.is_active ? 'Active' : 'Inactive'}
+                  </Text>
+                  {dhan.token_expires_at ? (
+                    <Text style={[styles.badge, new Date(dhan.token_expires_at) > new Date() ? styles.liveBadge : styles.expiredBadge]}> 
+                      {new Date(dhan.token_expires_at) > new Date() ? `Live — Expires ${formatDateIST(dhan.token_expires_at)}` : `Expired ${formatDateIST(dhan.token_expires_at)}`}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.badge, styles.unknownBadge]}>Expiry unknown</Text>
+                  )}
+                </View>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Updated</Text>
@@ -263,6 +273,17 @@ const styles = StyleSheet.create({
   warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.sm },
   warnText: { fontSize: 13, color: Colors.warning, lineHeight: 18 },
   dhanInfo: { gap: Spacing.sm },
+  badgeRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  liveBadge: { backgroundColor: Colors.successBg, color: Colors.success },
+  expiredBadge: { backgroundColor: Colors.errorBg, color: Colors.error },
+  unknownBadge: { backgroundColor: Colors.infoBg, color: Colors.info },
 
   form: { gap: Spacing.md, marginTop: 4 },
   field: { gap: 6 },

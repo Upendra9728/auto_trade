@@ -178,6 +178,25 @@ export const adminApi = {
     put<AdminUser>(`/api/admin/users/${id}`, data),
   approveUser: (id: number) => post<AdminUser>(`/api/admin/users/${id}/approve`),
   deleteUser: (id: number) => del<{ status: string }>(`/api/admin/users/${id}`),
+  getUserDhanIp: (id: number) =>
+    get<{
+      assigned_ipv6: string | null;
+      dhan_primary_ip: string | null;
+      dhan_secondary_ip: string | null;
+      dhan_modify_date_primary: string | null;
+      dhan_modify_date_secondary: string | null;
+      matches: boolean;
+    }>(`/api/admin/users/${id}/dhan-ip`),
+  registerUserDhanIp: (id: number) =>
+    post<{
+      action: 'already_correct' | 'set' | 'modified' | 'cooldown_blocked';
+      assigned_ipv6: string;
+      dhan_primary_ip?: string | null;
+      dhan_primary_ip_before?: string | null;
+      dhan_primary_ip_after?: string | null;
+      modify_allowed_from?: string;
+      detail?: string;
+    }>(`/api/admin/users/${id}/dhan-ip/register`),
   getSignals: (params: { page?: number; pageSize?: number } & DateRangeFilter = {}) =>
     get<Paginated<Signal>>(`/api/admin/signals${buildQuery({
       page: params.page,

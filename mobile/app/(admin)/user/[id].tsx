@@ -18,6 +18,13 @@ export default function UserDetailScreen() {
   const [ipv6, setIpv6] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [role, setRole] = useState<'user' | 'admin'>('user');
+  const [dhanIp, setDhanIp] = useState<{
+    assigned_ipv6: string | null;
+    dhan_primary_ip: string | null;
+    matches: boolean;
+  } | null>(null);
+  const [checkingIp, setCheckingIp] = useState(false);
+  const [fixingIp, setFixingIp] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -46,6 +53,41 @@ export default function UserDetailScreen() {
       Alert.alert('Error', err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCheckDhanIp = async () => {
+    setCheckingIp(true);
+    try {
+      const result = await adminApi.getUserDhanIp(Number(id));
+      setDhanIp(result);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setCheckingIp(false);
+    }
+  };
+
+  const handleFixDhanIp = async () => {
+    setFixingIp(true);
+    try {
+      const result = await adminApi.registerUserDhanIp(Number(id));
+      if (result.action === 'cooldown_blocked') {
+        Alert.alert('Cannot change yet', result.detail ?? `Dhan allows changing the IP again on ${result.modify_allowed_from}.`);
+      } else if (result.action === 'already_correct') {
+        Alert.alert('Already correct', `Dhan's primary IP already matches: ${result.dhan_primary_ip}`);
+      } else {
+        Alert.alert('✅ IP registered with Dhan', `${result.dhan_primary_ip_before ?? 'none'} → ${result.dhan_primary_ip_after}`);
+      }
+      setDhanIp({
+        assigned_ipv6: result.assigned_ipv6,
+        dhan_primary_ip: result.dhan_primary_ip_after ?? result.dhan_primary_ip ?? null,
+        matches: (result.dhan_primary_ip_after ?? result.dhan_primary_ip) === result.assigned_ipv6,
+      });
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setFixingIp(false);
     }
   };
 
@@ -109,6 +151,40 @@ export default function UserDetailScreen() {
             </View>
           )}
         </View>
+
+        {user.has_dhan_credential && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Dhan Static IP</Text>
+            <Text style={styles.helperText}>
+              Compares our assigned IPv6 against the primary static IP currently registered with Dhan for this account.
+            </Text>
+
+            {dhanIp && (
+              <View style={{ marginBottom: Spacing.sm }}>
+                <InfoRow label="Assigned IPv6 (our DB)" value={dhanIp.assigned_ipv6 ?? '—'} mono />
+                <InfoRow label="Dhan Primary IP" value={dhanIp.dhan_primary_ip ?? '(not set)'} mono />
+                <InfoRow label="Match" value={dhanIp.matches ? '✅ Yes' : '❌ Mismatch'} />
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+              <TouchableOpacity
+                style={[styles.ipActionBtn, checkingIp && { opacity: 0.6 }]}
+                onPress={handleCheckDhanIp}
+                disabled={checkingIp}
+              >
+                {checkingIp ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.ipActionText}>Check Dhan IP</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ipActionBtn, styles.ipFixBtn, fixingIp && { opacity: 0.6 }]}
+                onPress={handleFixDhanIp}
+                disabled={fixingIp}
+              >
+                {fixingIp ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[styles.ipActionText, { color: '#fff' }]}>Register / Fix with Dhan</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Role</Text>
@@ -223,4 +299,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15, alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  ipActionBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: Radius.sm, alignItems: 'center',
+    borderWidth: 1.5, borderColor: Colors.border,
+  },
+  ipFixBtn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  ipActionText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
 });

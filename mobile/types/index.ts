@@ -23,6 +23,7 @@ export interface DhanCredential {
   dhan_client_id: string;
   is_active: boolean;
   updated_at: string;
+  token_expires_at?: string | null;
 }
 
 // ── Signals ──────────────────────────────────────────────────────────────────
