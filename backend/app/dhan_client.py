@@ -54,7 +54,7 @@ def _verify_ipv6_bindable(ipv6: str) -> None:
 
 class DhanClient:
     @staticmethod
-    async def renew_token(*, dhan_client_id: str, access_token: str) -> dict[str, Any]:
+    async def renew_token(*, dhan_client_id: str, access_token: str, source_ipv6: str | None = None) -> dict[str, Any]:
         """
         Call Dhan's RenewToken API to obtain a fresh token with a new 24-hour expiry.
         Only works for active tokens originally generated via Dhan Web.
@@ -64,8 +64,18 @@ class DhanClient:
             "access-token": access_token,
             "dhanClientId": dhan_client_id,
         }
+        # If a source IPv6 is provided, verify it's available and bind the
+        # outbound socket to that address so Dhan sees the request coming from
+        # the user's registered IP (same approach used for order placement).
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
                 resp = await client.post(DHAN_RENEW_TOKEN_URL, headers=headers)
         except Exception as exc:
             raise DhanApiError(f"Network error calling RenewToken: {exc}") from exc

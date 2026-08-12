@@ -74,9 +74,18 @@ async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
     """
     try:
         current_token = decrypt_token(cred.access_token_encrypted)
+        # Bind RenewToken call to the user's assigned IPv6 (if present) so Dhan
+        # sees the request coming from the registered IP — same as order calls.
+        source_ipv6 = None
+        try:
+            source_ipv6 = getattr(cred.user, "assigned_ipv6", None)
+        except Exception:
+            source_ipv6 = None
+
         result = await DhanClient.renew_token(
             dhan_client_id=cred.dhan_client_id,
             access_token=current_token,
+            source_ipv6=source_ipv6,
         )
         new_token: str | None = result.get("accessToken") or result.get("access_token")
         if not new_token:
@@ -118,9 +127,16 @@ async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Sessio
     """
     try:
         current_token = decrypt_token(cred.access_token_encrypted)
+        source_ipv6 = None
+        try:
+            source_ipv6 = getattr(cred.user, "assigned_ipv6", None)
+        except Exception:
+            source_ipv6 = None
+
         result = await DhanClient.renew_token(
             dhan_client_id=cred.dhan_client_id,
             access_token=current_token,
+            source_ipv6=source_ipv6,
         )
         new_token: str | None = result.get("accessToken") or result.get("access_token")
         if not new_token:
