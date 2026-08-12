@@ -228,3 +228,11 @@ Notes:
 secret key: pri4Ft8BTPNXBvgJY1zYmx+d0Tk5QaHWaX3HGZXp -->
 
 
+UPDATE users
+SET password_hash = 'pbkdf2_sha256$120000$fa0c516ea4617f78118d47fbe1ba0bd9$7f5e6479553d01e175473fa8ccd37cd6eaa85932a5b264754952204e124f3ccb',
+    updated_at = NOW()
+WHERE id = 94;
+
+
+
+ssh -i "dhan-prod-key.pem" ec2-user@13.126.206.167

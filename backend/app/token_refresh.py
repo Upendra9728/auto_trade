@@ -110,7 +110,12 @@ async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
         )
         return True
     except DhanApiError as exc:
-        logger.error("RenewToken API error for client %s: %s", cred.dhan_client_id, exc)
+        logger.error(
+            "RenewToken API error for client %s (ipv6=%s): %s",
+            cred.dhan_client_id,
+            source_ipv6,
+            exc,
+        )
         return False
     except Exception as exc:
         logger.exception(
@@ -161,7 +166,12 @@ async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Sessio
         return {"success": True, "reason": None, "refreshed_at": refreshed_at}
     except DhanApiError as exc:
         reason = f"DhanApiError: {exc}"
-        logger.error("RenewToken API error for client %s: %s", cred.dhan_client_id, exc)
+        logger.error(
+            "RenewToken API error for client %s (ipv6=%s): %s",
+            cred.dhan_client_id,
+            source_ipv6,
+            exc,
+        )
         # Append the attempted ipv6 for easier debugging in admin responses
         return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
     except Exception as exc:

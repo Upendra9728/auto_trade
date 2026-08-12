@@ -69,12 +69,16 @@ class DhanClient:
         # the user's registered IP (same approach used for order placement).
         if source_ipv6:
             source_ipv6 = source_ipv6.strip()
+            logger.info("Dhan RenewToken outbound: binding to IPv6 %s", source_ipv6)
             _verify_ipv6_bindable(source_ipv6)
             transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
         else:
+            logger.info("Dhan RenewToken outbound: no explicit IPv6 bind")
             transport = httpx.AsyncHTTPTransport()
 
         try:
+            safe_headers = {"access-token": "<redacted>", "dhanClientId": dhan_client_id}
+            logger.info("Dhan RenewToken headers: %s", json.dumps(safe_headers, separators=(",", ":")))
             async with httpx.AsyncClient(transport=transport, timeout=30) as client:
                 resp = await client.post(DHAN_RENEW_TOKEN_URL, headers=headers)
         except Exception as exc:
