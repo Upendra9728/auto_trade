@@ -126,6 +126,13 @@ export const userApi = {
   getDhanCredential: () => get<DhanCredential | null>('/api/users/me/dhan'),
   saveDhanCredential: (data: { dhan_client_id: string; access_token: string }) =>
     post<DhanCredential>('/api/users/me/dhan', data),
+  refreshDhanToken: () =>
+    post<{
+      dhan_client_id: string;
+      refreshed: 'success' | 'failure';
+      reason?: string | null;
+      refreshed_at?: string | null;
+    }>('/api/users/me/dhan/refresh'),
   getNotifications: (params: { status?: string; page?: number; pageSize?: number } & DateRangeFilter = {}) =>
     get<Paginated<SignalNotification>>(`/api/users/me/notifications${buildQuery({
       status: params.status,

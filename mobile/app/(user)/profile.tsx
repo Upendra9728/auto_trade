@@ -10,7 +10,6 @@ import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateIST } from '../../utils/time';
 import type { DhanCredential } from '../../types';
-import { Colors } from '../../constants/theme';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
@@ -19,6 +18,7 @@ export default function ProfileScreen() {
   const [savingDhan, setSavingDhan] = useState(false);
   const [showDhanForm, setShowDhanForm] = useState(false);
   const [testingIp, setTestingIp] = useState(false);
+  const [refreshingDhan, setRefreshingDhan] = useState(false);
 
   useEffect(() => {
     userApi.getDhanCredential().then(setDhan).catch(() => {});
@@ -59,6 +59,29 @@ export default function ProfileScreen() {
       Alert.alert('Error', 'Failed to test IPv6: ' + (err.message ?? 'Unknown error'));
     } finally {
       setTestingIp(false);
+    }
+  };
+
+  const handleRefreshDhan = async () => {
+    if (!dhan) {
+      Alert.alert('No credentials', 'No Dhan credentials saved to refresh.');
+      return;
+    }
+    setRefreshingDhan(true);
+    try {
+      const res = await userApi.refreshDhanToken();
+      if (res.refreshed === 'success') {
+        Alert.alert('Refreshed', `Token refreshed at ${formatDateIST(res.refreshed_at ?? new Date().toISOString())}`);
+      } else {
+        Alert.alert('Refresh failed', res.reason ?? 'Unknown error');
+      }
+      const latest = await userApi.getDhanCredential();
+      setDhan(latest);
+      await refreshUser?.();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Unknown error');
+    } finally {
+      setRefreshingDhan(false);
     }
   };
 
@@ -145,6 +168,19 @@ export default function ProfileScreen() {
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Updated</Text>
                 <Text style={styles.monoValue}>{formatDateIST(dhan.updated_at)}</Text>
+              </View>
+              <View style={{ marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[styles.refreshBtn, refreshingDhan && { opacity: 0.6 }]}
+                  onPress={handleRefreshDhan}
+                  disabled={refreshingDhan}
+                >
+                  {refreshingDhan ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.refreshText}>Refresh Token</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           ) : !dhan && !showDhanForm ? (
@@ -312,6 +348,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.primary,
   },
   testIpText: { color: Colors.primary, fontSize: 16, fontWeight: '700' },
+
+  refreshBtn: {
+    backgroundColor: Colors.primary, borderRadius: Radius.sm,
+    paddingVertical: 10, alignItems: 'center', paddingHorizontal: 12, marginTop: 4,
+  },
+  refreshText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
   logoutBtn: {
     backgroundColor: Colors.errorBg, borderRadius: Radius.sm,

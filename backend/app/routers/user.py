@@ -14,7 +14,7 @@ from ..dhan_client import DhanApiError, DhanClient
 from ..models import DhanCredential, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
 from ..pagination import paginate_meta, parse_ist_date_range
-from ..token_refresh import parse_dhan_token_validity
+from ..token_refresh import parse_dhan_token_validity, renew_and_save_credential_with_reason
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
@@ -152,6 +152,26 @@ def get_dhan_credential(
         updated_at=cred.updated_at.isoformat(),
         token_expires_at=cred.token_expires_at.isoformat() if cred.token_expires_at else None,
     )
+
+
+
+@router.post("/me/dhan/refresh")
+async def refresh_my_dhan_credential(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Attempt to renew the current user's Dhan token and return detailed result."""
+    cred = db.query(DhanCredential).filter(DhanCredential.user_id == current_user.id).one_or_none()
+    if cred is None:
+        raise HTTPException(status_code=404, detail="No Dhan credential found for this user")
+
+    result = await renew_and_save_credential_with_reason(cred, db)
+    return {
+        "dhan_client_id": cred.dhan_client_id,
+        "refreshed": "success" if result.get("success") else "failure",
+        "reason": result.get("reason"),
+        "refreshed_at": result.get("refreshed_at"),
+    }
 
 
 @router.post("/me/dhan", response_model=DhanCredentialResponse, status_code=200)
