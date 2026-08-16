@@ -139,6 +139,21 @@ def clear_fcm_token(
 # Dhan credentials
 # ---------------------------------------------------------------------------
 
+# Dhan enforces a 2-minute cooldown between generateAccessToken calls per user
+_DHAN_TOKEN_COOLDOWN_SECONDS = 120
+
+
+def _assert_cooldown_ok(cred: DhanCredential) -> None:
+    """Raise 429 with time-remaining if the last token generation was too recent."""
+    elapsed = (dt.datetime.utcnow() - cred.updated_at).total_seconds()
+    if elapsed < _DHAN_TOKEN_COOLDOWN_SECONDS:
+        wait = int(_DHAN_TOKEN_COOLDOWN_SECONDS - elapsed) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=f"Dhan allows token generation once every 2 minutes. Please wait {wait} seconds.",
+        )
+
+
 @router.get("/me/dhan", response_model=DhanCredentialResponse | None)
 def get_dhan_credential(
     current_user: User = Depends(get_current_user),
@@ -166,6 +181,8 @@ async def refresh_my_dhan_credential(
     cred = db.query(DhanCredential).filter(DhanCredential.user_id == current_user.id).one_or_none()
     if cred is None:
         raise HTTPException(status_code=404, detail="No Dhan credential found for this user")
+
+    _assert_cooldown_ok(cred)
 
     result = await renew_and_save_credential_with_reason(cred, db)
     return {
@@ -205,6 +222,8 @@ async def upsert_dhan_credential(
     )
 
     cred = db.query(DhanCredential).filter(DhanCredential.user_id == current_user.id).one_or_none()
+    if cred is not None:
+        _assert_cooldown_ok(cred)
     if cred is None:
         cred = DhanCredential(
             user_id=current_user.id,

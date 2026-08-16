@@ -61,11 +61,9 @@ class DhanClient:
         Requires the user to have TOTP enabled on their Dhan account.
         Returns the response dict containing 'accessToken' and 'expiryTime'.
         """
-        # Retry once: TOTP codes change every 30s; a code sent at the window boundary
-        # may arrive at Dhan in the next window. A 2s wait gets a fresh code.
-        last_error: str = ""
         for attempt in range(2):
             if attempt > 0:
+                # Retry once after a short wait to get a fresh TOTP code at a new window boundary
                 await asyncio.sleep(2)
             totp_code = pyotp.TOTP(totp_secret).now()
             params = {"dhanClientId": dhan_client_id, "pin": pin, "totp": totp_code}
@@ -85,19 +83,21 @@ class DhanClient:
                     f"generateAccessToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
                 )
 
-            if resp.status_code >= 400:
-                last_error = f"HTTP {resp.status_code}: {data}"
-                logger.warning("generateAccessToken attempt %d failed for client %s: %s", attempt + 1, dhan_client_id, last_error)
-                continue
+            if data.get("accessToken") or data.get("access_token"):
+                return data
 
-            if not data.get("accessToken") and not data.get("access_token"):
-                last_error = f"no accessToken in response: {data}"
-                logger.warning("generateAccessToken attempt %d for client %s: %s", attempt + 1, dhan_client_id, last_error)
-                continue
+            dhan_msg: str = data.get("message", "") if isinstance(data, dict) else str(data)
 
-            return data
+            # Rate limit is a hard stop — retrying in 2s won't help
+            if "2 minute" in dhan_msg or "rate" in dhan_msg.lower():
+                raise DhanApiError(f"Dhan rate limit: {dhan_msg} (wait 2 minutes before retrying)")
 
-        raise DhanApiError(f"generateAccessToken failed after 2 attempts for client {dhan_client_id}: {last_error}")
+            logger.warning(
+                "generateAccessToken attempt %d for client %s: %s",
+                attempt + 1, dhan_client_id, dhan_msg or data,
+            )
+
+        raise DhanApiError(f"generateAccessToken failed: {dhan_msg}")
 
     @staticmethod
     def _format_error_message(data: Any, status_code: int) -> str:
