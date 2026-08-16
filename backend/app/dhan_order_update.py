@@ -65,6 +65,9 @@ def apply_live_status(
     reason_description: str | None = None,
     traded_qty: int | None = None,
     traded_price: float | None = None,
+    exit_leg: str | None = None,
+    exit_price: float | None = None,
+    exit_time: "dt.datetime | None" = None,
 ) -> None:
     """Apply a live/exchange status update to a notification and commit. Shared
     by both the WebSocket handler and the REST poll fallback."""
@@ -79,6 +82,12 @@ def apply_live_status(
         notif.traded_qty = traded_qty
     if traded_price:
         notif.traded_price = traded_price
+    if exit_leg:
+        notif.exit_leg = exit_leg
+    if exit_price:
+        notif.exit_price = exit_price
+    if exit_time:
+        notif.exit_time = exit_time
     notif.live_updated_at = dt.datetime.utcnow()
 
     # The exchange truly rejected/cancelled/expired the order — this overrides
@@ -213,6 +222,17 @@ class DhanOrderUpdateManager:
                 return
 
             status = str(data.get("Status") or "").upper()
+            leg_name = str(data.get("LegName") or "").upper()
+
+            # Capture exit leg details when TARGET or STOP_LOSS leg is filled
+            exit_leg: str | None = None
+            exit_price: float | None = None
+            exit_time: dt.datetime | None = None
+            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and status in ("TRADED", "TRIGGERED"):
+                exit_leg = leg_name
+                exit_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
+                exit_time = dt.datetime.utcnow()
+
             apply_live_status(
                 db, notif,
                 status=status,
@@ -220,8 +240,11 @@ class DhanOrderUpdateManager:
                 reason_description=data.get("ReasonDescription"),
                 traded_qty=data.get("TradedQty"),
                 traded_price=data.get("TradedPrice") or data.get("AvgTradedPrice"),
+                exit_leg=exit_leg,
+                exit_price=exit_price,
+                exit_time=exit_time,
             )
-            logger.info("Live order update: order %s -> %s (notification %s)", order_no, status, notif.id)
+            logger.info("Live order update: order %s leg=%s -> %s (notification %s)", order_no, leg_name or "MAIN", status, notif.id)
         finally:
             db.close()
 

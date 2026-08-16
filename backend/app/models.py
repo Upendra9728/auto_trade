@@ -122,6 +122,11 @@ class SignalNotification(Base):
     traded_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     reason_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     live_updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # ---- Exit leg tracking: set when TARGET_LEG or STOP_LOSS_LEG is triggered
+    # 'TARGET_LEG' = target hit; 'STOP_LOSS_LEG' = stop-loss hit
+    exit_leg: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exit_time: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     signal: Mapped[Signal] = relationship(back_populates="notifications")
     user: Mapped[User] = relationship(back_populates="notifications")

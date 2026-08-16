@@ -58,6 +58,19 @@ def _apply_migrations() -> None:
                 conn.commit()
             logger.info("Migration: added live order status columns to signal_notifications: %s", list(missing))
 
+        exit_columns = {
+            "exit_leg": "VARCHAR(16)",
+            "exit_price": "FLOAT",
+            "exit_time": "TIMESTAMP",
+        }
+        missing_exit = {col: ddl for col, ddl in exit_columns.items() if col not in existing}
+        if missing_exit:
+            with engine.connect() as conn:
+                for col, ddl in missing_exit.items():
+                    conn.execute(text(f"ALTER TABLE signal_notifications ADD COLUMN {col} {ddl}"))
+                conn.commit()
+            logger.info("Migration: added exit leg columns to signal_notifications: %s", list(missing_exit))
+
 
 def init_db() -> None:
     from . import models  # noqa: F401

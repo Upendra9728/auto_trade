@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
+DHAN_SUPER_ORDER_BY_ID_URL = "https://api.dhan.co/v2/super/orders/{order_id}"
+DHAN_SUPER_ORDER_CANCEL_URL = "https://api.dhan.co/v2/super/orders/{order_id}/{leg}"
 DHAN_GENERATE_TOKEN_URL = "https://auth.dhan.co/app/generateAccessToken"
 DHAN_ORDER_BY_ID_URL = "https://api.dhan.co/v2/orders/{order_id}"
 DHAN_PROFILE_URL = "https://api.dhan.co/v2/profile"
@@ -182,7 +184,122 @@ class DhanClient:
         return data
 
     @staticmethod
-    async def get_order_status(
+    async def cancel_super_order(
+        *,
+        order_id: str,
+        dhan_client_id: str,
+        access_token: str,
+        source_ipv6: str | None = None,
+        leg: str = "ENTRY_LEG",
+    ) -> dict[str, Any]:
+        """DELETE /v2/super/orders/{order_id}/{leg}. ENTRY_LEG cancels all legs."""
+        url = DHAN_SUPER_ORDER_CANCEL_URL.format(order_id=order_id, leg=leg)
+        headers = {"Content-Type": "application/json", "access-token": access_token}
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.delete(url, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error cancelling super order: {exc}") from exc
+
+        logger.info("cancel_super_order %s/%s status=%s body=%s", order_id, leg, resp.status_code, resp.text[:500])
+        # 202 Accepted is normal for cancel
+        if resp.status_code >= 400:
+            try:
+                data = resp.json()
+            except Exception:
+                data = resp.text
+            raise DhanApiError(f"Cancel super order error HTTP {resp.status_code}: {data}")
+        try:
+            return resp.json()
+        except Exception:
+            return {"orderStatus": "CANCELLED"}
+
+    @staticmethod
+    async def modify_super_order(
+        *,
+        order_id: str,
+        dhan_client_id: str,
+        access_token: str,
+        source_ipv6: str | None = None,
+        leg_name: str,
+        order_type: str = "LIMIT",
+        quantity: int | None = None,
+        price: float | None = None,
+        target_price: float | None = None,
+        stop_loss_price: float | None = None,
+        trailing_jump: float | None = None,
+    ) -> dict[str, Any]:
+        """PUT /v2/super/orders/{order_id}. leg_name: ENTRY_LEG | TARGET_LEG | STOP_LOSS_LEG."""
+        url = DHAN_SUPER_ORDER_BY_ID_URL.format(order_id=order_id)
+        payload: dict[str, Any] = {
+            "dhanClientId": dhan_client_id,
+            "orderId": order_id,
+            "orderType": order_type,
+            "legName": leg_name,
+        }
+        if quantity is not None:
+            payload["quantity"] = quantity
+        if price is not None:
+            payload["price"] = price
+        if target_price is not None:
+            payload["targetPrice"] = target_price
+        if stop_loss_price is not None:
+            payload["stopLossPrice"] = stop_loss_price
+        if trailing_jump is not None:
+            payload["trailingJump"] = trailing_jump
+
+        headers = {"Content-Type": "application/json", "access-token": access_token}
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.put(url, headers=headers, json=payload)
+        except Exception as exc:
+            raise DhanApiError(f"Network error modifying super order: {exc}") from exc
+
+        logger.info("modify_super_order %s/%s status=%s body=%s", order_id, leg_name, resp.status_code, resp.text[:500])
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"Modify super order non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+        return data
+
+    @staticmethod
+    async def get_super_orders(*, access_token: str, source_ipv6: str | None = None) -> list[dict[str, Any]]:
+        """GET /v2/super/orders — all super orders for the day with leg details."""
+        headers = {"Content-Type": "application/json", "access-token": access_token}
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.get(DHAN_SUPER_ORDERS_URL, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error fetching super orders: {exc}") from exc
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"get_super_orders non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+        return data if isinstance(data, list) else []
+
+
         *,
         access_token: str,
         order_id: str,

@@ -192,6 +192,50 @@ class AdminSignalDetailResponse(BaseModel):
     notifications: list[dict[str, Any]]
 
 
+class AdminSignalNotificationRow(BaseModel):
+    notification_id: int
+    user_id: int
+    user_email: str
+    user_name: str
+    assigned_ipv6: str | None = None
+    status: str
+    dhan_order_id: str | None = None
+    error_message: str | None = None
+    confirmed_at: str | None = None
+    placed_at: str | None = None
+    created_at: str
+    live_status: str | None = None
+    exchange_order_no: str | None = None
+    traded_qty: int | None = None
+    traded_price: float | None = None
+    reason_description: str | None = None
+    live_updated_at: str | None = None
+    exit_leg: str | None = None
+    exit_price: float | None = None
+    exit_time: str | None = None
+
+
+class PaginatedNotificationsAdminResponse(BaseModel):
+    items: list[AdminSignalNotificationRow]
+    meta: PaginationMeta
+
+
+class SignalOrderModifyRequest(BaseModel):
+    price: float | None = None
+    target_price: float | None = None
+    stop_loss_price: float | None = None
+    trailing_jump: float | None = None
+
+
+class OrderActionResult(BaseModel):
+    notification_id: int
+    user_id: int
+    user_email: str
+    dhan_order_id: str | None = None
+    success: bool
+    reason: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Pagination (admin/user list endpoints)
 # ---------------------------------------------------------------------------

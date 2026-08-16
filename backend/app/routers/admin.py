@@ -20,12 +20,17 @@ from ..scrip_lookup import search as scrip_search_fn
 from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_fn
 from ..schemas import (
     AdminSignalDetailResponse,
+    AdminSignalNotificationRow,
     AdminUpdateUserRequest,
     AdminUserResponse,
+    OrderActionResult,
+    PaginatedNotificationsAdminResponse,
     PaginatedSignalsResponse,
     PaginatedUsersResponse,
     SignalCreateRequest,
+    SignalOrderModifyRequest,
     SignalResponse,
+    PaginationMeta,
 )
 from ..xlsx_export import build_xlsx_response, to_ist_str
 
@@ -586,6 +591,9 @@ def get_signal(
             "traded_price": n.traded_price,
             "reason_description": n.reason_description,
             "live_updated_at": n.live_updated_at.isoformat() if n.live_updated_at else None,
+            "exit_leg": n.exit_leg,
+            "exit_price": n.exit_price,
+            "exit_time": n.exit_time.isoformat() if n.exit_time else None,
         })
 
     return AdminSignalDetailResponse(
@@ -640,6 +648,368 @@ def cancel_signal(
         )
 
     return {"status": "cancelled", "signal_id": str(signal_id)}
+
+
+# ---------------------------------------------------------------------------
+# Order management (cancel / modify / paginated notifications)
+# ---------------------------------------------------------------------------
+
+def _notif_to_row(n: SignalNotification) -> AdminSignalNotificationRow:
+    return AdminSignalNotificationRow(
+        notification_id=n.id,
+        user_id=n.user_id,
+        user_email=n.user.email,
+        user_name=n.user.name,
+        assigned_ipv6=n.user.assigned_ipv6,
+        status=n.status,
+        dhan_order_id=n.dhan_order_id,
+        error_message=n.error_message,
+        confirmed_at=n.confirmed_at.isoformat() if n.confirmed_at else None,
+        placed_at=n.placed_at.isoformat() if n.placed_at else None,
+        created_at=n.created_at.isoformat(),
+        live_status=n.live_status,
+        exchange_order_no=n.exchange_order_no,
+        traded_qty=n.traded_qty,
+        traded_price=n.traded_price,
+        reason_description=n.reason_description,
+        live_updated_at=n.live_updated_at.isoformat() if n.live_updated_at else None,
+        exit_leg=n.exit_leg,
+        exit_price=n.exit_price,
+        exit_time=n.exit_time.isoformat() if n.exit_time else None,
+    )
+
+
+@router.get("/signals/{signal_id}/notifications", response_model=PaginatedNotificationsAdminResponse)
+def list_signal_notifications(
+    signal_id: int,
+    status: str | None = Query(default=None, description="Filter by notification status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> PaginatedNotificationsAdminResponse:
+    signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    start_utc, end_utc = parse_ist_date_range(date_from, date_to)
+    query = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(SignalNotification.signal_id == signal_id)
+    )
+    if status:
+        query = query.filter(SignalNotification.status == status)
+    if start_utc is not None:
+        query = query.filter(SignalNotification.created_at >= start_utc)
+    if end_utc is not None:
+        query = query.filter(SignalNotification.created_at < end_utc)
+
+    total = query.count()
+    notifications = (
+        query.order_by(SignalNotification.placed_at.desc().nullslast(), SignalNotification.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return PaginatedNotificationsAdminResponse(
+        items=[_notif_to_row(n) for n in notifications],
+        meta=PaginationMeta(page=page, page_size=page_size, total=total, total_pages=max(1, -(-total // page_size))),
+    )
+
+
+# Statuses that mean the order is still potentially active at the exchange
+_ACTIVE_LIVE_STATUSES = {"TRANSIT", "PENDING", "PART_TRADED"}
+_TERMINAL_LIVE_STATUSES = {"TRADED", "EXPIRED", "CANCELLED", "REJECTED"}
+
+
+async def _load_cred_and_token(db: Session, notif: SignalNotification) -> tuple[DhanCredential, str] | None:
+    """Load and JIT-refresh the user's Dhan credential. Returns (cred, plaintext_token) or None on failure."""
+    from ..token_refresh import renew_and_save_credential
+    cred = (
+        db.query(DhanCredential)
+        .filter(DhanCredential.user_id == notif.user_id, DhanCredential.is_active.is_(True))
+        .one_or_none()
+    )
+    if cred is None:
+        return None
+    # JIT token refresh if near expiry
+    now = dt.datetime.utcnow()
+    needs_refresh = (
+        cred.token_expires_at is not None and (cred.token_expires_at - now).total_seconds() < 1800
+    ) or (
+        cred.token_expires_at is None and (now - cred.updated_at).total_seconds() > 84600
+    )
+    if needs_refresh:
+        await renew_and_save_credential(cred, db)
+        db.refresh(cred)
+    return cred, decrypt_token(cred.access_token_encrypted)
+
+
+@router.post("/signals/{signal_id}/cancel-orders", response_model=list[OrderActionResult])
+async def cancel_signal_orders(
+    signal_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[OrderActionResult]:
+    """Cancel all active Dhan orders for a signal across all placed users."""
+    signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    notifications = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(
+            SignalNotification.signal_id == signal_id,
+            SignalNotification.status == "placed",
+            ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+        )
+        .all()
+    )
+
+    results: list[OrderActionResult] = []
+    for notif in notifications:
+        if not notif.dhan_order_id:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=None,
+                success=False, reason="No Dhan order ID recorded",
+            ))
+            continue
+        cred_info = await _load_cred_and_token(db, notif)
+        if cred_info is None:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason="No active Dhan credential",
+            ))
+            continue
+        cred, token = cred_info
+        try:
+            await DhanClient.cancel_super_order(
+                order_id=notif.dhan_order_id,
+                dhan_client_id=cred.dhan_client_id,
+                access_token=token,
+                source_ipv6=notif.user.assigned_ipv6,
+            )
+            notif.status = "cancelled"
+            db.commit()
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=True, reason=None,
+            ))
+        except DhanApiError as exc:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason=str(exc),
+            ))
+    return results
+
+
+@router.post("/signals/{signal_id}/modify-orders", response_model=list[OrderActionResult])
+async def modify_signal_orders(
+    signal_id: int,
+    req: SignalOrderModifyRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[OrderActionResult]:
+    """Modify target/stop-loss on all active placed orders for a signal."""
+    signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    notifications = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(
+            SignalNotification.signal_id == signal_id,
+            SignalNotification.status == "placed",
+            ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+        )
+        .all()
+    )
+
+    results: list[OrderActionResult] = []
+    any_success = False
+
+    for notif in notifications:
+        if not notif.dhan_order_id:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=None,
+                success=False, reason="No Dhan order ID recorded",
+            ))
+            continue
+        cred_info = await _load_cred_and_token(db, notif)
+        if cred_info is None:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason="No active Dhan credential",
+            ))
+            continue
+        cred, token = cred_info
+        # When entry is still PENDING/PART_TRADED use ENTRY_LEG; otherwise modify exit legs
+        entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
+        leg = "ENTRY_LEG" if entry_pending else "TARGET_LEG"
+        try:
+            await DhanClient.modify_super_order(
+                order_id=notif.dhan_order_id,
+                dhan_client_id=cred.dhan_client_id,
+                access_token=token,
+                source_ipv6=notif.user.assigned_ipv6,
+                leg_name=leg,
+                price=req.price if entry_pending else None,
+                target_price=req.target_price,
+                stop_loss_price=req.stop_loss_price,
+                trailing_jump=req.trailing_jump,
+            )
+            # If target_price changed and entry is filled, also modify STOP_LOSS_LEG
+            if not entry_pending and req.stop_loss_price is not None:
+                await DhanClient.modify_super_order(
+                    order_id=notif.dhan_order_id,
+                    dhan_client_id=cred.dhan_client_id,
+                    access_token=token,
+                    source_ipv6=notif.user.assigned_ipv6,
+                    leg_name="STOP_LOSS_LEG",
+                    stop_loss_price=req.stop_loss_price,
+                    trailing_jump=req.trailing_jump,
+                )
+            any_success = True
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=True, reason=None,
+            ))
+        except DhanApiError as exc:
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason=str(exc),
+            ))
+
+    # Update signal DB values if any order was modified successfully
+    if any_success:
+        if req.price is not None:
+            signal.price = req.price
+        if req.target_price is not None:
+            signal.target_price = req.target_price
+        if req.stop_loss_price is not None:
+            signal.stop_loss_price = req.stop_loss_price
+        if req.trailing_jump is not None:
+            signal.trailing_jump = req.trailing_jump
+        db.commit()
+
+    return results
+
+
+@router.post("/notifications/{notification_id}/cancel-order", response_model=OrderActionResult)
+async def cancel_notification_order(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> OrderActionResult:
+    """Cancel a single user's Dhan order."""
+    notif = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(SignalNotification.id == notification_id)
+        .one_or_none()
+    )
+    if notif is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if not notif.dhan_order_id:
+        raise HTTPException(status_code=400, detail="No Dhan order ID recorded for this notification")
+
+    cred_info = await _load_cred_and_token(db, notif)
+    if cred_info is None:
+        raise HTTPException(status_code=400, detail="No active Dhan credential for this user")
+    cred, token = cred_info
+    try:
+        await DhanClient.cancel_super_order(
+            order_id=notif.dhan_order_id,
+            dhan_client_id=cred.dhan_client_id,
+            access_token=token,
+            source_ipv6=notif.user.assigned_ipv6,
+        )
+        notif.status = "cancelled"
+        db.commit()
+        return OrderActionResult(
+            notification_id=notif.id, user_id=notif.user_id,
+            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+            success=True, reason=None,
+        )
+    except DhanApiError as exc:
+        return OrderActionResult(
+            notification_id=notif.id, user_id=notif.user_id,
+            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+            success=False, reason=str(exc),
+        )
+
+
+@router.post("/notifications/{notification_id}/modify-order", response_model=OrderActionResult)
+async def modify_notification_order(
+    notification_id: int,
+    req: SignalOrderModifyRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> OrderActionResult:
+    """Modify a single user's Dhan order."""
+    notif = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(SignalNotification.id == notification_id)
+        .one_or_none()
+    )
+    if notif is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if not notif.dhan_order_id:
+        raise HTTPException(status_code=400, detail="No Dhan order ID recorded")
+
+    cred_info = await _load_cred_and_token(db, notif)
+    if cred_info is None:
+        raise HTTPException(status_code=400, detail="No active Dhan credential for this user")
+    cred, token = cred_info
+    entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
+    leg = "ENTRY_LEG" if entry_pending else "TARGET_LEG"
+    try:
+        await DhanClient.modify_super_order(
+            order_id=notif.dhan_order_id,
+            dhan_client_id=cred.dhan_client_id,
+            access_token=token,
+            source_ipv6=notif.user.assigned_ipv6,
+            leg_name=leg,
+            price=req.price if entry_pending else None,
+            target_price=req.target_price,
+            stop_loss_price=req.stop_loss_price,
+            trailing_jump=req.trailing_jump,
+        )
+        if not entry_pending and req.stop_loss_price is not None:
+            await DhanClient.modify_super_order(
+                order_id=notif.dhan_order_id,
+                dhan_client_id=cred.dhan_client_id,
+                access_token=token,
+                source_ipv6=notif.user.assigned_ipv6,
+                leg_name="STOP_LOSS_LEG",
+                stop_loss_price=req.stop_loss_price,
+                trailing_jump=req.trailing_jump,
+            )
+        return OrderActionResult(
+            notification_id=notif.id, user_id=notif.user_id,
+            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+            success=True, reason=None,
+        )
+    except DhanApiError as exc:
+        return OrderActionResult(
+            notification_id=notif.id, user_id=notif.user_id,
+            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+            success=False, reason=str(exc),
+        )
 
 
 # ---------------------------------------------------------------------------

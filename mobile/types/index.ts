@@ -117,7 +117,7 @@ export interface AdminSignalNotificationRow {
   user_email: string;
   user_name: string;
   assigned_ipv6: string | null;
-  status: string;
+  status: 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'cancelled';
   dhan_order_id: string | null;
   error_message: string | null;
   confirmed_at: string | null;
@@ -129,11 +129,32 @@ export interface AdminSignalNotificationRow {
   traded_price: number | null;
   reason_description: string | null;
   live_updated_at: string | null;
+  exit_leg: 'TARGET_LEG' | 'STOP_LOSS_LEG' | null;
+  exit_price: number | null;
+  exit_time: string | null;
 }
 
 export interface AdminSignalDetail {
   signal: Signal;
   notifications: AdminSignalNotificationRow[];
+}
+
+export interface AdminSignalNotificationsResponse extends Paginated<AdminSignalNotificationRow> {}
+
+export interface SignalOrderModifyPayload {
+  price?: number | null;
+  target_price?: number | null;
+  stop_loss_price?: number | null;
+  trailing_jump?: number | null;
+}
+
+export interface OrderActionResult {
+  notification_id: number;
+  user_id: number;
+  user_email: string;
+  dhan_order_id: string | null;
+  success: boolean;
+  reason: string | null;
 }
 
 export interface Dashboard {

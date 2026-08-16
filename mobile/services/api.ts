@@ -11,6 +11,9 @@ import type {
   SignalCreatePayload,
   AdminUser,
   AdminSignalDetail,
+  AdminSignalNotificationsResponse,
+  SignalOrderModifyPayload,
+  OrderActionResult,
   Dashboard,
   Paginated,
   DateRangeFilter,
@@ -213,6 +216,22 @@ export const adminApi = {
       date_to: params.date_to,
     })}`),
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
+  getSignalNotifications: (id: number, params: { page?: number; pageSize?: number; status?: string } & DateRangeFilter = {}) =>
+    get<AdminSignalNotificationsResponse>(`/api/admin/signals/${id}/notifications${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
+      status: params.status,
+      date_from: params.date_from,
+      date_to: params.date_to,
+    })}`),
+  cancelSignalOrders: (id: number) =>
+    post<OrderActionResult[]>(`/api/admin/signals/${id}/cancel-orders`),
+  modifySignalOrders: (id: number, data: SignalOrderModifyPayload) =>
+    post<OrderActionResult[]>(`/api/admin/signals/${id}/modify-orders`, data),
+  cancelNotificationOrder: (notifId: number) =>
+    post<OrderActionResult>(`/api/admin/notifications/${notifId}/cancel-order`),
+  modifyNotificationOrder: (notifId: number, data: SignalOrderModifyPayload) =>
+    post<OrderActionResult>(`/api/admin/notifications/${notifId}/modify-order`, data),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),
   exportUsers: (params: { search?: string } & DateRangeFilter = {}) =>
