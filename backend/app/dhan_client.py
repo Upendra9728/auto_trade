@@ -299,7 +299,8 @@ class DhanClient:
             raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
         return data if isinstance(data, list) else []
 
-
+    @staticmethod
+    async def get_order_status(
         *,
         access_token: str,
         order_id: str,
