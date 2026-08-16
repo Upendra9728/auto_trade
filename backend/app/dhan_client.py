@@ -61,28 +61,43 @@ class DhanClient:
         Requires the user to have TOTP enabled on their Dhan account.
         Returns the response dict containing 'accessToken' and 'expiryTime'.
         """
-        totp_code = pyotp.TOTP(totp_secret).now()
-        params = {"dhanClientId": dhan_client_id, "pin": pin, "totp": totp_code}
-        logger.info("Dhan generateAccessToken for client %s", dhan_client_id)
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(DHAN_GENERATE_TOKEN_URL, params=params)
-        except Exception as exc:
-            raise DhanApiError(f"Network error calling generateAccessToken: {exc}") from exc
+        # Retry once: TOTP codes change every 30s; a code sent at the window boundary
+        # may arrive at Dhan in the next window. A 2s wait gets a fresh code.
+        last_error: str = ""
+        for attempt in range(2):
+            if attempt > 0:
+                await asyncio.sleep(2)
+            totp_code = pyotp.TOTP(totp_secret).now()
+            params = {"dhanClientId": dhan_client_id, "pin": pin, "totp": totp_code}
+            logger.info("Dhan generateAccessToken for client %s (attempt %d)", dhan_client_id, attempt + 1)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(DHAN_GENERATE_TOKEN_URL, params=params)
+            except Exception as exc:
+                raise DhanApiError(f"Network error calling generateAccessToken: {exc}") from exc
 
-        logger.info("generateAccessToken response status=%s body=%s", resp.status_code, resp.text[:500])
+            logger.info("generateAccessToken response status=%s body=%s", resp.status_code, resp.text[:500])
 
-        try:
-            data = resp.json()
-        except Exception:
-            raise DhanApiError(
-                f"generateAccessToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
-            )
+            try:
+                data = resp.json()
+            except Exception:
+                raise DhanApiError(
+                    f"generateAccessToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
+                )
 
-        if resp.status_code >= 400:
-            raise DhanApiError(f"generateAccessToken error HTTP {resp.status_code}: {data}")
+            if resp.status_code >= 400:
+                last_error = f"HTTP {resp.status_code}: {data}"
+                logger.warning("generateAccessToken attempt %d failed for client %s: %s", attempt + 1, dhan_client_id, last_error)
+                continue
 
-        return data
+            if not data.get("accessToken") and not data.get("access_token"):
+                last_error = f"no accessToken in response: {data}"
+                logger.warning("generateAccessToken attempt %d for client %s: %s", attempt + 1, dhan_client_id, last_error)
+                continue
+
+            return data
+
+        raise DhanApiError(f"generateAccessToken failed after 2 attempts for client {dhan_client_id}: {last_error}")
 
     @staticmethod
     def _format_error_message(data: Any, status_code: int) -> str:
