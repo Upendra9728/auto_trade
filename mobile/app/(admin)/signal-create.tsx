@@ -219,7 +219,7 @@ export default function SignalCreateScreen() {
           {/* Parsed preview — shown inline in paste mode after parsing */}
           {entryMode === 'paste' && hasParsed && (
             <View style={styles.parsedPreview}>
-              <Text style={styles.parsedPreviewLabel}>\ud83d\udccb Signal Preview</Text>
+              <Text style={styles.parsedPreviewLabel}>Signal Preview</Text>
               <Text style={styles.parsedTitle} numberOfLines={2}>{form.title || '(No title parsed)'}</Text>
               <View style={styles.parsedPriceRow}>
                 <ParsCell label="Entry" value={`\u20b9${form.price || '\u2014'}`} />
@@ -249,7 +249,7 @@ export default function SignalCreateScreen() {
                 onPress={handleCreate}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>\ud83d\ude80 Broadcast Signal</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>🚀 Broadcast Signal</Text>}
               </TouchableOpacity>
             </View>
           )}
