@@ -23,6 +23,7 @@ import logging
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .crypto import decrypt_token, encrypt_token
 from .dhan_client import DhanApiError, DhanClient
 from .db import SessionLocal
@@ -30,10 +31,6 @@ from .models import DhanCredential
 
 logger = logging.getLogger(__name__)
 
-# Renew tokens expiring within this window
-_RENEW_THRESHOLD = dt.timedelta(hours=2)
-# Background loop polling interval
-_CHECK_INTERVAL_SECONDS = 3600
 # Dhan expiryTime strings are in IST (UTC+5:30)
 _IST_OFFSET = dt.timedelta(hours=5, minutes=30)
 
@@ -151,19 +148,22 @@ def _apply_token_result(cred: DhanCredential, db: Session, result: dict) -> bool
 
 async def token_refresh_loop() -> None:
     """
-    Infinite asyncio loop.  Wakes up every hour and renews credentials that are
-    approaching expiry.  Designed to run as a background task via asyncio.create_task.
+    Infinite asyncio loop. Wakes up on TOKEN_REFRESH_INTERVAL_SECONDS and renews
+    credentials expiring within TOKEN_RENEW_THRESHOLD_HOURS. Designed to run as
+    a background task via asyncio.create_task.
     """
+    interval = settings.token_refresh_interval_seconds
+    threshold = dt.timedelta(hours=settings.token_renew_threshold_hours)
     logger.info(
         "Token refresh loop started (interval=%ds, renew_threshold=%s)",
-        _CHECK_INTERVAL_SECONDS,
-        _RENEW_THRESHOLD,
+        interval,
+        threshold,
     )
     while True:
-        await asyncio.sleep(_CHECK_INTERVAL_SECONDS)
+        await asyncio.sleep(interval)
         now = dt.datetime.utcnow()
-        threshold = now + _RENEW_THRESHOLD
-        # Tokens where updated_at is this old are almost certainly expired
+        expiry_threshold = now + threshold
+        # Safety net for old records that have no token_expires_at set
         age_cutoff = now - dt.timedelta(hours=22)
 
         db: Session = SessionLocal()
@@ -176,7 +176,7 @@ async def token_refresh_loop() -> None:
                         # Known expiry: renew if expiring within threshold
                         and_(
                             DhanCredential.token_expires_at.isnot(None),
-                            DhanCredential.token_expires_at <= threshold,
+                            DhanCredential.token_expires_at <= expiry_threshold,
                         ),
                         # Unknown expiry (user pasted token manually): renew if
                         # credential hasn't been updated in >=22 h

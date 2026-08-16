@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Requires the process to have CAP_NET_ADMIN or passwordless sudo for 'ip'.
     ipv6_auto_provision: bool = True
 
+    # Token refresh scheduler
+    token_refresh_interval_seconds: int = 300
+    token_renew_threshold_hours: int = 1
+
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
     app_latest_version: str = "1.2.3"
