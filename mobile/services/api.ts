@@ -124,7 +124,7 @@ export const userApi = {
   testPush: () =>
     post<{ status: string; token_suffix: string }>('/api/users/me/test-push'),
   getDhanCredential: () => get<DhanCredential | null>('/api/users/me/dhan'),
-  saveDhanCredential: (data: { dhan_client_id: string; access_token: string }) =>
+  saveDhanCredential: (data: { dhan_client_id: string; pin: string; totp_secret: string }) =>
     post<DhanCredential>('/api/users/me/dhan', data),
   refreshDhanToken: () =>
     post<{

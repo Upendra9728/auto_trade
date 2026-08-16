@@ -68,10 +68,10 @@ class UpdateFcmTokenRequest(BaseModel):
 
 class DhanCredentialUpsertRequest(BaseModel):
     dhan_client_id: str = Field(min_length=1, max_length=64)
-    access_token: str = Field(min_length=10)
-    # Optional: client can pass the expiryTime from Dhan's generateAccessToken response
-    # so the backend knows exactly when to renew.  Format: ISO 8601 UTC.
-    token_expires_at: dt.datetime | None = None
+    # 6-digit Dhan login PIN
+    pin: str = Field(min_length=6, max_length=6, pattern=r'^[0-9]{6}$')
+    # Base32 TOTP secret from the authenticator app setup on Dhan Web
+    totp_secret: str = Field(min_length=16)
 
 
 class DhanCredentialResponse(BaseModel):
@@ -79,6 +79,7 @@ class DhanCredentialResponse(BaseModel):
     is_active: bool
     updated_at: str
     token_expires_at: str | None = None
+    totp_configured: bool = False
 
 
 # ---------------------------------------------------------------------------

@@ -67,119 +67,86 @@ def parse_dhan_token_validity(validity_str: str) -> dt.datetime | None:
 
 async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
     """
-    Call Dhan RenewToken for *cred*, encrypt and persist the new token and expiry.
-
-    Returns True on success, False on any failure (caller can still attempt the
-    order with the existing token — it may still be valid).
+    Generate a fresh Dhan token via TOTP for *cred* and persist it.
+    Returns True on success, False on any failure.
     """
-    try:
-        current_token = decrypt_token(cred.access_token_encrypted)
-        # Bind RenewToken call to the user's assigned IPv6 (if present) so Dhan
-        # sees the request coming from the registered IP — same as order calls.
-        source_ipv6 = None
-        try:
-            source_ipv6 = getattr(cred.user, "assigned_ipv6", None)
-        except Exception:
-            source_ipv6 = None
-
-        result = await DhanClient.renew_token(
-            dhan_client_id=cred.dhan_client_id,
-            access_token=current_token,
-            source_ipv6=source_ipv6,
-        )
-        new_token: str | None = result.get("accessToken") or result.get("access_token")
-        if not new_token:
-            logger.error(
-                "RenewToken for client %s: no accessToken in response: %s",
-                cred.dhan_client_id,
-                result,
-            )
-            return False
-        expiry_str: str | None = result.get("expiryTime") or result.get("expiry_time")
-        cred.access_token_encrypted = encrypt_token(new_token)
-        cred.token_expires_at = (
-            parse_dhan_expiry(expiry_str) if expiry_str
-            else dt.datetime.utcnow() + dt.timedelta(hours=24)
-        )
-        cred.updated_at = dt.datetime.utcnow()
-        db.commit()
-        logger.info(
-            "Renewed Dhan token for client %s; new expiry (UTC): %s",
-            cred.dhan_client_id,
-            cred.token_expires_at,
-        )
-        return True
-    except DhanApiError as exc:
+    if not cred.pin_encrypted or not cred.totp_secret_encrypted:
         logger.error(
-            "RenewToken API error for client %s (ipv6=%s): %s",
+            "Cannot refresh token for client %s: no TOTP credentials stored",
             cred.dhan_client_id,
-            source_ipv6,
-            exc,
         )
         return False
-    except Exception as exc:
-        logger.exception(
-            "Unexpected error renewing token for client %s: %s", cred.dhan_client_id, exc
+    try:
+        pin = decrypt_token(cred.pin_encrypted)
+        totp_secret = decrypt_token(cred.totp_secret_encrypted)
+        result = await DhanClient.generate_access_token(
+            dhan_client_id=cred.dhan_client_id,
+            pin=pin,
+            totp_secret=totp_secret,
         )
+        return _apply_token_result(cred, db, result)
+    except DhanApiError as exc:
+        logger.error("generateAccessToken failed for client %s: %s", cred.dhan_client_id, exc)
+        return False
+    except Exception as exc:
+        logger.exception("Unexpected error refreshing token for client %s: %s", cred.dhan_client_id, exc)
         return False
 
 
 async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Session) -> dict:
     """
     Like `renew_and_save_credential` but returns a dict with detailed result
-    information suitable for admin tooling. Returns:
-      {"success": bool, "reason": str|None, "refreshed_at": str|None}
+    information suitable for admin tooling.
+    Returns: {"success": bool, "reason": str|None, "refreshed_at": str|None}
     """
+    source_ipv6 = None
     try:
-        current_token = decrypt_token(cred.access_token_encrypted)
+        source_ipv6 = getattr(cred.user, "assigned_ipv6", None)
+    except Exception:
         source_ipv6 = None
-        try:
-            source_ipv6 = getattr(cred.user, "assigned_ipv6", None)
-        except Exception:
-            source_ipv6 = None
 
-        result = await DhanClient.renew_token(
+    if not cred.pin_encrypted or not cred.totp_secret_encrypted:
+        reason = "No TOTP credentials stored — user must re-save credentials with PIN and TOTP secret"
+        logger.error("Cannot refresh token for client %s: %s", cred.dhan_client_id, reason)
+        return {"success": False, "reason": reason, "refreshed_at": None, "source_ipv6": source_ipv6}
+
+    try:
+        pin = decrypt_token(cred.pin_encrypted)
+        totp_secret = decrypt_token(cred.totp_secret_encrypted)
+        result = await DhanClient.generate_access_token(
             dhan_client_id=cred.dhan_client_id,
-            access_token=current_token,
-            source_ipv6=source_ipv6,
+            pin=pin,
+            totp_secret=totp_secret,
         )
-        new_token: str | None = result.get("accessToken") or result.get("access_token")
-        if not new_token:
-            reason = f"no accessToken in response: {result}"
-            logger.error("RenewToken for client %s: %s", cred.dhan_client_id, reason)
-            return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
-
-        expiry_str: str | None = result.get("expiryTime") or result.get("expiry_time")
-        cred.access_token_encrypted = encrypt_token(new_token)
-        cred.token_expires_at = (
-            parse_dhan_expiry(expiry_str) if expiry_str
-            else dt.datetime.utcnow() + dt.timedelta(hours=24)
-        )
-        cred.updated_at = dt.datetime.utcnow()
-        db.commit()
-        refreshed_at = cred.updated_at.isoformat()
-        logger.info(
-            "Renewed Dhan token for client %s; new expiry (UTC): %s",
-            cred.dhan_client_id,
-            cred.token_expires_at,
-        )
-        return {"success": True, "reason": None, "refreshed_at": refreshed_at}
+        ok = _apply_token_result(cred, db, result)
+        if ok:
+            return {"success": True, "reason": None, "refreshed_at": cred.updated_at.isoformat(), "source_ipv6": source_ipv6}
+        return {"success": False, "reason": "no accessToken in response", "refreshed_at": None, "source_ipv6": source_ipv6}
     except DhanApiError as exc:
-        reason = f"DhanApiError: {exc}"
-        logger.error(
-            "RenewToken API error for client %s (ipv6=%s): %s",
-            cred.dhan_client_id,
-            source_ipv6,
-            exc,
-        )
-        # Append the attempted ipv6 for easier debugging in admin responses
-        return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
-    except Exception as exc:
         reason = str(exc)
-        logger.exception(
-            "Unexpected error renewing token for client %s: %s", cred.dhan_client_id, exc
-        )
-        return {"success": False, "reason": f"{reason}; ipv6: {source_ipv6}", "refreshed_at": None, "source_ipv6": source_ipv6}
+        logger.error("generateAccessToken failed for client %s: %s", cred.dhan_client_id, reason)
+        return {"success": False, "reason": reason, "refreshed_at": None, "source_ipv6": source_ipv6}
+    except Exception as exc:
+        logger.exception("Unexpected error refreshing token for client %s: %s", cred.dhan_client_id, exc)
+        return {"success": False, "reason": str(exc), "refreshed_at": None, "source_ipv6": source_ipv6}
+
+
+def _apply_token_result(cred: DhanCredential, db: Session, result: dict) -> bool:
+    """Persist a new token from a generateAccessToken response. Returns True on success."""
+    new_token: str | None = result.get("accessToken") or result.get("access_token")
+    if not new_token:
+        logger.error("generateAccessToken for client %s: no accessToken in response: %s", cred.dhan_client_id, result)
+        return False
+    expiry_str: str | None = result.get("expiryTime") or result.get("expiry_time")
+    cred.access_token_encrypted = encrypt_token(new_token)
+    cred.token_expires_at = (
+        parse_dhan_expiry(expiry_str) if expiry_str
+        else dt.datetime.utcnow() + dt.timedelta(hours=24)
+    )
+    cred.updated_at = dt.datetime.utcnow()
+    db.commit()
+    logger.info("generateAccessToken: new token for client %s; expiry (UTC): %s", cred.dhan_client_id, cred.token_expires_at)
+    return True
 
 
 async def token_refresh_loop() -> None:

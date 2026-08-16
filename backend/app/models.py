@@ -43,6 +43,10 @@ class DhanCredential(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
     dhan_client_id: Mapped[str] = mapped_column(String(64))
     access_token_encrypted: Mapped[str] = mapped_column(Text)
+    # Encrypted Dhan login PIN (6-digit); required for automated token generation via TOTP
+    pin_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Encrypted base32 TOTP secret from authenticator app setup
+    totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # UTC datetime when the Dhan access token expires (None if unknown)
     token_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

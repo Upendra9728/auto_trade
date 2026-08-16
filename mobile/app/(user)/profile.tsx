@@ -14,7 +14,7 @@ import type { DhanCredential } from '../../types';
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const [dhan, setDhan] = useState<DhanCredential | null>(null);
-  const [dhanForm, setDhanForm] = useState({ dhan_client_id: '', access_token: '' });
+  const [dhanForm, setDhanForm] = useState({ dhan_client_id: '', pin: '', totp_secret: '' });
   const [savingDhan, setSavingDhan] = useState(false);
   const [showDhanForm, setShowDhanForm] = useState(false);
   const [testingIp, setTestingIp] = useState(false);
@@ -25,19 +25,24 @@ export default function ProfileScreen() {
   }, []);
 
   const handleSaveDhan = async () => {
-    if (!dhanForm.dhan_client_id.trim() || !dhanForm.access_token.trim()) {
-      Alert.alert('Missing fields', 'Enter both Dhan Client ID and Access Token.');
+    if (!dhanForm.dhan_client_id.trim() || !dhanForm.pin.trim() || !dhanForm.totp_secret.trim()) {
+      Alert.alert('Missing fields', 'Enter Dhan Client ID, PIN, and TOTP Secret.');
+      return;
+    }
+    if (!/^[0-9]{6}$/.test(dhanForm.pin)) {
+      Alert.alert('Invalid PIN', 'PIN must be exactly 6 digits.');
       return;
     }
     setSavingDhan(true);
     try {
       const saved = await userApi.saveDhanCredential({
         dhan_client_id: dhanForm.dhan_client_id.trim(),
-        access_token: dhanForm.access_token.trim(),
+        pin: dhanForm.pin.trim(),
+        totp_secret: dhanForm.totp_secret.trim(),
       });
       setDhan(saved);
       setShowDhanForm(false);
-      setDhanForm({ dhan_client_id: '', access_token: '' });
+      setDhanForm({ dhan_client_id: '', pin: '', totp_secret: '' });
       Alert.alert('Saved', 'Dhan credentials updated successfully.');
     } catch (err: any) {
       Alert.alert('Error', err.message);
@@ -205,21 +210,33 @@ export default function ProfileScreen() {
                 />
               </View>
               <View style={styles.field}>
-                <Text style={styles.label}>Access Token</Text>
+                <Text style={styles.label}>Dhan PIN</Text>
                 <TextInput
-                  style={[styles.input, { minHeight: 80 }]}
-                  value={dhanForm.access_token}
-                  onChangeText={(v) => setDhanForm((f) => ({ ...f, access_token: v }))}
-                  placeholder="Paste your Dhan access token"
+                  style={styles.input}
+                  value={dhanForm.pin}
+                  onChangeText={(v) => setDhanForm((f) => ({ ...f, pin: v }))}
+                  placeholder="6-digit login PIN"
                   placeholderTextColor={Colors.textMuted}
-                  multiline
-                  autoCapitalize="none"
+                  keyboardType="numeric"
+                  maxLength={6}
+                  secureTextEntry
+                />
+              </View>
+              <View style={styles.field}>
+                <Text style={styles.label}>TOTP Secret</Text>
+                <TextInput
+                  style={styles.input}
+                  value={dhanForm.totp_secret}
+                  onChangeText={(v) => setDhanForm((f) => ({ ...f, totp_secret: v }))}
+                  placeholder="Base32 key from Dhan TOTP setup"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="characters"
                   autoCorrect={false}
                 />
               </View>
               <View style={styles.noteBox}>
                 <Text style={styles.noteText}>
-                  🔒 Your token is encrypted before storage. It is never sent in logs.
+                  🔒 Your PIN and TOTP secret are encrypted before storage. Setup TOTP on Dhan Web → Profile → Access DhanHQ APIs → Setup TOTP.
                 </Text>
               </View>
               <View style={styles.formActions}>

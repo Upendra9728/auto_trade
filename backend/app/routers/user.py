@@ -14,7 +14,8 @@ from ..dhan_client import DhanApiError, DhanClient
 from ..models import DhanCredential, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
 from ..pagination import paginate_meta, parse_ist_date_range
-from ..token_refresh import parse_dhan_token_validity, renew_and_save_credential_with_reason
+from ..token_refresh import renew_and_save_credential_with_reason
+from ..token_refresh import parse_dhan_expiry
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
@@ -151,6 +152,7 @@ def get_dhan_credential(
         is_active=cred.is_active,
         updated_at=cred.updated_at.isoformat(),
         token_expires_at=cred.token_expires_at.isoformat() if cred.token_expires_at else None,
+        totp_configured=bool(cred.totp_secret_encrypted),
     )
 
 
@@ -181,36 +183,44 @@ async def upsert_dhan_credential(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DhanCredentialResponse:
-    # Validate the client ID + token immediately with a lightweight Dhan call.
-    # This catches typos (wrong client ID, stale/invalid token) at save time
-    # instead of silently accepting bad credentials that only fail later when a
-    # signal comes in. This endpoint requires no IP whitelisting on Dhan's side.
+    # Validate credentials and obtain the first token in one call.
+    # generateAccessToken works regardless of whether an existing token is active.
     try:
-        profile = await DhanClient.get_profile(access_token=req.access_token)
+        token_result = await DhanClient.generate_access_token(
+            dhan_client_id=req.dhan_client_id.strip(),
+            pin=req.pin,
+            totp_secret=req.totp_secret,
+        )
     except DhanApiError as exc:
         raise HTTPException(status_code=400, detail=f"Dhan rejected these credentials: {exc}")
 
-    token_expires_at = req.token_expires_at
-    if token_expires_at is None:
-        token_validity = profile.get("tokenValidity")
-        if token_validity:
-            token_expires_at = parse_dhan_token_validity(token_validity)
+    new_token: str | None = token_result.get("accessToken") or token_result.get("access_token")
+    if not new_token:
+        raise HTTPException(status_code=502, detail="Dhan did not return an access token")
+
+    expiry_str: str | None = token_result.get("expiryTime") or token_result.get("expiry_time")
+    token_expires_at = (
+        parse_dhan_expiry(expiry_str) if expiry_str
+        else dt.datetime.utcnow() + dt.timedelta(hours=24)
+    )
 
     cred = db.query(DhanCredential).filter(DhanCredential.user_id == current_user.id).one_or_none()
-    encrypted = encrypt_token(req.access_token)
-
     if cred is None:
         cred = DhanCredential(
             user_id=current_user.id,
             dhan_client_id=req.dhan_client_id.strip(),
-            access_token_encrypted=encrypted,
+            access_token_encrypted=encrypt_token(new_token),
+            pin_encrypted=encrypt_token(req.pin),
+            totp_secret_encrypted=encrypt_token(req.totp_secret),
             is_active=True,
             token_expires_at=token_expires_at,
         )
         db.add(cred)
     else:
         cred.dhan_client_id = req.dhan_client_id.strip()
-        cred.access_token_encrypted = encrypted
+        cred.access_token_encrypted = encrypt_token(new_token)
+        cred.pin_encrypted = encrypt_token(req.pin)
+        cred.totp_secret_encrypted = encrypt_token(req.totp_secret)
         cred.is_active = True
         cred.token_expires_at = token_expires_at
         cred.updated_at = dt.datetime.utcnow()
@@ -222,6 +232,7 @@ async def upsert_dhan_credential(
         is_active=cred.is_active,
         updated_at=cred.updated_at.isoformat(),
         token_expires_at=cred.token_expires_at.isoformat() if cred.token_expires_at else None,
+        totp_configured=True,
     )
 
 

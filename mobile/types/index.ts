@@ -24,6 +24,7 @@ export interface DhanCredential {
   is_active: boolean;
   updated_at: string;
   token_expires_at?: string | null;
+  totp_configured: boolean;
 }
 
 // ── Signals ──────────────────────────────────────────────────────────────────

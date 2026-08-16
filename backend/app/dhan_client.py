@@ -9,13 +9,14 @@ from typing import Any
 
 import httpx
 
+import pyotp
 
 logger = logging.getLogger(__name__)
 
 
 DHAN_API_HOST = "api.dhan.co"
 DHAN_SUPER_ORDERS_URL = "https://api.dhan.co/v2/super/orders"
-DHAN_RENEW_TOKEN_URL = "https://api.dhan.co/v2/RenewToken"
+DHAN_GENERATE_TOKEN_URL = "https://auth.dhan.co/app/generateAccessToken"
 DHAN_ORDER_BY_ID_URL = "https://api.dhan.co/v2/orders/{order_id}"
 DHAN_PROFILE_URL = "https://api.dhan.co/v2/profile"
 DHAN_IP_GET_URL = "https://api.dhan.co/v2/ip/getIP"
@@ -54,47 +55,32 @@ def _verify_ipv6_bindable(ipv6: str) -> None:
 
 class DhanClient:
     @staticmethod
-    async def renew_token(*, dhan_client_id: str, access_token: str, source_ipv6: str | None = None) -> dict[str, Any]:
+    async def generate_access_token(*, dhan_client_id: str, pin: str, totp_secret: str) -> dict[str, Any]:
         """
-        Call Dhan's RenewToken API to obtain a fresh token with a new 24-hour expiry.
-        Only works for active tokens originally generated via Dhan Web.
+        Generate a fresh Dhan access token using TOTP — works even when the existing token is expired.
+        Requires the user to have TOTP enabled on their Dhan account.
         Returns the response dict containing 'accessToken' and 'expiryTime'.
         """
-        headers = {
-            "access-token": access_token,
-            "dhanClientId": dhan_client_id,
-        }
-        # If a source IPv6 is provided, verify it's available and bind the
-        # outbound socket to that address so Dhan sees the request coming from
-        # the user's registered IP (same approach used for order placement).
-        if source_ipv6:
-            source_ipv6 = source_ipv6.strip()
-            logger.info("Dhan RenewToken outbound: binding to IPv6 %s", source_ipv6)
-            _verify_ipv6_bindable(source_ipv6)
-            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
-        else:
-            logger.info("Dhan RenewToken outbound: no explicit IPv6 bind")
-            transport = httpx.AsyncHTTPTransport()
-
+        totp_code = pyotp.TOTP(totp_secret).now()
+        params = {"dhanClientId": dhan_client_id, "pin": pin, "totp": totp_code}
+        logger.info("Dhan generateAccessToken for client %s", dhan_client_id)
         try:
-            safe_headers = {"access-token": "<redacted>", "dhanClientId": dhan_client_id}
-            logger.info("Dhan RenewToken headers: %s", json.dumps(safe_headers, separators=(",", ":")))
-            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
-                resp = await client.post(DHAN_RENEW_TOKEN_URL, headers=headers)
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(DHAN_GENERATE_TOKEN_URL, params=params)
         except Exception as exc:
-            raise DhanApiError(f"Network error calling RenewToken: {exc}") from exc
+            raise DhanApiError(f"Network error calling generateAccessToken: {exc}") from exc
 
-        logger.info("RenewToken response status=%s body=%s", resp.status_code, resp.text[:500])
+        logger.info("generateAccessToken response status=%s body=%s", resp.status_code, resp.text[:500])
 
         try:
             data = resp.json()
         except Exception:
             raise DhanApiError(
-                f"RenewToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
+                f"generateAccessToken returned non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}"
             )
 
         if resp.status_code >= 400:
-            raise DhanApiError(f"RenewToken error HTTP {resp.status_code}: {data}")
+            raise DhanApiError(f"generateAccessToken error HTTP {resp.status_code}: {data}")
 
         return data
 

@@ -31,6 +31,14 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE dhan_credentials ADD COLUMN token_expires_at TIMESTAMP"))
                 conn.commit()
             logger.info("Migration: added token_expires_at column to dhan_credentials")
+        totp_columns = {"pin_encrypted": "TEXT", "totp_secret_encrypted": "TEXT"}
+        missing_totp = {col: ddl for col, ddl in totp_columns.items() if col not in existing}
+        if missing_totp:
+            with engine.connect() as conn:
+                for col, ddl in missing_totp.items():
+                    conn.execute(text(f"ALTER TABLE dhan_credentials ADD COLUMN {col} {ddl}"))
+                conn.commit()
+            logger.info("Migration: added TOTP columns to dhan_credentials: %s", list(missing_totp))
 
     if "signal_notifications" in table_names:
         existing = {c["name"] for c in inspector.get_columns("signal_notifications")}

@@ -236,3 +236,20 @@ WHERE id = 94;
 
 
 ssh -i "dhan-prod-key.pem" ec2-user@13.126.206.167
+
+
+TOKEN='eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzg2NjQ5MjE3LCJpYXQiOjE3ODY1NjI4MTcsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAxMDM2NDUzIn0.9p28DvMVJFc48VnqCdpHyMDzT8LrZUz4az9pUJEbyoJ5d6buiUyHQL7X5eH5vj1yrNZ0XRNJtqbjjxg8VS-58A'
+CLIENT=1101036453
+curl -v -X POST \
+  -H "Content-Type: application/json" \
+  -H "access-token: $TOKEN" \
+  -H "dhanClientId: $CLIENT" \
+  -d '{}' \
+  --interface 2406:da1a:c1e:f000:a79e::6 \
+  "https://api.dhan.co/v2/RenewToken"
+
+
+UPDATE users
+SET password_hash = 'pbkdf2_sha256$120000$459a423484cd5b939645bd1638e4c464$4500386bc82dbacabd519a176d377fcdd0dcc71863e12d1acb076cd4a4e3cb03',
+    updated_at = NOW()
+WHERE id = 62;
