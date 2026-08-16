@@ -32,10 +32,7 @@ from ..schemas import (
     SignalResponse,
     PaginationMeta,
 )
-from ..xlsx_export import (
-    build_xlsx_response, to_ist_str,
-    STATUS_FILL_MAP, LIVE_STATUS_FILL_MAP, _ROW_WHITE, _ROW_GREY,
-)
+from ..xlsx_export import build_xlsx_response, to_ist_str, _ROW_WHITE, _ROW_GREY
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -1082,12 +1079,8 @@ def export_orders(
             n.error_message or "", n.reason_description or "",
             to_ist_str(n.confirmed_at), to_ist_str(n.placed_at), to_ist_str(n.created_at),
         ])
-        # Status-based colour takes priority; fall back to alternating signal-group shade
-        fill = (
-            STATUS_FILL_MAP.get(n.status)
-            or (LIVE_STATUS_FILL_MAP.get(n.live_status or "") if n.status == "placed" else None)
-            or (_ROW_WHITE if signal_group_idx[s.id] % 2 == 0 else _ROW_GREY)
-        )
+        # Alternate white/grey per signal group so each signal's rows are visually distinct
+        fill = _ROW_WHITE if signal_group_idx[s.id] % 2 == 0 else _ROW_GREY
         row_fills.append(fill)
 
     filename = f"orders_{dt.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
