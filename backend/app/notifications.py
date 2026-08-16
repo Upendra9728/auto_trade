@@ -74,26 +74,7 @@ def send_push_notification(
     try:
         from firebase_admin import messaging
 
-        message = messaging.Message(
-            notification=messaging.Notification(title=title, body=body),
-            data=data or {},
-            token=fcm_token,
-            android=messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(
-                    channel_id="trading-signals",
-                    sound="default",
-                    priority="high",
-                    default_sound=True,
-                    default_vibrate_timings=True,
-                ),
-            ),
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(
-                    aps=messaging.Aps(sound="default", badge=1),
-                ),
-            ),
-        )
+        message = _build_message(title=title, body=body, data=data, token=fcm_token)
         messaging.send(message, app=app)
         logger.info("FCM notification sent to token ...%s", fcm_token[-8:])
         return True
@@ -102,35 +83,81 @@ def send_push_notification(
         return False
 
 
+def _build_message(*, title: str, body: str, data: dict[str, str] | None, token: str):
+    from firebase_admin import messaging
+
+    return messaging.Message(
+        notification=messaging.Notification(title=title, body=body),
+        data=data or {},
+        token=token,
+        android=messaging.AndroidConfig(
+            priority="high",
+            notification=messaging.AndroidNotification(
+                channel_id="trading-signals",
+                sound="default",
+                priority="high",
+                default_sound=True,
+                default_vibrate_timings=True,
+            ),
+        ),
+        apns=messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(sound="default", badge=1),
+            ),
+        ),
+    )
+
+
+# FCM's batch endpoint accepts at most 500 messages per call
+_FCM_BATCH_SIZE = 500
+
+
+def _send_batch(*, title: str, body: str, data: dict[str, str], fcm_tokens: list[str]) -> dict[str, Any]:
+    """
+    Send the same notification to many tokens using Firebase's batched send_each(),
+    which dispatches all messages concurrently in one call instead of one HTTP
+    round-trip per token — dramatically faster than a sequential loop for
+    broadcasts to dozens/hundreds of users.
+    """
+    app = _get_firebase_app()
+    if app is None or not fcm_tokens:
+        return {"sent": 0, "failed": len(fcm_tokens), "total": len(fcm_tokens)}
+
+    from firebase_admin import messaging
+
+    sent = 0
+    failed = 0
+    for i in range(0, len(fcm_tokens), _FCM_BATCH_SIZE):
+        chunk = fcm_tokens[i:i + _FCM_BATCH_SIZE]
+        messages = [_build_message(title=title, body=body, data=data, token=t) for t in chunk]
+        try:
+            batch_response = messaging.send_each(messages, app=app)
+            for token, resp in zip(chunk, batch_response.responses):
+                if resp.success:
+                    sent += 1
+                else:
+                    failed += 1
+                    logger.warning("FCM send failed for token ...%s: %s", token[-8:], resp.exception)
+        except Exception as exc:
+            logger.warning("FCM batch send failed for %d token(s): %s", len(chunk), exc)
+            failed += len(chunk)
+
+    return {"sent": sent, "failed": failed, "total": len(fcm_tokens)}
+
+
 def send_signal_notifications(
     *,
     signal_id: int,
     signal_title: str,
     fcm_tokens: list[str],
 ) -> dict[str, Any]:
-    """
-    Broadcast a signal notification to a list of FCM device tokens.
-    Returns a summary dict with sent/failed counts.
-    """
-    sent = 0
-    failed = 0
-
-    for token in fcm_tokens:
-        ok = send_push_notification(
-            fcm_token=token,
-            title="New Trading Signal",
-            body=signal_title,
-            data={
-                "signal_id": str(signal_id),
-                "type": "SIGNAL",
-            },
-        )
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "failed": failed, "total": len(fcm_tokens)}
+    """Broadcast a signal notification to a list of FCM device tokens (batched)."""
+    return _send_batch(
+        title="New Trading Signal",
+        body=signal_title,
+        data={"signal_id": str(signal_id), "type": "SIGNAL"},
+        fcm_tokens=fcm_tokens,
+    )
 
 
 def send_signal_cancelled_notifications(
@@ -139,25 +166,10 @@ def send_signal_cancelled_notifications(
     signal_title: str,
     fcm_tokens: list[str],
 ) -> dict[str, Any]:
-    """
-    Notify users whose pending signal was cancelled by the admin before they acted on it.
-    """
-    sent = 0
-    failed = 0
-
-    for token in fcm_tokens:
-        ok = send_push_notification(
-            fcm_token=token,
-            title="Signal Cancelled",
-            body=f'"{signal_title}" was cancelled by admin.',
-            data={
-                "signal_id": str(signal_id),
-                "type": "SIGNAL_CANCELLED",
-            },
-        )
-        if ok:
-            sent += 1
-        else:
-            failed += 1
-
-    return {"sent": sent, "failed": failed, "total": len(fcm_tokens)}
+    """Notify users whose pending signal was cancelled by the admin before they acted on it (batched)."""
+    return _send_batch(
+        title="Signal Cancelled",
+        body=f'"{signal_title}" was cancelled by admin.',
+        data={"signal_id": str(signal_id), "type": "SIGNAL_CANCELLED"},
+        fcm_tokens=fcm_tokens,
+    )

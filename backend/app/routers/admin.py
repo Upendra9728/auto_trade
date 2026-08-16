@@ -4,7 +4,7 @@ import datetime as dt
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -462,6 +462,7 @@ async def refresh_all_tokens(
 @router.post("/signals", response_model=SignalResponse, status_code=201)
 def create_signal(
     req: SignalCreateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin),
 ) -> SignalResponse:
@@ -469,6 +470,8 @@ def create_signal(
     Create a trading signal and broadcast it to all eligible users
     (active, has active Dhan credential and assigned IPv6).
     Each eligible user gets a SignalNotification record and an FCM push.
+    FCM pushes are sent in a background task so the response returns immediately
+    (sending one-by-one to dozens of users can otherwise take 30+ seconds).
     """
     signal = Signal(
         created_by_id=admin.id,
@@ -511,21 +514,24 @@ def create_signal(
     db.commit()
     db.refresh(signal)
 
-    # Send FCM push notifications (best-effort, non-blocking)
+    # Send FCM push notifications after the response is returned (best-effort)
     if fcm_tokens:
-        result = send_signal_notifications(
-            signal_id=signal.id,
-            signal_title=req.title,
-            fcm_tokens=fcm_tokens,
-        )
-        logger.info(
-            "Signal %s broadcast: %d users notified, FCM sent=%d failed=%d",
-            signal.id, len(eligible_users), result["sent"], result["failed"],
+        background_tasks.add_task(
+            _broadcast_signal_push, signal.id, req.title, fcm_tokens, len(eligible_users),
         )
     else:
         logger.info("Signal %s created; no FCM tokens to notify (%d eligible users)", signal.id, len(eligible_users))
 
     return _to_signal_response(signal, db)
+
+
+def _broadcast_signal_push(signal_id: int, signal_title: str, fcm_tokens: list[str], eligible_count: int) -> None:
+    """Runs after the HTTP response is sent — actually dispatches the FCM pushes."""
+    result = send_signal_notifications(signal_id=signal_id, signal_title=signal_title, fcm_tokens=fcm_tokens)
+    logger.info(
+        "Signal %s broadcast: %d users notified, FCM sent=%d failed=%d",
+        signal_id, eligible_count, result["sent"], result["failed"],
+    )
 
 
 @router.get("/signals", response_model=PaginatedSignalsResponse)
@@ -609,6 +615,7 @@ def get_signal(
 @router.put("/signals/{signal_id}/cancel")
 def cancel_signal(
     signal_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> dict[str, str]:
@@ -641,17 +648,20 @@ def cancel_signal(
     db.commit()
 
     if affected_tokens:
-        result = send_signal_cancelled_notifications(
-            signal_id=signal_id,
-            signal_title=signal.title,
-            fcm_tokens=affected_tokens,
-        )
-        logger.info(
-            "Signal %s cancelled: notified %d users, FCM sent=%d failed=%d",
-            signal_id, len(affected_tokens), result["sent"], result["failed"],
+        background_tasks.add_task(
+            _broadcast_signal_cancelled_push, signal_id, signal.title, affected_tokens,
         )
 
     return {"status": "cancelled", "signal_id": str(signal_id)}
+
+
+def _broadcast_signal_cancelled_push(signal_id: int, signal_title: str, fcm_tokens: list[str]) -> None:
+    """Runs after the HTTP response is sent — actually dispatches the FCM pushes."""
+    result = send_signal_cancelled_notifications(signal_id=signal_id, signal_title=signal_title, fcm_tokens=fcm_tokens)
+    logger.info(
+        "Signal %s cancelled: notified %d users, FCM sent=%d failed=%d",
+        signal_id, len(fcm_tokens), result["sent"], result["failed"],
+    )
 
 
 # ---------------------------------------------------------------------------
