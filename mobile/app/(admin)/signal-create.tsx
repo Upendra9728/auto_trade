@@ -13,11 +13,13 @@ const PRODUCT_TYPES = ['INTRADAY', 'CNC', 'MARGIN', 'MTF'];
 const ORDER_TYPES = ['LIMIT', 'MARKET'];
 
 export default function SignalCreateScreen() {
-  const [entryMode, setEntryMode] = useState<'form' | 'paste'>('form');
+  const [entryMode, setEntryMode] = useState<'form' | 'paste'>('paste');
   const [rawSignal, setRawSignal] = useState(
     'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300',
   );
   const [lotSize, setLotSize] = useState<number | null>(null);
+  const [hasParsed, setHasParsed] = useState(false);
+  const [scripInfo, setScripInfo] = useState<{ found: boolean; tradingSymbol?: string; expiryDate?: string } | null>(null);
   const [form, setForm] = useState({
     title: '',
     exchange_segment: 'NSE_FNO',
@@ -85,7 +87,8 @@ export default function SignalCreateScreen() {
       trailing_jump: prev.trailing_jump || '0',
     }));
 
-    setEntryMode('form');
+    setHasParsed(true);
+    setScripInfo(null);
 
     // Auto-lookup numeric security ID (and expiry, if not explicitly given) once we have strike + option type
     if (parsedStrike && parsedOptionType) {
@@ -109,20 +112,15 @@ export default function SignalCreateScreen() {
             // Auto-fill quantity from lot_size if not already set by admin
             quantity: prev.quantity || String(match.lot_size),
           }));
-          Alert.alert(
-            '✅ Security ID Found',
-            `${match.trading_symbol}\nSecurity ID: ${match.security_id}\nExpiry: ${match.expiry_date}\nLot size: ${match.lot_size}`,
-          );
+          setScripInfo({ found: true, tradingSymbol: match.trading_symbol, expiryDate: match.expiry_date });
         } else {
-          Alert.alert('⚠️ Security ID Not Found', `Could not find ${first} ${second}${parsedExpiry ? ` expiry ${parsedExpiry}` : ''} in scrip master. Enter the security ID manually.`);
+          setScripInfo({ found: false });
         }
       } catch (e: any) {
-        Alert.alert('⚠️ Scrip Lookup Failed', `${e.message}\nEnter the security ID manually.`);
+        setScripInfo({ found: false });
       } finally {
         setLookingUp(false);
       }
-    } else {
-      Alert.alert('Parsed', 'Form prefilled. Enter the security ID manually (scrip lookup needs strike and option type).');
     }
   };
 
@@ -183,16 +181,16 @@ export default function SignalCreateScreen() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.modeToggle}>
             <TouchableOpacity
-              style={[styles.modeBtn, entryMode === 'form' && styles.modeBtnActive]}
-              onPress={() => setEntryMode('form')}
-            >
-              <Text style={[styles.modeBtnText, entryMode === 'form' && styles.modeBtnTextActive]}>Fill Form</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={[styles.modeBtn, entryMode === 'paste' && styles.modeBtnActive]}
               onPress={() => setEntryMode('paste')}
             >
               <Text style={[styles.modeBtnText, entryMode === 'paste' && styles.modeBtnTextActive]}>Paste Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, entryMode === 'form' && styles.modeBtnActive]}
+              onPress={() => setEntryMode('form')}
+            >
+              <Text style={[styles.modeBtnText, entryMode === 'form' && styles.modeBtnTextActive]}>Fill Form</Text>
             </TouchableOpacity>
           </View>
 
@@ -213,11 +211,50 @@ export default function SignalCreateScreen() {
               <TouchableOpacity style={[styles.parseBtn, lookingUp && { opacity: 0.6 }]} onPress={parseAndPrefill} disabled={lookingUp}>
                 {lookingUp
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.parseBtnText}>Parse &amp; Prefill Form</Text>}
+                  : <Text style={styles.parseBtnText}>Parse</Text>}
               </TouchableOpacity>
             </View>
           )}
 
+          {/* Parsed preview — shown inline in paste mode after parsing */}
+          {entryMode === 'paste' && hasParsed && (
+            <View style={styles.parsedPreview}>
+              <Text style={styles.parsedPreviewLabel}>\ud83d\udccb Signal Preview</Text>
+              <Text style={styles.parsedTitle} numberOfLines={2}>{form.title || '(No title parsed)'}</Text>
+              <View style={styles.parsedPriceRow}>
+                <ParsCell label="Entry" value={`\u20b9${form.price || '\u2014'}`} />
+                <ParsCell label="SL" value={`\u20b9${form.stop_loss_price || '\u2014'}`} danger />
+                <ParsCell label="Target" value={`\u20b9${form.target_price || '\u2014'}`} success />
+              </View>
+              <View style={styles.parsedMetaRow}>
+                <Text style={[styles.parsedBadge, form.transaction_type === 'BUY' ? styles.buyBadge : styles.sellBadge]}>{form.transaction_type}</Text>
+                <Text style={styles.parsedMeta}>{form.exchange_segment}</Text>
+                <Text style={styles.parsedMeta}>{form.product_type}</Text>
+                <Text style={styles.parsedMeta}>Qty {form.quantity || '\u2014'}</Text>
+              </View>
+              {lookingUp && (
+                <View style={styles.parsedScripRow}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.parsedScripText}>Looking up security ID\u2026</Text>
+                </View>
+              )}
+              {scripInfo?.found && (
+                <Text style={styles.parsedScripOk}>\u2705 {scripInfo.tradingSymbol} \u00b7 ID: {form.security_id} \u00b7 Expiry: {scripInfo.expiryDate}</Text>
+              )}
+              {scripInfo && !scripInfo.found && (
+                <Text style={styles.parsedScripWarn}>\u26a0\ufe0f Security ID not found \u2014 switch to Fill Form to enter it manually</Text>
+              )}
+              <TouchableOpacity
+                style={[styles.submitBtn, loading && { opacity: 0.55 }]}
+                onPress={handleCreate}
+                disabled={loading}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>\ud83d\ude80 Broadcast Signal</Text>}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {entryMode === 'form' && <>
           <Field label="Signal Title *" value={form.title} onChangeText={set('title')} placeholder='e.g. "NIFTY 24000CE BUY"' />
 
           {/* Buy/Sell toggle */}
@@ -314,9 +351,19 @@ export default function SignalCreateScreen() {
               ? <ActivityIndicator color="#fff" />
               : <Text style={styles.submitText}>🚀 Broadcast Signal</Text>}
           </TouchableOpacity>
+          </>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function ParsCell({ label, value, danger, success }: { label: string; value: string; danger?: boolean; success?: boolean }) {
+  return (
+    <View style={{ alignItems: 'center', flex: 1 }}>
+      <Text style={{ fontSize: 10, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</Text>
+      <Text style={{ fontSize: 18, fontWeight: '800', color: danger ? Colors.error : success ? Colors.success : Colors.text }}>{value}</Text>
+    </View>
   );
 }
 
@@ -377,6 +424,27 @@ const styles = StyleSheet.create({
   modeBtnTextActive: {
     color: '#fff',
   },
+  parsedPreview: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    ...Shadow.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  parsedPreviewLabel: { fontSize: 11, color: Colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  parsedTitle: { ...Typography.h3, lineHeight: 24 },
+  parsedPriceRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: Colors.background, borderRadius: Radius.sm, paddingVertical: 10 },
+  parsedMetaRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  parsedBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full, fontSize: 12, fontWeight: '700' as const, color: '#fff' },
+  buyBadge: { backgroundColor: Colors.buy },
+  sellBadge: { backgroundColor: Colors.sell },
+  parsedMeta: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' as const },
+  parsedScripRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  parsedScripText: { fontSize: 13, color: Colors.textMuted },
+  parsedScripOk: { fontSize: 13, color: Colors.success, fontWeight: '600' as const, flex: 1 },
+  parsedScripWarn: { fontSize: 13, color: Colors.warning, fontWeight: '600' as const, flex: 1 },
   pasteCard: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,

@@ -32,7 +32,10 @@ from ..schemas import (
     SignalResponse,
     PaginationMeta,
 )
-from ..xlsx_export import build_xlsx_response, to_ist_str
+from ..xlsx_export import (
+    build_xlsx_response, to_ist_str,
+    STATUS_FILL_MAP, LIVE_STATUS_FILL_MAP, _ROW_WHITE, _ROW_GREY,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -1035,30 +1038,50 @@ def export_orders(
         query = query.filter(SignalNotification.created_at >= start_utc)
     if end_utc is not None:
         query = query.filter(SignalNotification.created_at < end_utc)
-    notifications = query.order_by(SignalNotification.created_at.desc()).all()
+    notifications = query.order_by(SignalNotification.signal_id.asc(), SignalNotification.created_at.desc()).all()
 
     headers = [
-        "Notification ID", "Signal ID", "Signal Title", "Security ID", "Exchange Segment",
-        "Transaction Type", "Product Type", "Order Type", "Quantity", "Price",
-        "Target Price", "Stop Loss", "User Name", "User Email", "Status",
-        "Dhan Order ID", "Live Status", "Exchange Order No", "Traded Qty", "Traded Price",
-        "Error Message", "Reason Description", "Confirmed At (IST)", "Placed At (IST)", "Created At (IST)",
+        "Notif ID", "Signal ID", "Signal Title", "Security ID", "Exchange",
+        "Txn", "Product", "Order Type", "Sig Qty", "Ordered Qty", "Price",
+        "Target", "Stop Loss", "User Name", "User Email", "Status",
+        "Dhan Order ID", "Live Status", "Exchange Order No",
+        "Entry Qty", "Entry Price", "Exit Via", "Exit Price",
+        "Error Message", "Reason", "Confirmed At (IST)", "Placed At (IST)", "Created At (IST)",
     ]
     rows = []
+    # Track which signal group each row belongs to for alternating colours
+    seen_signals: list[int] = []
+    signal_group_idx: dict[int, int] = {}
+    for n in notifications:
+        sid = n.signal.id
+        if sid not in signal_group_idx:
+            signal_group_idx[sid] = len(signal_group_idx)
+
+    row_fills = []
     for n in notifications:
         s = n.signal
         rows.append([
             n.id, s.id, s.title, s.security_id, s.exchange_segment,
-            s.transaction_type, s.product_type, s.order_type, s.quantity, s.price,
-            s.target_price, s.stop_loss_price, n.user.name, n.user.email, n.status,
+            s.transaction_type, s.product_type, s.order_type,
+            s.quantity, n.ordered_quantity if n.ordered_quantity is not None else "",
+            s.price, s.target_price, s.stop_loss_price,
+            n.user.name, n.user.email, n.status,
             n.dhan_order_id or "", n.live_status or "", n.exchange_order_no or "",
             n.traded_qty if n.traded_qty is not None else "", n.traded_price if n.traded_price is not None else "",
+            n.exit_leg or "", n.exit_price if n.exit_price is not None else "",
             n.error_message or "", n.reason_description or "",
             to_ist_str(n.confirmed_at), to_ist_str(n.placed_at), to_ist_str(n.created_at),
         ])
+        # Status-based colour takes priority; fall back to alternating signal-group shade
+        fill = (
+            STATUS_FILL_MAP.get(n.status)
+            or (LIVE_STATUS_FILL_MAP.get(n.live_status or "") if n.status == "placed" else None)
+            or (_ROW_WHITE if signal_group_idx[s.id] % 2 == 0 else _ROW_GREY)
+        )
+        row_fills.append(fill)
 
     filename = f"orders_{dt.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    return build_xlsx_response(filename=filename, sheet_title="Orders", headers=headers, rows=rows)
+    return build_xlsx_response(filename=filename, sheet_title="Orders", headers=headers, rows=rows, row_fills=row_fills)
 
 
 # ---------------------------------------------------------------------------
