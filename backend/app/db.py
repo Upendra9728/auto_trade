@@ -62,6 +62,7 @@ def _apply_migrations() -> None:
             "exit_leg": "VARCHAR(16)",
             "exit_price": "FLOAT",
             "exit_time": "TIMESTAMP",
+            "ordered_quantity": "INTEGER",
         }
         missing_exit = {col: ddl for col, ddl in exit_columns.items() if col not in existing}
         if missing_exit:

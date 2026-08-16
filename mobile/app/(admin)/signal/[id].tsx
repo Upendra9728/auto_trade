@@ -355,6 +355,20 @@ export default function SignalDetailScreen() {
               {selectedNotif?.dhan_order_id && <ModalRow label="Order ID" value={selectedNotif.dhan_order_id} mono selectable />}
               {selectedNotif?.exchange_order_no && <ModalRow label="Exchange No" value={selectedNotif.exchange_order_no} mono selectable />}
 
+              {/* Quantity — flag if user deviated from signal quantity */}
+              {selectedNotif?.ordered_quantity != null && (() => {
+                const deviated = signal && selectedNotif.ordered_quantity !== signal.quantity;
+                return (
+                  <ModalRow
+                    label="Ordered Qty"
+                    value={deviated
+                      ? `${selectedNotif.ordered_quantity} ⚠️ (signal: ${signal?.quantity})`
+                      : String(selectedNotif.ordered_quantity)}
+                    highlight={deviated ? Colors.warning : undefined}
+                  />
+                );
+              })()}
+
               {/* Entry fill */}
               {selectedNotif?.traded_price != null && selectedNotif.traded_price > 0 && (
                 <ModalRow label="Entry Fill" value={`₹${selectedNotif.traded_price} × ${selectedNotif.traded_qty ?? 0} qty`} highlight={Colors.success} />

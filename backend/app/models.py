@@ -109,6 +109,8 @@ class SignalNotification(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     dhan_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Actual quantity submitted to Dhan (user may override the signal's default quantity)
+    ordered_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)

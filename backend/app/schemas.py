@@ -204,6 +204,7 @@ class AdminSignalNotificationRow(BaseModel):
     confirmed_at: str | None = None
     placed_at: str | None = None
     created_at: str
+    ordered_quantity: int | None = None
     live_status: str | None = None
     exchange_order_no: str | None = None
     traded_qty: int | None = None

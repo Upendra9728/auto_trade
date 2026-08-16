@@ -51,6 +51,8 @@ DHAN_ORDER_UPDATE_WS_URL = "wss://api-order-update.dhan.co"
 TERMINAL_FAILURE_STATUSES = {"REJECTED", "CANCELLED", "EXPIRED"}
 # Statuses that mean the order is genuinely live/registered at the exchange.
 CONFIRMED_LIVE_STATUSES = {"TRANSIT", "PENDING", "TRADED"}
+# CLOSED = entry filled AND one exit leg (target/SL) completed for full quantity.
+SUCCESS_TERMINAL_STATUSES = {"CLOSED"}
 
 _RECONCILE_INTERVAL_SECONDS = 300  # re-check which users need a connection
 _RECONNECT_BACKOFF_SECONDS = 15
@@ -92,15 +94,22 @@ def apply_live_status(
 
     # The exchange truly rejected/cancelled/expired the order — this overrides
     # the earlier "placed" status set right after HTTP acceptance.
-    if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed":
+    if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed" and notif.status != "cancelled":
         notif.status = "failed"
-        # Dhan reports "CONFIRMED" (or leaves the field blank) as the reason for
-        # CANCELLED orders that simply never got filled and were auto square-off
-        # cancelled — that's a normal market outcome, not a real rejection reason.
-        if status == "CANCELLED" and (not reason_description or reason_description.upper() == "CONFIRMED"):
-            notif.error_message = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
+        if status == "CANCELLED":
+            if traded_qty and traded_qty > 0:
+                # Had a partial fill before cancel — likely a manual square-off or partial exit
+                notif.error_message = f"Partially filled ({traded_qty} qty) then cancelled — may be a manual exit."
+            elif not reason_description or reason_description.upper() == "CONFIRMED":
+                notif.error_message = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
+            else:
+                notif.error_message = f"Cancelled: {reason_description}"
         else:
             notif.error_message = f"Rejected by exchange: {reason_description or status}"
+
+    # CLOSED = both entry filled and one exit leg completed successfully
+    if status in SUCCESS_TERMINAL_STATUSES:
+        logger.info("Order %s CLOSED (full exit complete, exit leg tracked separately)", notif.dhan_order_id)
 
     db.commit()
 
@@ -224,6 +233,13 @@ class DhanOrderUpdateManager:
             status = str(data.get("Status") or "").upper()
             leg_name = str(data.get("LegName") or "").upper()
 
+            # Capture entry fill when ENTRY_LEG is traded (actual fill price may differ from limit price)
+            entry_traded_price: float | None = None
+            entry_traded_qty: int | None = None
+            if leg_name == "ENTRY_LEG" and status in ("TRADED", "PART_TRADED"):
+                entry_traded_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
+                entry_traded_qty = data.get("FilledQty") or data.get("TradedQty")
+
             # Capture exit leg details when TARGET or STOP_LOSS leg is filled
             exit_leg: str | None = None
             exit_price: float | None = None
@@ -238,8 +254,8 @@ class DhanOrderUpdateManager:
                 status=status,
                 exchange_order_no=data.get("ExchOrderNo"),
                 reason_description=data.get("ReasonDescription"),
-                traded_qty=data.get("TradedQty"),
-                traded_price=data.get("TradedPrice") or data.get("AvgTradedPrice"),
+                traded_qty=entry_traded_qty or data.get("TradedQty"),
+                traded_price=entry_traded_price or data.get("TradedPrice") or data.get("AvgTradedPrice"),
                 exit_leg=exit_leg,
                 exit_price=exit_price,
                 exit_time=exit_time,

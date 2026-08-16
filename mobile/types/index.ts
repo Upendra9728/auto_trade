@@ -123,6 +123,7 @@ export interface AdminSignalNotificationRow {
   confirmed_at: string | null;
   placed_at: string | null;
   created_at: string;
+  ordered_quantity: number | null;
   live_status: LiveOrderStatus | null;
   exchange_order_no: string | null;
   traded_qty: number | null;
