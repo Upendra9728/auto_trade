@@ -217,7 +217,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.dhan_client_id}
-                  onChangeText={(v) => setDhanForm((f) => ({ ...f, dhan_client_id: v }))}
+                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, dhan_client_id: v }))}
                   placeholder="Your Dhan client ID"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="none"
@@ -228,7 +228,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.pin}
-                  onChangeText={(v) => setDhanForm((f) => ({ ...f, pin: v }))}
+                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, pin: v }))}
                   placeholder="6-digit login PIN"
                   placeholderTextColor={Colors.textMuted}
                   keyboardType="numeric"
@@ -241,7 +241,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.totp_secret}
-                  onChangeText={(v) => setDhanForm((f) => ({ ...f, totp_secret: v }))}
+                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, totp_secret: v }))}
                   placeholder="Base32 key from Dhan TOTP setup"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
@@ -336,7 +336,10 @@ const styles = StyleSheet.create({
   editLink: { color: Colors.primary, fontSize: 14, fontWeight: '700' },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   infoLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
-  monoValue: { fontSize: 13, color: Colors.text, fontWeight: '500', flex: 2, textAlign: 'right' },
+  monoValue: { fontSize: 13, color: Colors.text, fontWeight: '500', textAlign: 'right' },
+  ipValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.sm, flex: 2 },
+  copyBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, backgroundColor: Colors.primaryBg },
+  copyText: { color: Colors.primary, fontWeight: '600', fontSize: 12 },
   warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.sm },
   warnText: { fontSize: 13, color: Colors.warning, lineHeight: 18 },
   dhanInfo: { gap: Spacing.sm },

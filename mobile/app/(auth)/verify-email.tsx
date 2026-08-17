@@ -78,7 +78,7 @@ export default function VerifyEmailScreen() {
               <TextInput
                 style={styles.input}
                 value={otp}
-                onChangeText={(value) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
+                onChangeText={(value: string) => setOtp(value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="123456"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="number-pad"

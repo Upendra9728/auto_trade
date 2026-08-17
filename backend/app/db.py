@@ -28,7 +28,7 @@ def _apply_migrations() -> None:
         existing = {c["name"] for c in inspector.get_columns("users")}
         if "email_verified" not in existing:
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE"))
                 conn.commit()
             logger.info("Migration: added email_verified column to users")
 

@@ -237,6 +237,8 @@ WHERE id = 94;
 
 ssh -i "dhan-prod-key.pem" ec2-user@13.126.206.167
 
+sudo -u postgres psql -d automate_trading
+
 
 TOKEN='eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzg2NjQ5MjE3LCJpYXQiOjE3ODY1NjI4MTcsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAxMDM2NDUzIn0.9p28DvMVJFc48VnqCdpHyMDzT8LrZUz4az9pUJEbyoJ5d6buiUyHQL7X5eH5vj1yrNZ0XRNJtqbjjxg8VS-58A'
 CLIENT=1101036453
