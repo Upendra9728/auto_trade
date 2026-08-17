@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
@@ -123,7 +124,15 @@ export default function ProfileScreen() {
             <Text style={styles.avatarText}>{user?.name.charAt(0).toUpperCase()}</Text>
           </View>
           <Text style={styles.name}>{user?.name}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
+          <View style={styles.emailRow}>
+            <Text style={styles.email}>{user?.email}</Text>
+            {user?.email_verified && (
+              <View style={styles.verifiedBadge}>
+                <Feather name="check-circle" size={13} color={Colors.success} />
+                <Text style={styles.verifiedText}>Verified</Text>
+              </View>
+            )}
+          </View>
           {user?.role === 'admin' && (
             <View style={styles.adminBadge}><Text style={styles.adminText}>ADMIN</Text></View>
           )}
@@ -321,6 +330,25 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 32, fontWeight: '800' },
   name: { ...Typography.h3 },
   email: { ...Typography.bodySmall },
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.successBg,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+  },
+  verifiedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.success,
+  },
   adminBadge: {
     backgroundColor: Colors.primaryBg, paddingHorizontal: 12, paddingVertical: 3,
     borderRadius: Radius.full, marginTop: 4,
