@@ -17,6 +17,9 @@ import type {
   Dashboard,
   Paginated,
   DateRangeFilter,
+  AdminUserPnlRow,
+  OrderEvent,
+  UserPosition,
 } from '../types';
 
 const BASE_URL: string =
@@ -86,7 +89,7 @@ async function downloadAndShareFile(path: string, filename: string): Promise<voi
   const destination = new File(Paths.cache, filename);
   if (destination.exists) destination.delete();
 
-  let file: File;
+  let file: any;
   try {
     file = await File.downloadFileAsync(`${BASE_URL}${path}`, destination, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -164,6 +167,8 @@ export const userApi = {
       date_from: params.date_from,
       date_to: params.date_to,
     })}`),
+  getNotificationEvents: (notifId: number) =>
+    get<OrderEvent[]>(`/api/users/me/notifications/${notifId}/events`),
   testIp: () => get<{ bound_ipv6: string | null; status: string }>('/api/users/test-ip'),
 };
 
@@ -242,6 +247,12 @@ export const adminApi = {
     post<OrderActionResult>(`/api/admin/notifications/${notifId}/modify-order`, data),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),
+  getNotificationEvents: (notifId: number) =>
+    get<OrderEvent[]>(`/api/admin/notifications/${notifId}/events`),
+  getUsersPnl: (params: { search?: string } = {}) =>
+    get<AdminUserPnlRow[]>(`/api/admin/users/pnl${buildQuery({ search: params.search })}`),
+  getPositions: (params: { userId?: number } = {}) =>
+    get<UserPosition[]>(`/api/admin/positions${buildQuery({ user_id: params.userId })}`),
   exportUsers: (params: { search?: string } & DateRangeFilter = {}) =>
     downloadAndShareFile(
       `/api/admin/users/export${buildQuery({

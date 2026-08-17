@@ -167,6 +167,24 @@ class SignalNotificationResponse(BaseModel):
     traded_price: float | None = None
     reason_description: str | None = None
     live_updated_at: str | None = None
+    exit_leg: str | None = None
+    exit_price: float | None = None
+    exit_time: str | None = None
+    realized_pnl: float | None = None
+
+
+class OrderEventResponse(BaseModel):
+    id: int
+    notification_id: int
+    source: str
+    event_type: str
+    leg: str | None = None
+    status: str
+    price: float | None = None
+    quantity: int | None = None
+    reason_description: str | None = None
+    exchange_order_no: str | None = None
+    created_at: str
 
 
 class ConfirmNotificationRequest(BaseModel):
@@ -224,6 +242,42 @@ class AdminSignalNotificationRow(BaseModel):
     exit_leg: str | None = None
     exit_price: float | None = None
     exit_time: str | None = None
+    realized_pnl: float | None = None
+
+
+class UserPositionResponse(BaseModel):
+    id: int
+    user_id: int
+    user_name: str | None = None
+    user_email: str | None = None
+    trading_symbol: str
+    security_id: str
+    position_type: str
+    exchange_segment: str
+    product_type: str
+    buy_avg: float
+    buy_qty: int
+    cost_price: float
+    sell_avg: float
+    sell_qty: int
+    net_qty: int
+    realized_profit: float
+    unrealized_profit: float
+    updated_at: str
+
+
+class AdminUserPnlRow(BaseModel):
+    user_id: int
+    user_name: str
+    user_email: str
+    assigned_ipv6: str | None = None
+    total_orders: int
+    closed_orders: int
+    win_count: int
+    loss_count: int
+    total_realized_pnl: float
+    dhan_realized_profit: float
+    dhan_unrealized_profit: float
 
 
 class PaginatedNotificationsAdminResponse(BaseModel):

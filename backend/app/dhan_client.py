@@ -20,6 +20,7 @@ DHAN_SUPER_ORDER_BY_ID_URL = "https://api.dhan.co/v2/super/orders/{order_id}"
 DHAN_SUPER_ORDER_CANCEL_URL = "https://api.dhan.co/v2/super/orders/{order_id}/{leg}"
 DHAN_GENERATE_TOKEN_URL = "https://auth.dhan.co/app/generateAccessToken"
 DHAN_ORDER_BY_ID_URL = "https://api.dhan.co/v2/orders/{order_id}"
+DHAN_POSITIONS_URL = "https://api.dhan.co/v2/positions"
 DHAN_PROFILE_URL = "https://api.dhan.co/v2/profile"
 DHAN_IP_GET_URL = "https://api.dhan.co/v2/ip/getIP"
 DHAN_IP_SET_URL = "https://api.dhan.co/v2/ip/setIP"
@@ -295,6 +296,29 @@ class DhanClient:
             data = resp.json()
         except Exception:
             raise DhanApiError(f"get_super_orders non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
+        if resp.status_code >= 400:
+            raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
+        return data if isinstance(data, list) else []
+
+    @staticmethod
+    async def get_positions(*, access_token: str, source_ipv6: str | None = None) -> list[dict[str, Any]]:
+        """GET /v2/positions — open positions with realized & unrealized PnL."""
+        headers = {"Content-Type": "application/json", "access-token": access_token}
+        if source_ipv6:
+            source_ipv6 = source_ipv6.strip()
+            _verify_ipv6_bindable(source_ipv6)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6)
+        else:
+            transport = httpx.AsyncHTTPTransport()
+        try:
+            async with httpx.AsyncClient(transport=transport, timeout=30) as client:
+                resp = await client.get(DHAN_POSITIONS_URL, headers=headers)
+        except Exception as exc:
+            raise DhanApiError(f"Network error fetching positions: {exc}") from exc
+        try:
+            data = resp.json()
+        except Exception:
+            raise DhanApiError(f"get_positions non-JSON: HTTP {resp.status_code} -> {resp.text[:300]}")
         if resp.status_code >= 400:
             raise DhanApiError(DhanClient._format_error_message(data, resp.status_code))
         return data if isinstance(data, list) else []

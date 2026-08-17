@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..crypto import decrypt_token, encrypt_token
 from ..deps import get_current_user, get_db
 from ..dhan_client import DhanApiError, DhanClient
-from ..models import DhanCredential, Signal, SignalNotification, User
+from ..models import DhanCredential, OrderEvent, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..token_refresh import renew_and_save_credential_with_reason
@@ -20,6 +20,7 @@ from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
     ConfirmNotificationRequest,
+    OrderEventResponse,
     PaginatedNotificationsResponse,
     SignalNotificationResponse,
     SignalResponse,
@@ -83,6 +84,10 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
         traded_price=notif.traded_price,
         reason_description=notif.reason_description,
         live_updated_at=notif.live_updated_at.isoformat() if notif.live_updated_at else None,
+        exit_leg=notif.exit_leg,
+        exit_price=notif.exit_price,
+        exit_time=notif.exit_time.isoformat() if notif.exit_time else None,
+        realized_pnl=notif.realized_pnl,
     )
 
 
@@ -431,6 +436,45 @@ def test_push_notification(
             detail="FCM send failed. Check FIREBASE_CREDENTIALS_JSON in backend .env and server logs.",
         )
     return {"status": "sent", "token_suffix": current_user.fcm_token[-8:]}
+
+
+@router.get("/me/notifications/{notification_id}/events", response_model=list[OrderEventResponse])
+def get_user_notification_events(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[OrderEventResponse]:
+    """Return historical audit-log events for a notification owned by the current user."""
+    notif = (
+        db.query(SignalNotification)
+        .filter(SignalNotification.id == notification_id, SignalNotification.user_id == current_user.id)
+        .one_or_none()
+    )
+    if notif is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    events = (
+        db.query(OrderEvent)
+        .filter(OrderEvent.notification_id == notification_id)
+        .order_by(OrderEvent.created_at.asc())
+        .all()
+    )
+    return [
+        OrderEventResponse(
+            id=e.id,
+            notification_id=e.notification_id,
+            source=e.source,
+            event_type=e.event_type,
+            leg=e.leg,
+            status=e.status,
+            price=e.price,
+            quantity=e.quantity,
+            reason_description=e.reason_description,
+            exchange_order_no=e.exchange_order_no,
+            created_at=e.created_at.isoformat(),
+        )
+        for e in events
+    ]
 
 
 @router.get("/test-ip")

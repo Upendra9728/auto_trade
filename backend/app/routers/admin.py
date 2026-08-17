@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_current_admin, get_db
@@ -13,7 +13,7 @@ from ..crypto import decrypt_token
 from ..dhan_client import DhanApiError, DhanClient
 from ..token_refresh import renew_and_save_credential_with_reason
 from ..ipv6_pool import assign_next_ipv6
-from ..models import DhanCredential, PasswordResetOtp, Signal, SignalNotification, User, UserSession
+from ..models import DhanCredential, OrderEvent, PasswordResetOtp, Signal, SignalNotification, User, UserPosition, UserSession
 from ..notifications import send_signal_cancelled_notifications, send_signal_notifications
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
@@ -22,8 +22,10 @@ from ..schemas import (
     AdminSignalDetailResponse,
     AdminSignalNotificationRow,
     AdminUpdateUserRequest,
+    AdminUserPnlRow,
     AdminUserResponse,
     OrderActionResult,
+    OrderEventResponse,
     PaginatedNotificationsAdminResponse,
     PaginatedSignalsResponse,
     PaginatedUsersResponse,
@@ -31,6 +33,7 @@ from ..schemas import (
     SignalOrderModifyRequest,
     SignalResponse,
     PaginationMeta,
+    UserPositionResponse,
 )
 from ..xlsx_export import build_xlsx_response, to_ist_str, _ROW_WHITE, _ROW_GREY
 
@@ -601,6 +604,7 @@ def get_signal(
             "exit_leg": n.exit_leg,
             "exit_price": n.exit_price,
             "exit_time": n.exit_time.isoformat() if n.exit_time else None,
+            "realized_pnl": n.realized_pnl,
         })
 
     return AdminSignalDetailResponse(
@@ -688,6 +692,7 @@ def _notif_to_row(n: SignalNotification) -> AdminSignalNotificationRow:
         exit_leg=n.exit_leg,
         exit_price=n.exit_price,
         exit_time=n.exit_time.isoformat() if n.exit_time else None,
+        realized_pnl=n.realized_pnl,
     )
 
 
@@ -1052,7 +1057,7 @@ def export_orders(
         "Txn", "Product", "Order Type", "Sig Qty", "Ordered Qty", "Price",
         "Target", "Stop Loss", "User Name", "User Email", "Status",
         "Dhan Order ID", "Live Status", "Exchange Order No",
-        "Entry Qty", "Entry Price", "Exit Via", "Exit Price",
+        "Entry Qty", "Entry Price", "Exit Via", "Exit Price", "Realized PnL",
         "Error Message", "Reason", "Confirmed At (IST)", "Placed At (IST)", "Created At (IST)",
     ]
     rows = []
@@ -1076,6 +1081,7 @@ def export_orders(
             n.dhan_order_id or "", n.live_status or "", n.exchange_order_no or "",
             n.traded_qty if n.traded_qty is not None else "", n.traded_price if n.traded_price is not None else "",
             n.exit_leg or "", n.exit_price if n.exit_price is not None else "",
+            n.realized_pnl if n.realized_pnl is not None else "",
             n.error_message or "", n.reason_description or "",
             to_ist_str(n.confirmed_at), to_ist_str(n.placed_at), to_ist_str(n.created_at),
         ])
@@ -1122,6 +1128,9 @@ def dashboard(
         .count()
     )
 
+    total_realized_pnl = float(db.query(func.coalesce(func.sum(SignalNotification.realized_pnl), 0.0)).scalar() or 0.0)
+    total_unrealized_pnl = float(db.query(func.coalesce(func.sum(UserPosition.unrealized_profit), 0.0)).scalar() or 0.0)
+
     return {
         "users": {
             "total": total_users,
@@ -1141,5 +1150,154 @@ def dashboard(
             "exchange_rejected": total_exchange_rejected,
             "failed": total_failed,
             "pending": total_pending,
+            "total_realized_pnl": round(total_realized_pnl, 2),
+            "total_unrealized_pnl": round(total_unrealized_pnl, 2),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Order events timeline & P&L tracking
+# ---------------------------------------------------------------------------
+
+@router.get("/notifications/{notification_id}/events", response_model=list[OrderEventResponse])
+def get_admin_notification_events(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[OrderEventResponse]:
+    """Return historical audit-log events for any notification."""
+    notif = db.query(SignalNotification).filter(SignalNotification.id == notification_id).one_or_none()
+    if notif is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    events = (
+        db.query(OrderEvent)
+        .filter(OrderEvent.notification_id == notification_id)
+        .order_by(OrderEvent.created_at.asc())
+        .all()
+    )
+    return [
+        OrderEventResponse(
+            id=e.id,
+            notification_id=e.notification_id,
+            source=e.source,
+            event_type=e.event_type,
+            leg=e.leg,
+            status=e.status,
+            price=e.price,
+            quantity=e.quantity,
+            reason_description=e.reason_description,
+            exchange_order_no=e.exchange_order_no,
+            created_at=e.created_at.isoformat(),
+        )
+        for e in events
+    ]
+
+
+@router.get("/users/pnl", response_model=list[AdminUserPnlRow])
+def get_admin_users_pnl(
+    search: str | None = Query(default=None, description="Match against name or email"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[AdminUserPnlRow]:
+    """Return per-user P&L summary across all closed orders and live positions."""
+    query = db.query(User).filter(User.role != "admin")
+    if search:
+        like = f"%{search.strip()}%"
+        query = query.filter(or_(User.name.ilike(like), User.email.ilike(like)))
+
+    users = query.order_by(User.id.asc()).all()
+    results: list[AdminUserPnlRow] = []
+
+    for u in users:
+        total_orders = (
+            db.query(SignalNotification)
+            .filter(SignalNotification.user_id == u.id, SignalNotification.status.in_(["placed", "failed"]))
+            .count()
+        )
+        closed_orders = (
+            db.query(SignalNotification)
+            .filter(SignalNotification.user_id == u.id, SignalNotification.realized_pnl.isnot(None))
+            .count()
+        )
+        win_count = (
+            db.query(SignalNotification)
+            .filter(SignalNotification.user_id == u.id, SignalNotification.realized_pnl > 0)
+            .count()
+        )
+        loss_count = (
+            db.query(SignalNotification)
+            .filter(SignalNotification.user_id == u.id, SignalNotification.realized_pnl < 0)
+            .count()
+        )
+        realized_pnl = float(
+            db.query(func.coalesce(func.sum(SignalNotification.realized_pnl), 0.0))
+            .filter(SignalNotification.user_id == u.id)
+            .scalar() or 0.0
+        )
+        dhan_realized = float(
+            db.query(func.coalesce(func.sum(UserPosition.realized_profit), 0.0))
+            .filter(UserPosition.user_id == u.id)
+            .scalar() or 0.0
+        )
+        dhan_unrealized = float(
+            db.query(func.coalesce(func.sum(UserPosition.unrealized_profit), 0.0))
+            .filter(UserPosition.user_id == u.id)
+            .scalar() or 0.0
+        )
+
+        results.append(
+            AdminUserPnlRow(
+                user_id=u.id,
+                user_name=u.name,
+                user_email=u.email,
+                assigned_ipv6=u.assigned_ipv6,
+                total_orders=total_orders,
+                closed_orders=closed_orders,
+                win_count=win_count,
+                loss_count=loss_count,
+                total_realized_pnl=round(realized_pnl, 2),
+                dhan_realized_profit=round(dhan_realized, 2),
+                dhan_unrealized_profit=round(dhan_unrealized, 2),
+            )
+        )
+
+    return results
+
+
+@router.get("/positions", response_model=list[UserPositionResponse])
+def list_admin_positions(
+    user_id: int | None = Query(default=None, description="Filter by user ID"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[UserPositionResponse]:
+    """List open positions across users cached from Dhan."""
+    query = db.query(UserPosition).options(joinedload(UserPosition.user))
+    if user_id is not None:
+        query = query.filter(UserPosition.user_id == user_id)
+
+    positions = query.order_by(UserPosition.updated_at.desc()).all()
+    return [
+        UserPositionResponse(
+            id=p.id,
+            user_id=p.user_id,
+            user_name=p.user.name if p.user else None,
+            user_email=p.user.email if p.user else None,
+            trading_symbol=p.trading_symbol,
+            security_id=p.security_id,
+            position_type=p.position_type,
+            exchange_segment=p.exchange_segment,
+            product_type=p.product_type,
+            buy_avg=p.buy_avg,
+            buy_qty=p.buy_qty,
+            cost_price=p.cost_price,
+            sell_avg=p.sell_avg,
+            sell_qty=p.sell_qty,
+            net_qty=p.net_qty,
+            realized_profit=p.realized_profit,
+            unrealized_profit=p.unrealized_profit,
+            updated_at=p.updated_at.isoformat(),
+        )
+        for p in positions
+    ]

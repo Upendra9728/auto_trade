@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session, joinedload
 from .crypto import decrypt_token
 from .db import SessionLocal
 from .dhan_client import DhanApiError, DhanClient
-from .models import DhanCredential, SignalNotification, User
+from .models import DhanCredential, OrderEvent, SignalNotification, User, UserPosition
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,14 @@ CONFIRMED_LIVE_STATUSES = {"TRANSIT", "PENDING", "TRADED"}
 # CLOSED = entry filled AND one exit leg (target/SL) completed for full quantity.
 SUCCESS_TERMINAL_STATUSES = {"CLOSED"}
 
-_RECONCILE_INTERVAL_SECONDS = 300  # re-check which users need a connection
-_RECONNECT_BACKOFF_SECONDS = 15
+LEG_NO_TO_NAME = {1: "ENTRY_LEG", 2: "STOP_LOSS_LEG", 3: "TARGET_LEG"}
+
+
+def _coerce_leg_no(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def apply_live_status(
@@ -63,6 +69,8 @@ def apply_live_status(
     notif: SignalNotification,
     *,
     status: str | None,
+    leg: str | None = None,
+    source: str = "ws",
     exchange_order_no: str | None = None,
     reason_description: str | None = None,
     traded_qty: int | None = None,
@@ -71,8 +79,7 @@ def apply_live_status(
     exit_price: float | None = None,
     exit_time: "dt.datetime | None" = None,
 ) -> None:
-    """Apply a live/exchange status update to a notification and commit. Shared
-    by both the WebSocket handler and the REST poll fallback."""
+    """Apply a live/exchange status update, record an OrderEvent, calculate realized PnL, and commit."""
     status = (status or "").upper()
     if status:
         notif.live_status = status
@@ -92,13 +99,55 @@ def apply_live_status(
         notif.exit_time = exit_time
     notif.live_updated_at = dt.datetime.utcnow()
 
+    # Calculate realized P&L when exit leg & price are known
+    if notif.exit_price and notif.exit_price > 0:
+        entry_price = notif.traded_price or (notif.signal.price if notif.signal else None)
+        qty = notif.traded_qty or notif.ordered_quantity or (notif.signal.quantity if notif.signal else 1)
+        direction = 1.0 if (notif.signal and notif.signal.transaction_type == "BUY") else -1.0
+        if entry_price and entry_price > 0:
+            notif.realized_pnl = round((notif.exit_price - entry_price) * qty * direction, 2)
+
+    # Determine event type
+    if exit_leg == "TARGET_LEG" or (leg == "TARGET_LEG" and status in ("TRADED", "TRIGGERED", "CLOSED")):
+        event_type = "TARGET_HIT"
+    elif exit_leg == "STOP_LOSS_LEG" or (leg == "STOP_LOSS_LEG" and status in ("TRADED", "TRIGGERED", "CLOSED")):
+        event_type = "STOP_LOSS_HIT"
+    elif leg == "ENTRY_LEG" and status in ("TRADED", "PART_TRADED"):
+        event_type = "ENTRY_TRADED"
+    elif status == "REJECTED":
+        event_type = "REJECTED"
+    elif status == "CANCELLED":
+        event_type = "CANCELLED"
+    elif status == "EXPIRED":
+        event_type = "EXPIRED"
+    elif status == "CLOSED":
+        event_type = "CLOSED"
+    elif status in ("TRANSIT", "PENDING"):
+        event_type = "ENTRY_PENDING"
+    else:
+        event_type = status or "UPDATE"
+
+    # Audit log event
+    event = OrderEvent(
+        notification_id=notif.id,
+        source=source,
+        event_type=event_type,
+        leg=leg or exit_leg,
+        status=status,
+        price=exit_price or traded_price,
+        quantity=traded_qty,
+        reason_description=reason_description,
+        exchange_order_no=exchange_order_no,
+        created_at=dt.datetime.utcnow(),
+    )
+    db.add(event)
+
     # The exchange truly rejected/cancelled/expired the order — this overrides
     # the earlier "placed" status set right after HTTP acceptance.
     if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed" and notif.status != "cancelled":
         notif.status = "failed"
         if status == "CANCELLED":
             if traded_qty and traded_qty > 0:
-                # Had a partial fill before cancel — likely a manual square-off or partial exit
                 notif.error_message = f"Partially filled ({traded_qty} qty) then cancelled — may be a manual exit."
             elif not reason_description or reason_description.upper() == "CONFIRMED":
                 notif.error_message = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
@@ -107,7 +156,6 @@ def apply_live_status(
         else:
             notif.error_message = f"Rejected by exchange: {reason_description or status}"
 
-    # CLOSED = both entry filled and one exit leg completed successfully
     if status in SUCCESS_TERMINAL_STATUSES:
         logger.info("Order %s CLOSED (full exit complete, exit leg tracked separately)", notif.dhan_order_id)
 
@@ -224,6 +272,7 @@ class DhanOrderUpdateManager:
         try:
             notif = (
                 db.query(SignalNotification)
+                .options(joinedload(SignalNotification.signal))
                 .filter(SignalNotification.dhan_order_id == str(order_no))
                 .one_or_none()
             )
@@ -231,20 +280,21 @@ class DhanOrderUpdateManager:
                 return
 
             status = str(data.get("Status") or "").upper()
-            leg_name = str(data.get("LegName") or "").upper()
+            # WS payload identifies the leg via LegNo (int); LegName does not exist here.
+            leg_name = LEG_NO_TO_NAME.get(_coerce_leg_no(data.get("LegNo")), "")
 
             # Capture entry fill when ENTRY_LEG is traded (actual fill price may differ from limit price)
             entry_traded_price: float | None = None
             entry_traded_qty: int | None = None
             if leg_name == "ENTRY_LEG" and status in ("TRADED", "PART_TRADED"):
                 entry_traded_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
-                entry_traded_qty = data.get("FilledQty") or data.get("TradedQty")
+                entry_traded_qty = data.get("TradedQty")
 
             # Capture exit leg details when TARGET or STOP_LOSS leg is filled
             exit_leg: str | None = None
             exit_price: float | None = None
             exit_time: dt.datetime | None = None
-            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and status in ("TRADED", "TRIGGERED"):
+            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and status in ("TRADED", "TRIGGERED", "CLOSED"):
                 exit_leg = leg_name
                 exit_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
                 exit_time = dt.datetime.utcnow()
@@ -252,6 +302,8 @@ class DhanOrderUpdateManager:
             apply_live_status(
                 db, notif,
                 status=status,
+                leg=leg_name,
+                source="ws",
                 exchange_order_no=data.get("ExchOrderNo"),
                 reason_description=data.get("ReasonDescription"),
                 traded_qty=entry_traded_qty or data.get("TradedQty"),
@@ -306,7 +358,10 @@ async def _poll_stale_orders() -> None:
     try:
         stale = (
             db.query(SignalNotification)
-            .options(joinedload(SignalNotification.user).joinedload(User.dhan_credential))
+            .options(
+                joinedload(SignalNotification.signal),
+                joinedload(SignalNotification.user).joinedload(User.dhan_credential),
+            )
             .filter(
                 SignalNotification.status == "placed",
                 SignalNotification.dhan_order_id.isnot(None),
@@ -337,28 +392,42 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
         return
     try:
         access_token = decrypt_token(cred.access_token_encrypted)
-        data = await DhanClient.get_order_status(
+        orders = await DhanClient.get_super_orders(
             access_token=access_token,
-            order_id=notif.dhan_order_id,
             source_ipv6=user.assigned_ipv6,
         )
-        item = _extract_order_item(data, notif.dhan_order_id)
+        item = _extract_super_order_item(orders, notif.dhan_order_id)
         if item is None:
             return
-        status = item.get("orderStatus") or item.get("Status")
+
+        exit_leg: str | None = None
+        exit_price: float | None = None
+        exit_time: dt.datetime | None = None
+        for leg in item.get("legDetails") or []:
+            leg_name = leg.get("legName")
+            leg_status = leg.get("orderStatus")
+            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and leg_status in ("TRADED", "TRIGGERED", "CLOSED"):
+                exit_leg = leg_name
+                exit_price = leg.get("price")
+                exit_time = dt.datetime.utcnow()
+                break
+
         apply_live_status(
             db, notif,
-            status=status,
-            exchange_order_no=item.get("exchangeOrderId") or item.get("ExchOrderNo"),
-            reason_description=item.get("omsErrorDescription") or item.get("ReasonDescription"),
-            traded_qty=item.get("filledQty") or item.get("TradedQty"),
-            traded_price=item.get("averageTradedPrice") or item.get("AvgTradedPrice") or item.get("TradedPrice"),
+            status=item.get("orderStatus"),
+            leg=item.get("legName"),
+            source="poll",
+            exchange_order_no=item.get("exchangeOrderId"),
+            reason_description=item.get("omsErrorDescription"),
+            traded_qty=item.get("filledQty"),
+            traded_price=item.get("averageTradedPrice"),
+            exit_leg=exit_leg,
+            exit_price=exit_price,
+            exit_time=exit_time,
         )
-        logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, status, notif.id)
+        logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, item.get("orderStatus"), notif.id)
     except DhanApiError as exc:
         if "DH-901" in str(exc):
-            # Known-bad/expired token — retrying every cycle just burns Dhan's rate
-            # limit for no benefit until the user pastes a fresh token. Back off.
             _auth_cooldown_until[notif.user_id] = dt.datetime.utcnow() + _AUTH_FAILURE_COOLDOWN
             logger.warning(
                 "Order status poll: user %s has an invalid/expired Dhan token; pausing polls for %s",
@@ -370,14 +439,114 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
         logger.exception("Order status poll: unexpected error for notification %s", notif.id)
 
 
-def _extract_order_item(data: object, order_id: str) -> dict | None:
-    """Dhan's GET /v2/orders/{id} can return a single object or a list of legs
-    (for super orders); normalize to the entry matching our order_id."""
-    if isinstance(data, list):
-        for item in data:
-            if isinstance(item, dict) and str(item.get("orderId")) == str(order_id):
-                return item
-        return data[0] if data and isinstance(data[0], dict) else None
-    if isinstance(data, dict):
-        return data
+def _extract_super_order_item(orders: list[dict], order_id: str) -> dict | None:
+    for item in orders:
+        if isinstance(item, dict) and str(item.get("orderId")) == str(order_id):
+            return item
     return None
+
+
+# ---------------------------------------------------------------------------
+# Positions poller — fetches open positions & P&L from Dhan's GET /v2/positions
+# ---------------------------------------------------------------------------
+
+_POSITIONS_POLL_INTERVAL_SECONDS = 60
+
+
+async def dhan_positions_poll_loop() -> None:
+    """Entry point to run as a background asyncio task from main.py."""
+    logger.info("Dhan positions poll loop started (interval=%ds)", _POSITIONS_POLL_INTERVAL_SECONDS)
+    while True:
+        await asyncio.sleep(_POSITIONS_POLL_INTERVAL_SECONDS)
+        try:
+            await _poll_all_user_positions()
+        except Exception:
+            logger.exception("Dhan positions poll: iteration failed")
+
+
+async def _poll_all_user_positions() -> None:
+    now = dt.datetime.utcnow()
+    db: Session = SessionLocal()
+    try:
+        users = (
+            db.query(User)
+            .join(DhanCredential, DhanCredential.user_id == User.id)
+            .filter(User.is_active.is_(True), DhanCredential.is_active.is_(True))
+            .all()
+        )
+        for u in users:
+            cooldown_until = _auth_cooldown_until.get(u.id)
+            if cooldown_until and cooldown_until > now:
+                continue
+            await _poll_one_user_positions(db, u)
+            await asyncio.sleep(_REQUEST_DELAY_SECONDS)
+    finally:
+        db.close()
+
+
+async def _poll_one_user_positions(db: Session, user: User) -> None:
+    cred = user.dhan_credential
+    if cred is None or not cred.is_active:
+        return
+    try:
+        access_token = decrypt_token(cred.access_token_encrypted)
+        positions = await DhanClient.get_positions(
+            access_token=access_token,
+            source_ipv6=user.assigned_ipv6,
+        )
+        if not isinstance(positions, list):
+            return
+
+        seen_keys: set[tuple[str, str, str]] = set()
+        for p in positions:
+            if not isinstance(p, dict):
+                continue
+            sec_id = str(p.get("securityId") or "")
+            segment = str(p.get("exchangeSegment") or "")
+            prod_type = str(p.get("productType") or "")
+            if not sec_id:
+                continue
+            seen_keys.add((sec_id, segment, prod_type))
+
+            pos_row = (
+                db.query(UserPosition)
+                .filter(
+                    UserPosition.user_id == user.id,
+                    UserPosition.security_id == sec_id,
+                    UserPosition.exchange_segment == segment,
+                    UserPosition.product_type == prod_type,
+                )
+                .one_or_none()
+            )
+            if pos_row is None:
+                pos_row = UserPosition(
+                    user_id=user.id,
+                    security_id=sec_id,
+                    exchange_segment=segment,
+                    product_type=prod_type,
+                    trading_symbol=str(p.get("tradingSymbol") or sec_id),
+                )
+                db.add(pos_row)
+
+            pos_row.trading_symbol = str(p.get("tradingSymbol") or pos_row.trading_symbol or sec_id)
+            pos_row.position_type = str(p.get("positionType") or "CLOSED")
+            pos_row.buy_avg = float(p.get("buyAvg") or 0.0)
+            pos_row.buy_qty = int(p.get("buyQty") or 0)
+            pos_row.cost_price = float(p.get("costPrice") or 0.0)
+            pos_row.sell_avg = float(p.get("sellAvg") or 0.0)
+            pos_row.sell_qty = int(p.get("sellQty") or 0)
+            pos_row.net_qty = int(p.get("netQty") or 0)
+            pos_row.realized_profit = float(p.get("realizedProfit") or 0.0)
+            pos_row.unrealized_profit = float(p.get("unrealizedProfit") or 0.0)
+            pos_row.rbi_reference_rate = float(p.get("rbiReferenceRate") or 1.0)
+            pos_row.multiplier = int(p.get("multiplier") or 1)
+            pos_row.updated_at = dt.datetime.utcnow()
+
+        db.commit()
+    except DhanApiError as exc:
+        if "DH-901" in str(exc):
+            _auth_cooldown_until[user.id] = dt.datetime.utcnow() + _AUTH_FAILURE_COOLDOWN
+        else:
+            logger.warning("Positions poll failed for user %s: %s", user.id, exc)
+    except Exception:
+        logger.exception("Positions poll: unexpected error for user %s", user.id)

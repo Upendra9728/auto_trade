@@ -78,6 +78,25 @@ export interface SignalNotification {
   traded_price: number | null;
   reason_description: string | null;
   live_updated_at: string | null;
+  ordered_quantity?: number | null;
+  exit_leg?: string | null;
+  exit_price?: number | null;
+  exit_time?: string | null;
+  realized_pnl?: number | null;
+}
+
+export interface OrderEvent {
+  id: number;
+  notification_id: number;
+  source: string;
+  event_type: string;
+  leg: string | null;
+  status: string;
+  price: number | null;
+  quantity: number | null;
+  reason_description: string | null;
+  exchange_order_no: string | null;
+  created_at: string;
 }
 
 export type LiveOrderStatus = 'TRANSIT' | 'PENDING' | 'REJECTED' | 'CANCELLED' | 'TRADED' | 'EXPIRED';
@@ -134,6 +153,42 @@ export interface AdminSignalNotificationRow {
   exit_leg: 'TARGET_LEG' | 'STOP_LOSS_LEG' | null;
   exit_price: number | null;
   exit_time: string | null;
+  realized_pnl?: number | null;
+}
+
+export interface UserPosition {
+  id: number;
+  user_id: number;
+  user_name?: string | null;
+  user_email?: string | null;
+  trading_symbol: string;
+  security_id: string;
+  position_type: string;
+  exchange_segment: string;
+  product_type: string;
+  buy_avg: number;
+  buy_qty: number;
+  cost_price: number;
+  sell_avg: number;
+  sell_qty: number;
+  net_qty: number;
+  realized_profit: number;
+  unrealized_profit: number;
+  updated_at: string;
+}
+
+export interface AdminUserPnlRow {
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  assigned_ipv6: string | null;
+  total_orders: number;
+  closed_orders: number;
+  win_count: number;
+  loss_count: number;
+  total_realized_pnl: number;
+  dhan_realized_profit: number;
+  dhan_unrealized_profit: number;
 }
 
 export interface AdminSignalDetail {
@@ -178,6 +233,8 @@ export interface Dashboard {
     exchange_rejected: number;
     failed: number;
     pending: number;
+    total_realized_pnl?: number;
+    total_unrealized_pnl?: number;
   };
 }
 

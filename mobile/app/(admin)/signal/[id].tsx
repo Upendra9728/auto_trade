@@ -11,9 +11,10 @@ import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import LiveStatusBadge from '../../../components/LiveStatusBadge';
 import Pagination from '../../../components/Pagination';
+import OrderTimeline from '../../../components/OrderTimeline';
 import type {
   Signal, AdminSignalNotificationRow, AdminSignalNotificationsResponse,
-  SignalOrderModifyPayload, OrderActionResult,
+  SignalOrderModifyPayload, OrderActionResult, OrderEvent,
 } from '../../../types';
 
 const STATUS_FILTERS = ['all', 'placed', 'pending', 'failed', 'cancelled', 'rejected'] as const;
@@ -33,6 +34,8 @@ export default function SignalDetailScreen() {
 
   // Detail modal
   const [selectedNotif, setSelectedNotif] = useState<AdminSignalNotificationRow | null>(null);
+  const [notifEvents, setNotifEvents] = useState<OrderEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const animOpacity = useRef(new Animated.Value(0)).current;
   const animScale  = useRef(new Animated.Value(0.88)).current;
@@ -74,19 +77,26 @@ export default function SignalDetailScreen() {
 
   const openModal = (notif: AdminSignalNotificationRow) => {
     setSelectedNotif(notif);
+    setNotifEvents([]);
+    setEventsLoading(true);
     setModalVisible(true);
     animOpacity.setValue(0); animScale.setValue(0.88);
     Animated.parallel([
       Animated.timing(animOpacity, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       Animated.spring(animScale, { toValue: 1, damping: 18, stiffness: 280, useNativeDriver: true }),
     ]).start();
+
+    adminApi.getNotificationEvents(notif.notification_id)
+      .then(setNotifEvents)
+      .catch(() => setNotifEvents([]))
+      .finally(() => setEventsLoading(false));
   };
 
   const closeModal = () => {
     Animated.parallel([
       Animated.timing(animOpacity, { toValue: 0, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
       Animated.timing(animScale, { toValue: 0.88, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-    ]).start(() => { setModalVisible(false); setSelectedNotif(null); });
+    ]).start(() => { setModalVisible(false); setSelectedNotif(null); setNotifEvents([]); });
   };
 
   const openModify = (notifId: number | null) => {
@@ -188,9 +198,18 @@ export default function SignalDetailScreen() {
           {n.placed_at && <Text style={styles.timeSmall}>{formatDateTimeIST(n.placed_at)}</Text>}
         </View>
         <View style={styles.rowRight}>
-          {n.status === 'placed'
-            ? (n.live_status ? <LiveStatusBadge liveStatus={n.live_status} size="sm" /> : <Text style={styles.awaitingText}>Awaiting</Text>)
-            : <StatusBadge status={n.status} size="sm" />}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {n.realized_pnl != null && (
+              <View style={[styles.pnlBadge, { backgroundColor: n.realized_pnl >= 0 ? Colors.successBg : Colors.errorBg }]}>
+                <Text style={[styles.pnlText, { color: n.realized_pnl >= 0 ? Colors.success : Colors.error }]}>
+                  {n.realized_pnl >= 0 ? `+₹${n.realized_pnl.toFixed(2)}` : `-₹${Math.abs(n.realized_pnl).toFixed(2)}`}
+                </Text>
+              </View>
+            )}
+            {n.status === 'placed'
+              ? (n.live_status ? <LiveStatusBadge liveStatus={n.live_status} size="sm" /> : <Text style={styles.awaitingText}>Awaiting</Text>)
+              : <StatusBadge status={n.status} size="sm" />}
+          </View>
           {n.traded_price != null && n.traded_price > 0 && (
             <Text style={styles.fillText}>₹{n.traded_price} × {n.traded_qty ?? 0}</Text>
           )}
@@ -380,8 +399,15 @@ export default function SignalDetailScreen() {
                   <View style={styles.modalDivider} />
                   <ModalRow label="Exit Via" value={selectedNotif.exit_leg === 'TARGET_LEG' ? '🎯 Target Hit' : '🛑 Stop-Loss Hit'}
                     highlight={selectedNotif.exit_leg === 'TARGET_LEG' ? Colors.success : Colors.error} />
-                  {selectedNotif.exit_price != null && <ModalRow label="Exit Price" value={`₹${selectedNotif.exit_price}`} highlight={selectedNotif.exit_leg === 'TARGET_LEG' ? Colors.success : Colors.error} />}
+                  {selectedNotif.exit_price != null && <ModalRow label="Exit Price" value={`₹${selectedNotif.exit_price.toFixed(2)}`} highlight={selectedNotif.exit_leg === 'TARGET_LEG' ? Colors.success : Colors.error} />}
                   {selectedNotif.exit_time && <ModalRow label="Exit Time" value={formatDateTimeIST(selectedNotif.exit_time)} />}
+                  {selectedNotif.realized_pnl != null && (
+                    <ModalRow
+                      label="Realized P&L"
+                      value={selectedNotif.realized_pnl >= 0 ? `+₹${selectedNotif.realized_pnl.toFixed(2)}` : `-₹${Math.abs(selectedNotif.realized_pnl).toFixed(2)}`}
+                      highlight={selectedNotif.realized_pnl >= 0 ? Colors.success : Colors.error}
+                    />
+                  )}
                 </>
               )}
 
@@ -394,9 +420,13 @@ export default function SignalDetailScreen() {
                 </View>
               )}
 
-              {/* Timeline */}
+              {/* Real-time Event Timeline */}
               <View style={styles.modalDivider} />
-              <Text style={styles.timelineTitle}>Timeline</Text>
+              <Text style={styles.timelineTitle}>Live Order Events</Text>
+              <OrderTimeline events={notifEvents} loading={eventsLoading} />
+
+              <View style={styles.modalDivider} />
+              <Text style={styles.timelineTitle}>Timestamps</Text>
               <ModalRow label="Received" value={formatDateTimeIST(selectedNotif?.created_at)} />
               {selectedNotif?.confirmed_at && <ModalRow label="Confirmed" value={formatDateTimeIST(selectedNotif.confirmed_at)} />}
               {selectedNotif?.placed_at && <ModalRow label="Submitted" value={formatDateTimeIST(selectedNotif.placed_at)} highlight={Colors.success} />}
@@ -527,8 +557,8 @@ const styles = StyleSheet.create({
   ipText: { fontSize: 11, fontFamily: 'monospace', color: Colors.info },
   timeSmall: { fontSize: 11, color: Colors.textMuted },
   awaitingText: { fontSize: 11, color: Colors.textMuted, fontWeight: '600' },
-  fillText: { fontSize: 12, color: Colors.success, fontWeight: '600' },
-  exitTag: { fontSize: 12, fontWeight: '700' },
+  fillText: { fontSize: 12, color: Colors.success, fontWeight: '600' },  pnlBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
+  pnlText: { fontSize: 11, fontWeight: '800' },  exitTag: { fontSize: 12, fontWeight: '700' },
   rowActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
   rowActionBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   rowActionCancel: { fontSize: 11, color: Colors.error, fontWeight: '700' },

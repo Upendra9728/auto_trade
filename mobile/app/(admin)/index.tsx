@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
@@ -65,14 +67,63 @@ export default function AdminDashboard() {
         </View>
 
         {/* Orders section */}
-        <Text style={styles.sectionTitle}>Orders</Text>
-        <View style={styles.grid}>
-          <StatCard label="Pending" value={stats?.orders.pending ?? 0} color={Colors.warning} />
-          <StatCard label="Live Confirmed" value={stats?.orders.placed ?? 0} color={Colors.success} />
-          <StatCard label="Awaiting Live" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
-          <StatCard label="Exchange Rejected" value={stats?.orders.exchange_rejected ?? 0} color={Colors.error} />
-          <StatCard label="Failed" value={stats?.orders.failed ?? 0} color={Colors.error} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.sectionTitle}>Orders & P&L</Text>
+          <TouchableOpacity
+            style={styles.pnlLinkBtn}
+            onPress={() => router.push('/(admin)/pnl')}
+          >
+            <Text style={styles.pnlLinkText}>View All P&L →</Text>
+          </TouchableOpacity>
         </View>
+
+        <View style={styles.grid}>
+          <StatCard label="Live Confirmed" value={stats?.orders.placed ?? 0} color={Colors.success} />
+          <StatCard label="Pending" value={stats?.orders.pending ?? 0} color={Colors.warning} />
+          <StatCard label="Awaiting Live" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
+          <StatCard label="Rejected / Failed" value={(stats?.orders.exchange_rejected ?? 0) + (stats?.orders.failed ?? 0)} color={Colors.error} />
+        </View>
+
+        {/* P&L Total Summary Card */}
+        <TouchableOpacity
+          style={styles.pnlBannerCard}
+          onPress={() => router.push('/(admin)/pnl')}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={styles.pnlBannerTitle}>Total Realized P&L</Text>
+              <Text
+                style={[
+                  styles.pnlBannerValue,
+                  { color: (stats?.orders.total_realized_pnl ?? 0) >= 0 ? Colors.success : Colors.error },
+                ]}
+              >
+                {(stats?.orders.total_realized_pnl ?? 0) >= 0
+                  ? `+₹${(stats?.orders.total_realized_pnl ?? 0).toFixed(2)}`
+                  : `-₹${Math.abs(stats?.orders.total_realized_pnl ?? 0).toFixed(2)}`}
+              </Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.pnlBannerTitle}>Open Unrealized</Text>
+              <Text
+                style={[
+                  styles.pnlBannerValue,
+                  { color: (stats?.orders.total_unrealized_pnl ?? 0) >= 0 ? Colors.success : Colors.error },
+                ]}
+              >
+                {(stats?.orders.total_unrealized_pnl ?? 0) >= 0
+                  ? `+₹${(stats?.orders.total_unrealized_pnl ?? 0).toFixed(2)}`
+                  : `-₹${Math.abs(stats?.orders.total_unrealized_pnl ?? 0).toFixed(2)}`}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.pnlBannerFooter}>
+            <Text style={styles.pnlBannerFooterText}>Tap to inspect per-user P&L and live Dhan positions</Text>
+            <Feather name="chevron-right" size={16} color={Colors.primary} />
+          </View>
+        </TouchableOpacity>
+
         <Text style={styles.helperText}>
           "Live Confirmed" counts only orders confirmed by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
           not just requests accepted by the API.
@@ -116,6 +167,28 @@ const styles = StyleSheet.create({
   },
   adminPillText: { color: Colors.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   sectionTitle: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.8 },
+  pnlLinkBtn: { paddingVertical: 2, paddingHorizontal: 6 },
+  pnlLinkText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  pnlBannerCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    ...Shadow.card,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+    gap: Spacing.sm,
+  },
+  pnlBannerTitle: { ...Typography.caption, textTransform: 'uppercase', letterSpacing: 0.5 },
+  pnlBannerValue: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  pnlBannerFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  pnlBannerFooterText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   statCard: {
     flex: 1, minWidth: '45%', backgroundColor: Colors.surface, borderRadius: Radius.sm,

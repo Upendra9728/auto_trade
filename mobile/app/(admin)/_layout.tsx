@@ -60,6 +60,7 @@ export default function AdminTabsLayout() {
         options={{ href: null }}
       />
       {/* Dynamic routes — hidden from tab bar */}
+      <Tabs.Screen name="pnl" options={{ href: null }} />
       <Tabs.Screen name="signal/[id]" options={{ href: null }} />
       <Tabs.Screen name="user/[id]" options={{ href: null }} />
     </Tabs>

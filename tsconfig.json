@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "skipLibCheck": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./mobile" }
+  ],
+  "exclude": [
+    "**/node_modules",
+    "backend",
+    "mobile/android",
+    "mobile/ios"
+  ]
+}

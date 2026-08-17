@@ -130,9 +130,59 @@ class SignalNotification(Base):
     exit_leg: Mapped[str | None] = mapped_column(String(16), nullable=True)
     exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     exit_time: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     signal: Mapped[Signal] = relationship(back_populates="notifications")
     user: Mapped[User] = relationship(back_populates="notifications")
+    events: Mapped[list["OrderEvent"]] = relationship(
+        back_populates="notification", cascade="all, delete-orphan", order_by="OrderEvent.created_at.asc()"
+    )
+
+
+class OrderEvent(Base):
+    __tablename__ = "order_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("signal_notifications.id"), index=True)
+    source: Mapped[str] = mapped_column(String(16))  # 'ws' | 'poll'
+    event_type: Mapped[str] = mapped_column(String(32))
+    leg: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    status: Mapped[str] = mapped_column(String(32))
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exchange_order_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, index=True)
+
+    notification: Mapped[SignalNotification] = relationship(back_populates="events")
+
+
+class UserPosition(Base):
+    """Latest open position snapshot cached per user from Dhan's GET /v2/positions."""
+
+    __tablename__ = "user_positions"
+    __table_args__ = (UniqueConstraint("user_id", "security_id", "exchange_segment", "product_type", name="uq_user_pos"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    trading_symbol: Mapped[str] = mapped_column(String(64))
+    security_id: Mapped[str] = mapped_column(String(64))
+    position_type: Mapped[str] = mapped_column(String(16))  # LONG | SHORT | CLOSED
+    exchange_segment: Mapped[str] = mapped_column(String(32))
+    product_type: Mapped[str] = mapped_column(String(16))
+    buy_avg: Mapped[float] = mapped_column(Float, default=0.0)
+    buy_qty: Mapped[int] = mapped_column(Integer, default=0)
+    cost_price: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_avg: Mapped[float] = mapped_column(Float, default=0.0)
+    sell_qty: Mapped[int] = mapped_column(Integer, default=0)
+    net_qty: Mapped[int] = mapped_column(Integer, default=0)
+    realized_profit: Mapped[float] = mapped_column(Float, default=0.0)
+    unrealized_profit: Mapped[float] = mapped_column(Float, default=0.0)
+    rbi_reference_rate: Mapped[float] = mapped_column(Float, default=1.0)
+    multiplier: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+
+    user: Mapped[User] = relationship()
 
 
 class UserSession(Base):
