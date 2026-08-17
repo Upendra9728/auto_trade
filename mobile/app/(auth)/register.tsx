@@ -33,11 +33,8 @@ export default function RegisterScreen() {
         phone_number: form.phone_number.trim(),
         password: form.password,
       });
-      Alert.alert(
-        'Account created!',
-        'An admin needs to approve your account before you can sign in.',
-        [{ text: 'Sign In', onPress: () => router.replace('/(auth)/login') }],
-      );
+      await authApi.sendVerificationOtp({ email: form.email.trim().toLowerCase() });
+      router.push({ pathname: '/(auth)/verify-email', params: { email: form.email.trim().toLowerCase(), from: 'register' } });
     } catch (err: any) {
       Alert.alert('Registration failed', err.message ?? 'Please try again.');
     } finally {
@@ -93,7 +90,7 @@ export default function RegisterScreen() {
 
           <View style={styles.note}>
             <Text style={styles.noteText}>
-              � New accounts require admin approval before you can sign in.
+              ℹ️ New accounts require admin approval before you can sign in.
             </Text>
           </View>
 

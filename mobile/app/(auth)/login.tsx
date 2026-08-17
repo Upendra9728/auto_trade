@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors, Spacing, Radius, Typography } from '../../constants/theme';
-import { API_BASE_URL } from '../../services/api';
+import { API_BASE_URL, authApi } from '../../services/api';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -32,6 +32,13 @@ export default function LoginScreen() {
         router.replace('/(user)/');
       }
     } catch (err: any) {
+      if (err.message === 'EMAIL_NOT_VERIFIED') {
+        try {
+          await authApi.sendVerificationOtp({ email: email.trim().toLowerCase() });
+        } catch {}
+        router.push({ pathname: '/(auth)/verify-email', params: { email: email.trim().toLowerCase(), from: 'login' } });
+        return;
+      }
       console.log('Login error:', err);
       Alert.alert('Login failed', err.message ?? 'Invalid credentials.');
     } finally {
@@ -100,6 +107,10 @@ export default function LoginScreen() {
             disabled={loading}
           >
             <Text style={styles.btnText}>{loading ? 'Signing in…' : 'Sign In'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password')}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
         </View>
 
@@ -179,4 +190,5 @@ const styles = StyleSheet.create({
   linkRow: { alignItems: 'center', marginTop: Spacing.lg },
   linkText: { ...Typography.body, color: Colors.textSecondary },
   link: { color: Colors.primary, fontWeight: '700' },
+  forgotText: { textAlign: 'center', color: Colors.primary, fontWeight: '600' },
 });

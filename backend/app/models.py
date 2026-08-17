@@ -23,6 +23,7 @@ class User(Base):
     # Firebase Cloud Messaging device token for push notifications
     fcm_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
@@ -148,6 +149,19 @@ class UserSession(Base):
 
 class PasswordResetOtp(Base):
     __tablename__ = "password_reset_otps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    otp_hash: Mapped[str] = mapped_column(String(128), index=True)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    consumed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    user: Mapped[User] = relationship()
+
+
+class EmailVerificationOtp(Base):
+    __tablename__ = "email_verification_otps"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)

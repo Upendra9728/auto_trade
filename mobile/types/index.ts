@@ -8,6 +8,7 @@ export interface User {
   role: 'user' | 'admin';
   assigned_ipv6: string | null;
   is_active: boolean;
+  email_verified: boolean;
 }
 
 export interface AuthResponse {

@@ -16,10 +16,12 @@ from ..auth import (
 )
 from ..config import settings
 from ..deps import get_current_user, get_db, _utcnow
-from ..mailer import send_password_reset_email
-from ..models import PasswordResetOtp, User, UserSession
+from ..mailer import send_email_verification_email, send_password_reset_email
+from ..models import EmailVerificationOtp, PasswordResetOtp, User, UserSession
 from ..schemas import (
     AdminBootstrapRequest,
+    EmailVerificationConfirmRequest,
+    EmailVerificationSendRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     UserAuthResponse,
@@ -52,7 +54,31 @@ def _to_profile(user: User) -> UserProfileResponse:
         role=user.role,
         assigned_ipv6=user.assigned_ipv6,
         is_active=user.is_active,
+        email_verified=user.email_verified,
     )
+
+
+def _send_verification_otp(db: Session, user: User) -> None:
+    now = _utcnow()
+    db.query(EmailVerificationOtp).filter(
+        EmailVerificationOtp.user_id == user.id,
+        EmailVerificationOtp.consumed_at.is_(None),
+    ).update({EmailVerificationOtp.consumed_at: now}, synchronize_session=False)
+
+    otp = generate_otp()
+    otp_row = EmailVerificationOtp(
+        user_id=user.id,
+        otp_hash=hash_otp(email=user.email, otp=otp, secret=settings.internal_secret),
+        expires_at=now + dt.timedelta(minutes=settings.otp_expiry_minutes),
+    )
+    db.add(otp_row)
+
+    try:
+        send_email_verification_email(to_email=user.email, otp=otp, name=user.name)
+    except Exception:
+        pass
+
+    db.commit()
 
 
 @router.post("/register", response_model=UserProfileResponse, status_code=201)
@@ -78,10 +104,12 @@ def register_user(req: UserRegistrationRequest, db: Session = Depends(get_db)) -
         role="user",
         is_active=False,
         assigned_ipv6=None,
+        email_verified=False,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    _send_verification_otp(db, user)
     return _to_profile(user)
 
 
@@ -93,6 +121,8 @@ def login_user(req: UserLoginRequest, db: Session = Depends(get_db)) -> UserAuth
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Your account is pending admin approval")
+    if not user.email_verified:
+        raise HTTPException(status_code=403, detail="EMAIL_NOT_VERIFIED")
 
     expires_at = _utcnow() + dt.timedelta(hours=settings.auth_session_hours)
     if user.role != "admin":
@@ -135,6 +165,44 @@ def logout_user(
         ).delete(synchronize_session=False)
         db.commit()
     return {"status": "logged_out"}
+
+
+@router.post("/send-verification-otp")
+def send_verification_otp(req: EmailVerificationSendRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+    email = _normalize_email(req.email)
+    user = db.query(User).filter(User.email == email).one_or_none()
+    if user is None:
+        return {"status": "otp_sent"}
+
+    _send_verification_otp(db, user)
+    return {"status": "otp_sent"}
+
+
+@router.post("/verify-email")
+def verify_email(req: EmailVerificationConfirmRequest, db: Session = Depends(get_db)) -> dict[str, str]:
+    email = _normalize_email(req.email)
+    user = db.query(User).filter(User.email == email).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    expected_hash = hash_otp(email=email, otp=req.otp, secret=settings.internal_secret)
+    otp_row = (
+        db.query(EmailVerificationOtp)
+        .filter(
+            EmailVerificationOtp.user_id == user.id,
+            EmailVerificationOtp.otp_hash == expected_hash,
+            EmailVerificationOtp.consumed_at.is_(None),
+            EmailVerificationOtp.expires_at > _utcnow(),
+        )
+        .one_or_none()
+    )
+    if otp_row is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user.email_verified = True
+    otp_row.consumed_at = _utcnow()
+    db.commit()
+    return {"status": "email_verified"}
 
 
 @router.post("/request-password-reset")

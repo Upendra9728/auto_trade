@@ -24,6 +24,14 @@ def _apply_migrations() -> None:
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
 
+    if "users" in table_names:
+        existing = {c["name"] for c in inspector.get_columns("users")}
+        if "email_verified" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 0"))
+                conn.commit()
+            logger.info("Migration: added email_verified column to users")
+
     if "dhan_credentials" in table_names:
         existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
         if "token_expires_at" not in existing:

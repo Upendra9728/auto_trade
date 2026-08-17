@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).resolve().parents[1] / ".env"),
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/automate_trading"
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
 
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.2.6"
+    app_latest_version: str = "1.2.7"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
 

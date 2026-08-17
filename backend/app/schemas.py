@@ -30,6 +30,7 @@ class UserProfileResponse(BaseModel):
     role: str
     assigned_ipv6: str | None = None
     is_active: bool
+    email_verified: bool
 
 
 class UserAuthResponse(BaseModel):
@@ -47,6 +48,15 @@ class PasswordResetConfirmRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     otp: str = Field(min_length=4, max_length=8)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class EmailVerificationSendRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    otp: str = Field(min_length=4, max_length=8)
 
 
 # ---------------------------------------------------------------------------

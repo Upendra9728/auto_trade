@@ -4,6 +4,7 @@ import {
   ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
@@ -49,6 +50,12 @@ export default function ProfileScreen() {
     } finally {
       setSavingDhan(false);
     }
+  };
+
+  const handleCopyIp = async () => {
+    if (!user?.assigned_ipv6) return;
+    await Clipboard.setStringAsync(user.assigned_ipv6);
+    Alert.alert('Copied', 'IPv6 copied to clipboard.');
   };
 
   const handleTestIp = async () => {
@@ -127,9 +134,16 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Order Placement IP</Text>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Assigned IPv6</Text>
-            <Text style={styles.monoValue}>
-              {user?.assigned_ipv6 ?? 'Not assigned yet — contact admin'}
-            </Text>
+            <View style={styles.ipValueRow}>
+              <Text style={styles.monoValue}>
+                {user?.assigned_ipv6 ?? 'Not assigned yet — contact admin'}
+              </Text>
+              {user?.assigned_ipv6 ? (
+                <TouchableOpacity onPress={handleCopyIp} style={styles.copyBtn}>
+                  <Text style={styles.copyText}>Copy</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
           {!user?.assigned_ipv6 && (
             <View style={styles.warnBox}>

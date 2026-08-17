@@ -110,6 +110,14 @@ export const authApi = {
     post<AuthResponse>('/api/auth/login', data),
   logout: () => post<{ status: string }>('/api/auth/logout'),
   me: () => get<User>('/api/auth/me'),
+  sendVerificationOtp: (data: { email: string }) =>
+    post<{ status: string }>('/api/auth/send-verification-otp', data),
+  verifyEmail: (data: { email: string; otp: string }) =>
+    post<{ status: string }>('/api/auth/verify-email', data),
+  requestPasswordReset: (data: { email: string }) =>
+    post<{ status: string }>('/api/auth/request-password-reset', data),
+  resetPassword: (data: { email: string; otp: string; new_password: string }) =>
+    post<{ status: string }>('/api/auth/reset-password', data),
   adminBootstrap: (data: { admin_secret: string; email: string }) =>
     post<{ status: string; role: string }>('/api/auth/admin-bootstrap', data),
 };
