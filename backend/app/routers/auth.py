@@ -121,7 +121,7 @@ def login_user(req: UserLoginRequest, db: Session = Depends(get_db)) -> UserAuth
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Your account is pending admin approval")
-    if not user.email_verified:
+    if user.role != "admin" and not user.email_verified:
         raise HTTPException(status_code=403, detail="EMAIL_NOT_VERIFIED")
 
     expires_at = _utcnow() + dt.timedelta(hours=settings.auth_session_hours)
