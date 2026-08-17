@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -31,6 +32,7 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _normalize_email(email: str) -> str:
@@ -76,7 +78,7 @@ def _send_verification_otp(db: Session, user: User) -> None:
     try:
         send_email_verification_email(to_email=user.email, otp=otp, name=user.name)
     except Exception:
-        pass
+        logger.exception("Failed to send email verification OTP to %s", user.email)
 
     db.commit()
 
@@ -230,7 +232,7 @@ def request_password_reset(req: PasswordResetRequest, db: Session = Depends(get_
     try:
         send_password_reset_email(to_email=email, otp=otp, name=user.name)
     except Exception:
-        pass  # Best-effort — don't reveal mail failure to caller
+        logger.exception("Failed to send password reset OTP to %s", email)
 
     db.commit()
     return {"status": "otp_sent"}
