@@ -31,6 +31,16 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE"))
                 conn.commit()
             logger.info("Migration: added email_verified column to users")
+        if "terms_accepted" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN terms_accepted BOOLEAN DEFAULT FALSE"))
+                conn.commit()
+            logger.info("Migration: added terms_accepted column to users")
+        if "terms_accepted_at" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN terms_accepted_at TIMESTAMP"))
+                conn.commit()
+            logger.info("Migration: added terms_accepted_at column to users")
 
     if "dhan_credentials" in table_names:
         existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
