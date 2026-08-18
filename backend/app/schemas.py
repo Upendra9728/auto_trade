@@ -31,6 +31,8 @@ class UserProfileResponse(BaseModel):
     assigned_ipv6: str | None = None
     is_active: bool
     email_verified: bool
+    terms_accepted: bool = False
+    terms_accepted_at: str | None = None
 
 
 class UserAuthResponse(BaseModel):

@@ -129,6 +129,7 @@ export const authApi = {
 
 export const userApi = {
   getProfile: () => get<User>('/api/users/me'),
+  acceptTerms: () => post<User>('/api/users/accept-terms'),
   updateProfile: (data: { name?: string; phone_number?: string }) =>
     put<User>('/api/users/me', data),
   updateFcmToken: (fcm_token: string) =>

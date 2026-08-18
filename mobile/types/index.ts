@@ -9,6 +9,8 @@ export interface User {
   assigned_ipv6: string | null;
   is_active: boolean;
   email_verified: boolean;
+  terms_accepted: boolean;
+  terms_accepted_at?: string | null;
 }
 
 export interface AuthResponse {

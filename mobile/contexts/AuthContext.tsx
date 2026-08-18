@@ -11,6 +11,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  acceptLegal: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -88,8 +89,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
+  const acceptLegal = useCallback(async () => {
+    const updated = await userApi.acceptTerms();
+    setUser(updated);
+    if (token) {
+      await saveAuth(token, updated);
+    }
+  }, [token]);
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser, acceptLegal }}>
       {children}
     </AuthContext.Provider>
   );

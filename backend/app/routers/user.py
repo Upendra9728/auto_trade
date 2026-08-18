@@ -42,6 +42,9 @@ def _to_profile(user: User) -> UserProfileResponse:
         role=user.role,
         assigned_ipv6=user.assigned_ipv6,
         is_active=user.is_active,
+        email_verified=user.email_verified,
+        terms_accepted=user.terms_accepted,
+        terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
     )
 
 
@@ -94,6 +97,19 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
+
+@router.post("/accept-terms", response_model=UserProfileResponse)
+def accept_terms(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserProfileResponse:
+    current_user.terms_accepted = True
+    current_user.terms_accepted_at = dt.datetime.utcnow()
+    current_user.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+    return _to_profile(current_user)
+
 
 @router.get("/me", response_model=UserProfileResponse)
 def get_profile(current_user: User = Depends(get_current_user)) -> UserProfileResponse:

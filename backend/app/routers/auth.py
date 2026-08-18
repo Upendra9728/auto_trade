@@ -57,6 +57,8 @@ def _to_profile(user: User) -> UserProfileResponse:
         assigned_ipv6=user.assigned_ipv6,
         is_active=user.is_active,
         email_verified=user.email_verified,
+        terms_accepted=user.terms_accepted,
+        terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
     )
 
 

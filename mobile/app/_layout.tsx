@@ -8,6 +8,7 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { UpdateProvider } from '../contexts/UpdateContext';
 import UpdateBadge from '../components/UpdateBadge';
 import UpdateModal from '../components/UpdateModal';
+import LegalConsentModal from '../components/LegalConsentModal';
 import { Colors } from '../constants/theme';
 import { setupNotifications } from '../services/notifications';
 
@@ -45,6 +46,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false }} />
             <UpdateBadge />
             <UpdateModal />
+            <LegalConsentModal />
           </View>
         </AuthProvider>
       </UpdateProvider>
