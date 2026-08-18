@@ -8,8 +8,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Colors, Spacing, Radius, Typography, moderateScale } from '../constants/theme';
@@ -54,6 +57,10 @@ export default function LegalConsentModal() {
           style: 'destructive',
           onPress: async () => {
             await logout();
+            router.replace('/(auth)/login');
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp();
+            }
           },
         },
       ],
