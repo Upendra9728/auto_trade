@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
+  ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -12,29 +12,43 @@ const SEGMENTS = ['NSE_FNO', 'BSE_FNO', 'NSE_EQ', 'BSE_EQ'];
 const PRODUCT_TYPES = ['INTRADAY', 'CNC', 'MARGIN', 'MTF'];
 const ORDER_TYPES = ['LIMIT', 'MARKET'];
 
+const DEFAULT_RAW_SIGNAL = 'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300';
+const DEFAULT_FORM = {
+  title: '',
+  exchange_segment: 'NSE_FNO',
+  security_id: '',
+  transaction_type: 'BUY' as 'BUY' | 'SELL',
+  product_type: 'INTRADAY',
+  order_type: 'LIMIT',
+  quantity: '',
+  price: '',
+  target_price: '',
+  stop_loss_price: '',
+  trailing_jump: '0',
+};
+
 export default function SignalCreateScreen() {
   const [entryMode, setEntryMode] = useState<'form' | 'paste'>('paste');
-  const [rawSignal, setRawSignal] = useState(
-    'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300',
-  );
+  const [rawSignal, setRawSignal] = useState(DEFAULT_RAW_SIGNAL);
   const [lotSize, setLotSize] = useState<number | null>(null);
   const [hasParsed, setHasParsed] = useState(false);
   const [scripInfo, setScripInfo] = useState<{ found: boolean; tradingSymbol?: string; expiryDate?: string } | null>(null);
-  const [form, setForm] = useState({
-    title: '',
-    exchange_segment: 'NSE_FNO',
-    security_id: '',
-    transaction_type: 'BUY' as 'BUY' | 'SELL',
-    product_type: 'INTRADAY',
-    order_type: 'LIMIT',
-    quantity: '',
-    price: '',
-    target_price: '',
-    stop_loss_price: '',
-    trailing_jump: '0',
-  });
+  const [form, setForm] = useState(DEFAULT_FORM);
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Pull-to-refresh resets the signal creation draft back to default state.
+  const handleRefresh = () => {
+    if (loading || lookingUp) return;
+    setRefreshing(true);
+    setRawSignal(DEFAULT_RAW_SIGNAL);
+    setForm(DEFAULT_FORM);
+    setLotSize(null);
+    setHasParsed(false);
+    setScripInfo(null);
+    setRefreshing(false);
+  };
 
   const set = (key: keyof typeof form) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
@@ -178,7 +192,19 @@ export default function SignalCreateScreen() {
           <View style={{ width: 60 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
+            />
+          }
+        >
           <View style={styles.modeToggle}>
             <TouchableOpacity
               style={[styles.modeBtn, entryMode === 'paste' && styles.modeBtnActive]}

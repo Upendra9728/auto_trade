@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Radius } from '../constants/theme';
+import { Colors, Radius, moderateScale } from '../constants/theme';
 import type { LiveOrderStatus } from '../types';
 
 const CONFIG: Record<LiveOrderStatus, { label: string; bg: string; color: string }> = {
@@ -54,6 +54,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeSm: { paddingHorizontal: 8, paddingVertical: 2 },
-  text: { fontSize: 12, fontWeight: '600' },
-  textSm: { fontSize: 11 },
+  text: { fontSize: moderateScale(12), fontWeight: '600' },
+  textSm: { fontSize: moderateScale(11) },
 });

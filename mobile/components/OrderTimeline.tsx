@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { Colors, Spacing, Radius, Typography } from '../constants/theme';
+import { Colors, Spacing, Radius, Typography, moderateScale } from '../constants/theme';
 import { formatDateIST } from '../utils/time';
 import type { OrderEvent } from '../types';
 
@@ -64,7 +64,7 @@ export default function OrderTimeline({ events, loading = false }: Props) {
             {/* Right details */}
             <View style={[styles.contentCard, isLast && { marginBottom: 0 }]}>
               <View style={styles.headerRow}>
-                <Text style={[styles.eventTitle, { color: cfg.color }]}>{cfg.label}</Text>
+                <Text style={[styles.eventTitle, { color: cfg.color }]} numberOfLines={1}>{cfg.label}</Text>
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{ev.source.toUpperCase()}</Text>
                 </View>
@@ -72,7 +72,7 @@ export default function OrderTimeline({ events, loading = false }: Props) {
 
               <Text style={styles.timestamp}>{formatDateIST(ev.created_at)}</Text>
 
-              {(ev.price != null || ev.quantity != null) && (
+              {(ev.price != null || ev.quantity != null || ev.leg != null) && (
                 <View style={styles.metaRow}>
                   {ev.price != null && (
                     <Text style={styles.metaText}>
@@ -148,19 +148,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.xs,
   },
   eventTitle: {
-    fontSize: 13,
+    fontSize: moderateScale(13),
     fontWeight: '700',
+    flex: 1,
   },
   badge: {
     backgroundColor: '#F3F4F6',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: Radius.sm,
+    flexShrink: 0,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: moderateScale(10),
     fontWeight: '700',
     color: Colors.textSecondary,
   },
@@ -171,14 +174,16 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    flexWrap: 'wrap',
+    columnGap: Spacing.sm,
+    rowGap: Spacing.xs,
     marginTop: 6,
     paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: Colors.divider,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: Colors.textSecondary,
   },
   metaBold: {
@@ -186,7 +191,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   reasonText: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: Colors.error,
     marginTop: 4,
   },

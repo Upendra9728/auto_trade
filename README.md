@@ -239,6 +239,7 @@ ssh -i "dhan-prod-key.pem" ec2-user@13.126.206.167
 
 sudo -u postgres psql -d automate_trading
 
+cd /var/www/auto_trade/backend
 
 TOKEN='eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzg2NjQ5MjE3LCJpYXQiOjE3ODY1NjI4MTcsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTAxMDM2NDUzIn0.9p28DvMVJFc48VnqCdpHyMDzT8LrZUz4az9pUJEbyoJ5d6buiUyHQL7X5eH5vj1yrNZ0XRNJtqbjjxg8VS-58A'
 CLIENT=1101036453
@@ -255,3 +256,27 @@ UPDATE users
 SET password_hash = 'pbkdf2_sha256$120000$459a423484cd5b939645bd1638e4c464$4500386bc82dbacabd519a176d377fcdd0dcc71863e12d1acb076cd4a4e3cb03',
     updated_at = NOW()
 WHERE id = 62;
+
+
+
+
+source .venv/bin/activate
+python -c "
+import smtplib
+from email.mime.text import MIMEText
+from app.config import settings
+
+msg = MIMEText('Test OTP message', 'plain', 'utf-8')
+msg['Subject'] = 'Test SMTP'
+msg['From'] = settings.smtp_username
+msg['To'] = settings.smtp_username
+
+with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as smtp:
+    smtp.starttls()
+    smtp.login(settings.smtp_username, settings.smtp_password)
+    smtp.send_message(msg)
+print('Email sent successfully!')
+"
+
+
+jetkygcsfbswffcj

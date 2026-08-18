@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Modal, Pressable, ScrollView, Animated, Easing, TextInput, Alert,
+  Modal, Pressable, ScrollView, Animated, Easing, TextInput, Alert, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { adminApi } from '../../../services/api';
-import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import { Colors, Spacing, Radius, Typography, Shadow, moderateScale, Screen } from '../../../constants/theme';
 import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import LiveStatusBadge from '../../../components/LiveStatusBadge';
@@ -67,13 +67,15 @@ export default function SignalDetailScreen() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadSignal(), loadNotifications(page, statusFilter)])
-      .finally(() => setLoading(false));
-  }, []);
+    setSignal(null);
+    setNotifPage(null);
+    setPage(1);
+    loadSignal().finally(() => setLoading(false));
+  }, [id, loadSignal]);
 
   useEffect(() => {
     loadNotifications(page, statusFilter);
-  }, [page, statusFilter]);
+  }, [loadNotifications, page, statusFilter]);
 
   const openModal = (notif: AdminSignalNotificationRow) => {
     setSelectedNotif(notif);
@@ -192,13 +194,13 @@ export default function SignalDetailScreen() {
     return (
       <TouchableOpacity style={styles.row} onPress={() => openModal(n)} activeOpacity={0.75}>
         <View style={styles.rowLeft}>
-          <Text style={styles.userName}>{n.user_name}</Text>
-          <Text style={styles.userEmail}>{n.user_email}</Text>
-          {n.assigned_ipv6 && <Text style={styles.ipText}>{n.assigned_ipv6}</Text>}
+          <Text style={styles.userName} numberOfLines={1}>{n.user_name}</Text>
+          <Text style={styles.userEmail} numberOfLines={1}>{n.user_email}</Text>
+          {n.assigned_ipv6 && <Text style={styles.ipText} numberOfLines={1}>{n.assigned_ipv6}</Text>}
           {n.placed_at && <Text style={styles.timeSmall}>{formatDateTimeIST(n.placed_at)}</Text>}
         </View>
         <View style={styles.rowRight}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {n.realized_pnl != null && (
               <View style={[styles.pnlBadge, { backgroundColor: n.realized_pnl >= 0 ? Colors.successBg : Colors.errorBg }]}>
                 <Text style={[styles.pnlText, { color: n.realized_pnl >= 0 ? Colors.success : Colors.error }]}>
@@ -220,10 +222,10 @@ export default function SignalDetailScreen() {
           )}
           {isActivePlaced && (
             <View style={styles.rowActions}>
-              <TouchableOpacity style={styles.rowActionBtn} onPress={() => handleCancelOne(n)}>
+              <TouchableOpacity style={styles.rowActionBtn} onPress={() => handleCancelOne(n)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.rowActionCancel}>✕ Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.rowActionBtn} onPress={() => { closeModal(); openModify(n.notification_id); }}>
+              <TouchableOpacity style={styles.rowActionBtn} onPress={() => { closeModal(); openModify(n.notification_id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.rowActionModify}>✎ Modify</Text>
               </TouchableOpacity>
             </View>
@@ -354,16 +356,21 @@ export default function SignalDetailScreen() {
           <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
           <Animated.View style={[styles.modalCard, { transform: [{ scale: animScale }] }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalName}>{selectedNotif?.user_name}</Text>
-                <Text style={styles.modalEmail}>{selectedNotif?.user_email}</Text>
+              <View style={{ flex: 1, marginRight: Spacing.sm }}>
+                <Text style={styles.modalName} numberOfLines={1}>{selectedNotif?.user_name}</Text>
+                <Text style={styles.modalEmail} numberOfLines={1}>{selectedNotif?.user_email}</Text>
               </View>
-              <TouchableOpacity onPress={closeModal} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={closeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              style={{ maxHeight: Screen.height * 0.65 }}
+              contentContainerStyle={{ paddingBottom: Spacing.md }}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.modalStatusRow}>
                 {selectedNotif?.status === 'placed'
                   ? (selectedNotif.live_status ? <LiveStatusBadge liveStatus={selectedNotif.live_status} /> : <Text style={styles.awaitingText}>Awaiting live status</Text>)
@@ -467,8 +474,8 @@ export default function SignalDetailScreen() {
 function PriceChip({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <View style={{ alignItems: 'center', flex: 1 }}>
-      <Text style={{ fontSize: 10, color: Colors.textMuted }}>{label}</Text>
-      <Text style={{ fontSize: 14, fontWeight: '700', color: color ?? Colors.text }}>{value}</Text>
+      <Text style={{ fontSize: moderateScale(10), color: Colors.textMuted }}>{label}</Text>
+      <Text style={{ fontSize: moderateScale(14), fontWeight: '700', color: color ?? Colors.text }}>{value}</Text>
     </View>
   );
 }
@@ -476,8 +483,8 @@ function PriceChip({ label, value, color }: { label: string; value: string; colo
 function SummaryCell({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <View style={{ alignItems: 'center', flex: 1, gap: 2 }}>
-      <Text style={{ fontSize: 20, fontWeight: '800', color: color ?? Colors.text }}>{value}</Text>
-      <Text style={{ fontSize: 9, color: Colors.textMuted, textAlign: 'center' }}>{label}</Text>
+      <Text style={{ fontSize: moderateScale(18), fontWeight: '800', color: color ?? Colors.text }}>{value}</Text>
+      <Text style={{ fontSize: moderateScale(9), color: Colors.textMuted, textAlign: 'center' }}>{label}</Text>
     </View>
   );
 }
@@ -485,9 +492,16 @@ function SummaryCell({ label, value, color }: { label: string; value: number; co
 function ModalRow({ label, value, mono, selectable, highlight }: { label: string; value?: string | null; mono?: boolean; selectable?: boolean; highlight?: string }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 5, gap: Spacing.sm }}>
-      <Text style={{ fontSize: 12, color: Colors.textMuted, flex: 1 }}>{label}</Text>
+      <Text style={{ fontSize: moderateScale(12), color: Colors.textMuted, flex: 1 }}>{label}</Text>
       <Text
-        style={{ fontSize: mono ? 12 : 13, fontFamily: mono ? 'monospace' : undefined, color: highlight ?? Colors.text, fontWeight: '500', flex: 2, textAlign: 'right' }}
+        style={{
+          fontSize: mono ? moderateScale(12) : moderateScale(13),
+          fontFamily: mono ? 'monospace' : undefined,
+          color: highlight ?? Colors.text,
+          fontWeight: '500',
+          flex: 2,
+          textAlign: 'right',
+        }}
         selectable={selectable}
       >{value ?? '—'}</Text>
     </View>
@@ -497,9 +511,9 @@ function ModalRow({ label, value, mono, selectable, highlight }: { label: string
 function ModifyField({ label, value, onChangeText }: { label: string; value: string; onChangeText: (v: string) => void }) {
   return (
     <View style={{ marginBottom: Spacing.sm }}>
-      <Text style={{ fontSize: 12, color: Colors.textMuted, marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: moderateScale(12), color: Colors.textMuted, marginBottom: 4 }}>{label}</Text>
       <TextInput
-        style={{ borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm, paddingHorizontal: Spacing.md, paddingVertical: 10, fontSize: 14, color: Colors.text }}
+        style={{ borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm, paddingHorizontal: Spacing.md, paddingVertical: 10, fontSize: moderateScale(14), color: Colors.text }}
         value={value}
         onChangeText={onChangeText}
         keyboardType="decimal-pad"
@@ -518,7 +532,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
     backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  backText: { color: Colors.primary, fontSize: 15, fontWeight: '600', width: 60 },
+  backText: { color: Colors.primary, fontSize: moderateScale(15), fontWeight: '600', width: 60 },
   pageTitle: { ...Typography.h3, flex: 1, textAlign: 'center' },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xl },
   header: { gap: Spacing.md, marginBottom: Spacing.sm },
@@ -531,9 +545,9 @@ const styles = StyleSheet.create({
   actionsBar: { flexDirection: 'row', gap: Spacing.sm },
   actionBtn: { flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center' },
   cancelAllBtn: { backgroundColor: Colors.error },
-  cancelAllText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  cancelAllText: { color: '#fff', fontSize: moderateScale(13), fontWeight: '700' },
   modifyBtn: { backgroundColor: Colors.primaryBg, borderWidth: 1.5, borderColor: Colors.primary },
-  modifyBtnText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
+  modifyBtnText: { color: Colors.primary, fontSize: moderateScale(13), fontWeight: '700' },
   summaryRow: {
     flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: Radius.sm,
     padding: Spacing.md, ...Shadow.card, justifyContent: 'space-around',
@@ -544,39 +558,44 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface, marginRight: 8, borderWidth: 1.5, borderColor: Colors.border,
   },
   filterTabActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  filterTabText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+  filterTabText: { fontSize: moderateScale(12), fontWeight: '600', color: Colors.textSecondary },
   filterTabTextActive: { color: '#fff' },
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     backgroundColor: Colors.surface, borderRadius: Radius.sm, padding: Spacing.md, ...Shadow.card,
   },
-  rowLeft: { flex: 1, gap: 2 },
-  rowRight: { alignItems: 'flex-end', gap: 4, maxWidth: '50%' },
-  userName: { fontSize: 14, fontWeight: '600', color: Colors.text },
-  userEmail: { fontSize: 12, color: Colors.textSecondary },
-  ipText: { fontSize: 11, fontFamily: 'monospace', color: Colors.info },
-  timeSmall: { fontSize: 11, color: Colors.textMuted },
-  awaitingText: { fontSize: 11, color: Colors.textMuted, fontWeight: '600' },
-  fillText: { fontSize: 12, color: Colors.success, fontWeight: '600' },  pnlBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
-  pnlText: { fontSize: 11, fontWeight: '800' },  exitTag: { fontSize: 12, fontWeight: '700' },
+  rowLeft: { flex: 1, gap: 2, marginRight: Spacing.sm },
+  rowRight: { alignItems: 'flex-end', gap: 4, maxWidth: '58%', flexShrink: 1 },
+  userName: { fontSize: moderateScale(14), fontWeight: '600', color: Colors.text },
+  userEmail: { fontSize: moderateScale(12), color: Colors.textSecondary },
+  ipText: { fontSize: moderateScale(11), fontFamily: 'monospace', color: Colors.info },
+  timeSmall: { fontSize: moderateScale(11), color: Colors.textMuted },
+  awaitingText: { fontSize: moderateScale(11), color: Colors.textMuted, fontWeight: '600' },
+  fillText: { fontSize: moderateScale(12), color: Colors.success, fontWeight: '600' },
+  pnlBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
+  pnlText: { fontSize: moderateScale(11), fontWeight: '800' },
+  exitTag: { fontSize: moderateScale(12), fontWeight: '700' },
   rowActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  rowActionBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
-  rowActionCancel: { fontSize: 11, color: Colors.error, fontWeight: '700' },
-  rowActionModify: { fontSize: 11, color: Colors.primary, fontWeight: '700' },
+  rowActionBtn: {
+    paddingHorizontal: 8, paddingVertical: 5, borderRadius: Radius.sm,
+    borderWidth: 1, borderColor: Colors.border, minHeight: 28, justifyContent: 'center', alignItems: 'center',
+  },
+  rowActionCancel: { fontSize: moderateScale(11), color: Colors.error, fontWeight: '700' },
+  rowActionModify: { fontSize: moderateScale(11), color: Colors.primary, fontWeight: '700' },
 
   // Detail modal
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
   modalCard: { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, width: '100%', ...Shadow.card },
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
-  modalName: { fontSize: 16, fontWeight: '700', color: Colors.text },
-  modalEmail: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
-  closeBtn: { fontSize: 18, color: Colors.textMuted, fontWeight: '600', paddingLeft: Spacing.sm },
+  modalName: { fontSize: moderateScale(16), fontWeight: '700', color: Colors.text },
+  modalEmail: { fontSize: moderateScale(13), color: Colors.textSecondary, marginTop: 2 },
+  closeBtn: { fontSize: moderateScale(18), color: Colors.textMuted, fontWeight: '600', paddingLeft: Spacing.sm },
   modalStatusRow: { alignItems: 'flex-start', marginBottom: Spacing.md },
   modalDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.sm },
-  timelineTitle: { fontSize: 11, color: Colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  timelineTitle: { fontSize: moderateScale(11), color: Colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   modalErrorBox: { backgroundColor: Colors.errorBg, borderRadius: Radius.sm, padding: Spacing.sm, marginVertical: Spacing.sm },
-  modalErrorLabel: { fontSize: 11, color: Colors.error, fontWeight: '700', marginBottom: 4 },
-  modalErrorText: { fontSize: 13, color: Colors.error, lineHeight: 18 },
+  modalErrorLabel: { fontSize: moderateScale(11), color: Colors.error, fontWeight: '700', marginBottom: 4 },
+  modalErrorText: { fontSize: moderateScale(13), color: Colors.error, lineHeight: 18 },
 
   // Modify modal
   modifyBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
@@ -585,11 +604,11 @@ const styles = StyleSheet.create({
     padding: Spacing.lg, paddingBottom: 36,
   },
   modifyTitle: { ...Typography.h3, marginBottom: 4 },
-  modifySubtitle: { fontSize: 12, color: Colors.textMuted, marginBottom: Spacing.md },
+  modifySubtitle: { fontSize: moderateScale(12), color: Colors.textMuted, marginBottom: Spacing.md },
   modifyActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   modalCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: Radius.sm, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
-  modalCancelText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+  modalCancelText: { fontSize: moderateScale(14), fontWeight: '700', color: Colors.textSecondary },
   modifySubmitBtn: { flex: 2, paddingVertical: 12, borderRadius: Radius.sm, alignItems: 'center', backgroundColor: Colors.primary },
-  modifySubmitText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  modifySubmitText: { fontSize: moderateScale(14), fontWeight: '700', color: '#fff' },
 });
 

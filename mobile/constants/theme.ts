@@ -1,3 +1,19 @@
+import { Dimensions } from 'react-native';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const BASE_WIDTH = 375;
+const BASE_HEIGHT = 812;
+
+export const scale = (size: number) => Math.round((SCREEN_WIDTH / BASE_WIDTH) * size);
+export const verticalScale = (size: number) => Math.round((SCREEN_HEIGHT / BASE_HEIGHT) * size);
+export const moderateScale = (size: number, factor = 0.35) =>
+  Math.round(size + (scale(size) - size) * factor);
+
+export const Screen = {
+  width: SCREEN_WIDTH,
+  height: SCREEN_HEIGHT,
+};
+
 export const Colors = {
   primary: '#1E40AF',
   primaryLight: '#3B82F6',
@@ -44,14 +60,14 @@ export const Radius = {
 };
 
 export const Typography = {
-  h1: { fontSize: 28, fontWeight: '700' as const, color: Colors.text },
-  h2: { fontSize: 22, fontWeight: '700' as const, color: Colors.text },
-  h3: { fontSize: 18, fontWeight: '600' as const, color: Colors.text },
-  body: { fontSize: 15, fontWeight: '400' as const, color: Colors.text },
-  bodySmall: { fontSize: 13, fontWeight: '400' as const, color: Colors.textSecondary },
-  caption: { fontSize: 12, fontWeight: '400' as const, color: Colors.textMuted },
-  label: { fontSize: 12, fontWeight: '600' as const, color: Colors.textSecondary },
-  mono: { fontSize: 13, fontFamily: 'monospace' as const, color: Colors.text },
+  h1: { fontSize: moderateScale(28), fontWeight: '700' as const, color: Colors.text },
+  h2: { fontSize: moderateScale(22), fontWeight: '700' as const, color: Colors.text },
+  h3: { fontSize: moderateScale(18), fontWeight: '600' as const, color: Colors.text },
+  body: { fontSize: moderateScale(15), fontWeight: '400' as const, color: Colors.text },
+  bodySmall: { fontSize: moderateScale(13), fontWeight: '400' as const, color: Colors.textSecondary },
+  caption: { fontSize: moderateScale(12), fontWeight: '400' as const, color: Colors.textMuted },
+  label: { fontSize: moderateScale(12), fontWeight: '600' as const, color: Colors.textSecondary },
+  mono: { fontSize: moderateScale(13), fontFamily: 'monospace' as const, color: Colors.text },
 };
 
 export const Shadow = {
