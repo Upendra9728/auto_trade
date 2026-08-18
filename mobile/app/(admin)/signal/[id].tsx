@@ -354,7 +354,7 @@ export default function SignalDetailScreen() {
       <Modal visible={modalVisible} transparent animationType="none" onRequestClose={closeModal}>
         <Animated.View style={[styles.backdrop, { opacity: animOpacity }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
-          <Animated.View style={[styles.modalCard, { transform: [{ scale: animScale }] }]} onStartShouldSetResponder={() => true}>
+          <Animated.View style={[styles.modalCard, { transform: [{ scale: animScale }] }]}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1, marginRight: Spacing.sm }}>
                 <Text style={styles.modalName} numberOfLines={1}>{selectedNotif?.user_name}</Text>

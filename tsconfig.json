@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "typeRoots": ["./mobile/node_modules/@types"]
   },
   "files": [],
   "references": [
     { "path": "./mobile" }
   ],
   "exclude": [
-    "**/node_modules",
+    "**/node_modules/**",
+    "node_modules",
     "backend",
     "mobile/android",
     "mobile/ios"

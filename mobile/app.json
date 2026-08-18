@@ -2,7 +2,7 @@
   "expo": {
     "name": "TradingFloor",
     "slug": "automate-trading",
-    "version": "1.3.2",
+    "version": "1.3.3",
     "orientation": "portrait",
     "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "light",
@@ -27,7 +27,8 @@
       "package": "com.automatetrading.app",
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "REQUEST_INSTALL_PACKAGES"
       ],
       "googleServicesFile": "./google-services.json"
     },

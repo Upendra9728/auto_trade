@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { authApi } from '../services/api';
+import { authApi, userApi } from '../services/api';
 import { saveAuth, getToken, clearAuth, getSavedUser } from '../services/auth';
 import { registerForPushNotifications } from '../services/notifications';
 import type { User } from '../types';

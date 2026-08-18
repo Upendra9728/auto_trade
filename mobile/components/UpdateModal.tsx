@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useUpdate } from '../contexts/UpdateContext';
@@ -17,6 +18,8 @@ export default function UpdateModal() {
     latestVersion,
     currentVersion,
     forceUpdate,
+    isDownloading,
+    downloadProgress,
     closeModal,
     triggerDownload,
   } = useUpdate();
@@ -31,35 +34,59 @@ export default function UpdateModal() {
       onRequestClose={closeModal}
     >
       <View style={styles.backdrop}>
-        {!forceUpdate && (
+        {!forceUpdate && !isDownloading && (
           <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
         )}
-        <View style={styles.card} onStartShouldSetResponder={() => true}>
+        <View style={styles.card}>
           <View style={styles.iconCircle}>
-            <Feather name="download-cloud" size={30} color={Colors.primary} />
+            {isDownloading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Feather name="download-cloud" size={30} color={Colors.primary} />
+            )}
           </View>
 
-          <Text style={styles.title}>Update Available</Text>
+          <Text style={styles.title}>
+            {isDownloading ? 'Downloading Update…' : 'Update Available'}
+          </Text>
           <Text style={styles.message}>
-            A newer version of the app is available. Update now to ensure seamless trading operations and get the latest features.
+            {isDownloading
+              ? 'Please wait while the update is downloading. The installation prompt will open automatically.'
+              : 'A newer version of the app is available. Update now to ensure seamless trading operations and get the latest features.'}
           </Text>
 
-          <View style={styles.versionBox}>
-            <View style={styles.versionCol}>
-              <Text style={styles.versionLabel}>Current</Text>
-              <Text style={styles.versionValue}>v{currentVersion}</Text>
-            </View>
-            <Feather name="arrow-right" size={16} color={Colors.textMuted} />
-            <View style={styles.versionCol}>
-              <Text style={styles.versionLabel}>New</Text>
-              <Text style={[styles.versionValue, { color: Colors.success }]}>
-                v{latestVersion ?? 'Latest'}
+          {isDownloading ? (
+            <View style={styles.progressSection}>
+              <View style={styles.progressBarBg}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${Math.round(downloadProgress * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressText}>
+                {Math.round(downloadProgress * 100)}%
               </Text>
             </View>
-          </View>
+          ) : (
+            <View style={styles.versionBox}>
+              <View style={styles.versionCol}>
+                <Text style={styles.versionLabel}>Current</Text>
+                <Text style={styles.versionValue}>v{currentVersion}</Text>
+              </View>
+              <Feather name="arrow-right" size={16} color={Colors.textMuted} />
+              <View style={styles.versionCol}>
+                <Text style={styles.versionLabel}>New</Text>
+                <Text style={[styles.versionValue, { color: Colors.success }]}>
+                  v{latestVersion ?? 'Latest'}
+                </Text>
+              </View>
+            </View>
+          )}
 
           <View style={styles.btnRow}>
-            {!forceUpdate && (
+            {!forceUpdate && !isDownloading && (
               <TouchableOpacity
                 style={styles.laterBtn}
                 onPress={closeModal}
@@ -70,12 +97,25 @@ export default function UpdateModal() {
             )}
 
             <TouchableOpacity
-              style={[styles.downloadBtn, forceUpdate && { flex: 1 }]}
+              style={[
+                styles.downloadBtn,
+                (forceUpdate || isDownloading) && { flex: 1 },
+                isDownloading && { opacity: 0.8 },
+              ]}
               onPress={triggerDownload}
+              disabled={isDownloading}
               activeOpacity={0.85}
             >
-              <Feather name="download" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.downloadBtnText}>Download</Text>
+              {isDownloading ? (
+                <Text style={styles.downloadBtnText}>
+                  Downloading… ({Math.round(downloadProgress * 100)}%)
+                </Text>
+              ) : (
+                <>
+                  <Feather name="download" size={16} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.downloadBtnText}>Download & Install</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -149,6 +189,29 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '700',
     color: Colors.text,
+  },
+  progressSection: {
+    width: '100%',
+    marginBottom: Spacing.lg,
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.background,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: Colors.primary,
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: moderateScale(12),
+    color: Colors.textSecondary,
+    fontWeight: '600',
   },
   btnRow: {
     flexDirection: 'row',

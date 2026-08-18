@@ -4,13 +4,13 @@ import {
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { adminApi } from '../../services/api';
-import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
-import { formatDateTimeIST } from '../../utils/time';
-import EmptyState from '../../components/EmptyState';
-import Pagination from '../../components/Pagination';
+import { adminApi } from '../../../services/api';
+import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import { formatDateTimeIST } from '../../../utils/time';
+import EmptyState from '../../../components/EmptyState';
+import Pagination from '../../../components/Pagination';
 import { Feather } from '@expo/vector-icons';
-import type { AdminUser, PaginationMeta } from '../../types';
+import type { AdminUser, PaginationMeta } from '../../../types';
 
 export default function AdminApprovalsScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);

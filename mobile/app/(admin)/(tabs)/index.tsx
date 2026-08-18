@@ -5,10 +5,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
-import { adminApi } from '../../services/api';
-import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
-import type { Dashboard } from '../../types';
+import { useAuth } from '../../../contexts/AuthContext';
+import { adminApi } from '../../../services/api';
+import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import type { Dashboard } from '../../../types';
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();

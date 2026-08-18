@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { AppState, AppStateStatus, Linking } from 'react-native';
+import { AppState, AppStateStatus, Linking, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
 import Constants from 'expo-constants';
 import { systemApi } from '../services/api';
 
@@ -11,10 +13,12 @@ interface UpdateContextValue {
   forceUpdate: boolean;
   modalVisible: boolean;
   isDismissed: boolean;
+  isDownloading: boolean;
+  downloadProgress: number;
   openModal: () => void;
   closeModal: () => void;
   dismissBadge: () => void;
-  triggerDownload: () => void;
+  triggerDownload: () => Promise<void>;
   checkForUpdate: () => Promise<void>;
 }
 
@@ -30,6 +34,8 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const [forceUpdate, setForceUpdate] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const appState = useRef(AppState.currentState);
 
   const checkForUpdate = useCallback(async () => {
@@ -79,10 +85,10 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const closeModal = useCallback(() => {
-    if (!forceUpdate) {
+    if (!forceUpdate && !isDownloading) {
       setModalVisible(false);
     }
-  }, [forceUpdate]);
+  }, [forceUpdate, isDownloading]);
 
   const dismissBadge = useCallback(() => {
     if (!forceUpdate) {
@@ -90,8 +96,44 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
     }
   }, [forceUpdate]);
 
-  const triggerDownload = useCallback(() => {
-    if (apkUrl) {
+  const triggerDownload = useCallback(async () => {
+    if (!apkUrl) return;
+
+    if (Platform.OS === 'android') {
+      try {
+        setIsDownloading(true);
+        setDownloadProgress(0);
+
+        const targetFile = `${FileSystem.cacheDirectory}app-update.apk`;
+
+        const downloadResumable = FileSystem.createDownloadResumable(
+          apkUrl,
+          targetFile,
+          {},
+          (progress) => {
+            if (progress.totalBytesExpectedToWrite > 0) {
+              const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+              setDownloadProgress(Math.min(1, Math.max(0, p)));
+            }
+          }
+        );
+
+        const result = await downloadResumable.downloadAsync();
+        if (result?.uri) {
+          const contentUri = await FileSystem.getContentUriAsync(result.uri);
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+            type: 'application/vnd.android.package-archive',
+          });
+        }
+      } catch (err) {
+        // Fallback to browser download if intent or file system fails
+        Linking.openURL(apkUrl).catch(() => {});
+      } finally {
+        setIsDownloading(false);
+      }
+    } else {
       Linking.openURL(apkUrl).catch(() => {});
     }
   }, [apkUrl]);
@@ -106,6 +148,8 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
         forceUpdate,
         modalVisible,
         isDismissed,
+        isDownloading,
+        downloadProgress,
         openModal,
         closeModal,
         dismissBadge,

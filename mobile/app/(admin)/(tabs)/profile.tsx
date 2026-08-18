@@ -6,8 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { useAuth } from '../../../contexts/AuthContext';
+import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 
 export default function AdminProfileScreen() {
   const { user, logout } = useAuth();
