@@ -76,7 +76,35 @@ The key business flow is:
 - It decrypts the stored token, builds the Dhan payload, and sends it with httpx.
 - The outbound request is bound to the user’s assigned IPv6 so Dhan can see the correct source IP.
 
-## Current important implementation note
+## Order status sync & real-time updates (dhan_order_update.py)
+
+There are two mechanisms tracking real-time order status from Dhan:
+
+1. **Primary: WebSocket (per-user)** — `dhan_order_update_loop()`
+   - One persistent per-user WebSocket connection to `wss://api-order-update.dhan.co`
+   - Auto-reconnects on drop with exponential backoff
+   - Updates `SignalNotification.live_status` (TRANSIT, PENDING, TRADED, REJECTED, CANCELLED, EXPIRED, etc.)
+   - Updates `live_updated_at` timestamp for visibility into data freshness
+   - Failure to receive updates (silent disconnect) is covered by fallback polling
+
+2. **Fallback: REST polling** — `dhan_order_status_poll_loop()`
+   - Runs every **5 seconds** (optimized from 30s for faster latency)
+   - Polls orders that are "placed" but haven't received a live status update in **30 seconds** (optimized from 2 min)
+   - Gives WebSocket 5 seconds headstart before attempting first poll (optimized from 20s)
+   - Only polls orders placed within the last 24 hours (Dhan's API limitation)
+   - If user's token fails auth (DH-901 error), pauses polling for 15 minutes to avoid rate limits
+
+**Key improvements**: Polling now activates much sooner (5-10s) if WebSocket is silent, reducing max latency from 2.5 min → <30s typical. Admin signals page auto-refreshes every 5s on mobile, so orders appear updated within 10s of placement.
+
+### Order status field details
+- `SignalNotification.live_status` - Exchange-reported status (can be null if never updated by WS/polling)
+- `SignalNotification.live_updated_at` - UTC timestamp of last exchange update (shows data freshness)
+- `SignalNotification.placed_at` - UTC timestamp when order was submitted to Dhan
+- `SignalNotification.status` - Workflow status (pending, placed, failed, cancelled, rejected)
+
+When exchange reports failure (REJECTED, CANCELLED, EXPIRED), `status` is automatically flipped to "failed" with a descriptive error message.
+
+## Current implementation notes
 The current order flow passes the signal values directly to Dhan:
 - price
 - target_price

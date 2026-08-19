@@ -35,7 +35,7 @@ import json
 import logging
 
 import websockets
-from sqlalchemy import or_
+from sqlalchemy import or_, update
 from sqlalchemy.orm import Session, joinedload
 
 from .crypto import decrypt_token
@@ -78,35 +78,74 @@ def apply_live_status(
     exit_leg: str | None = None,
     exit_price: float | None = None,
     exit_time: "dt.datetime | None" = None,
-) -> None:
-    """Apply a live/exchange status update, record an OrderEvent, calculate realized PnL, and commit."""
+) -> bool:
+    """
+    Apply a live/exchange status update with optimistic locking.
+    
+    Returns True if update succeeded, False if stale (version conflict).
+    Records an OrderEvent and calculates realized PnL, then commits.
+    """
     status = (status or "").upper()
+    old_version = notif.version
+    new_version = old_version + 1
+    
+    # Prepare the update dict
+    update_dict = {
+        "version": new_version,
+        "live_updated_at": dt.datetime.utcnow(),
+    }
+    
     if status:
-        notif.live_status = status
+        update_dict["live_status"] = status
     if exchange_order_no:
-        notif.exchange_order_no = exchange_order_no
+        update_dict["exchange_order_no"] = exchange_order_no
     if reason_description:
-        notif.reason_description = reason_description
+        update_dict["reason_description"] = reason_description
     if traded_qty:
-        notif.traded_qty = traded_qty
+        update_dict["traded_qty"] = traded_qty
     if traded_price:
-        notif.traded_price = traded_price
+        update_dict["traded_price"] = traded_price
     if exit_leg:
-        notif.exit_leg = exit_leg
+        update_dict["exit_leg"] = exit_leg
     if exit_price:
-        notif.exit_price = exit_price
+        update_dict["exit_price"] = exit_price
     if exit_time:
-        notif.exit_time = exit_time
-    notif.live_updated_at = dt.datetime.utcnow()
-
-    # Calculate realized P&L when exit leg & price are known
-    if notif.exit_price and notif.exit_price > 0:
-        entry_price = notif.traded_price or (notif.signal.price if notif.signal else None)
-        qty = notif.traded_qty or notif.ordered_quantity or (notif.signal.quantity if notif.signal else 1)
-        direction = 1.0 if (notif.signal and notif.signal.transaction_type == "BUY") else -1.0
-        if entry_price and entry_price > 0:
-            notif.realized_pnl = round((notif.exit_price - entry_price) * qty * direction, 2)
-
+        update_dict["exit_time"] = exit_time
+    
+    # Handle terminal failure status -> flip workflow status to "failed"
+    workflow_status_update = None
+    if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed" and notif.status != "cancelled":
+        workflow_status_update = "failed"
+        if status == "CANCELLED":
+            if traded_qty and traded_qty > 0:
+                update_dict["error_message"] = f"Partially filled ({traded_qty} qty) then cancelled — may be a manual exit."
+            elif not reason_description or reason_description.upper() == "CONFIRMED":
+                update_dict["error_message"] = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
+            else:
+                update_dict["error_message"] = f"Cancelled: {reason_description}"
+        else:
+            update_dict["error_message"] = f"Rejected by exchange: {reason_description or status}"
+        update_dict["status"] = workflow_status_update
+    
+    # Optimistic locking: only update if version matches
+    result = db.execute(
+        update(SignalNotification)
+        .where(SignalNotification.id == notif.id, SignalNotification.version == old_version)
+        .values(update_dict)
+    )
+    
+    if result.rowcount == 0:
+        logger.warning(
+            "Stale update attempt skipped for notification %s (source=%s, status=%s); "
+            "WS/polling conflict detected", notif.id, source, status
+        )
+        db.rollback()
+        return False
+    
+    # Reload the notification to get updated values, then record event
+    db.expire(notif)
+    notif = db.query(SignalNotification).filter(SignalNotification.id == notif.id).one()
+    
     # Determine event type
     if exit_leg == "TARGET_LEG" or (leg == "TARGET_LEG" and status in ("TRADED", "TRIGGERED", "CLOSED")):
         event_type = "TARGET_HIT"
@@ -142,24 +181,25 @@ def apply_live_status(
     )
     db.add(event)
 
-    # The exchange truly rejected/cancelled/expired the order — this overrides
-    # the earlier "placed" status set right after HTTP acceptance.
-    if status in TERMINAL_FAILURE_STATUSES and notif.status != "failed" and notif.status != "cancelled":
-        notif.status = "failed"
-        if status == "CANCELLED":
-            if traded_qty and traded_qty > 0:
-                notif.error_message = f"Partially filled ({traded_qty} qty) then cancelled — may be a manual exit."
-            elif not reason_description or reason_description.upper() == "CONFIRMED":
-                notif.error_message = "Order expired unfilled — auto-cancelled by the exchange (entry price was never hit)."
-            else:
-                notif.error_message = f"Cancelled: {reason_description}"
-        else:
-            notif.error_message = f"Rejected by exchange: {reason_description or status}"
+    # Calculate realized P&L when exit leg & price are known
+    if notif.exit_price and notif.exit_price > 0:
+        entry_price = notif.traded_price or (notif.signal.price if notif.signal else None)
+        qty = notif.traded_qty or notif.ordered_quantity or (notif.signal.quantity if notif.signal else 1)
+        direction = 1.0 if (notif.signal and notif.signal.transaction_type == "BUY") else -1.0
+        if entry_price and entry_price > 0:
+            realized_pnl = round((notif.exit_price - entry_price) * qty * direction, 2)
+            # Update realized_pnl separately with version check
+            db.execute(
+                update(SignalNotification)
+                .where(SignalNotification.id == notif.id, SignalNotification.version == new_version)
+                .values({"realized_pnl": realized_pnl, "version": new_version + 1})
+            )
 
     if status in SUCCESS_TERMINAL_STATUSES:
         logger.info("Order %s CLOSED (full exit complete, exit leg tracked separately)", notif.dhan_order_id)
 
     db.commit()
+    return True
 
 
 class DhanOrderUpdateManager:
@@ -330,9 +370,9 @@ async def dhan_order_update_loop() -> None:
 # (e.g. the per-user connection silently dropped for a while).
 # ---------------------------------------------------------------------------
 
-_POLL_INTERVAL_SECONDS = 30
-_STALE_THRESHOLD = dt.timedelta(minutes=2)
-_MIN_AGE_BEFORE_POLL = dt.timedelta(seconds=20)  # give the WS a head start
+_POLL_INTERVAL_SECONDS = 5
+_STALE_THRESHOLD = dt.timedelta(seconds=30)
+_MIN_AGE_BEFORE_POLL = dt.timedelta(seconds=5)  # give the WS a head start
 _MAX_AGE_TO_POLL = dt.timedelta(hours=24)  # Dhan's order-status API only knows about the current trading day
 _REQUEST_DELAY_SECONDS = 0.3  # throttle so bursts of stale orders don't trip Dhan's rate limit (DH-904)
 _AUTH_FAILURE_COOLDOWN = dt.timedelta(minutes=15)  # stop retrying a user whose token is known-bad (DH-901)
@@ -412,7 +452,7 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
                 exit_time = dt.datetime.utcnow()
                 break
 
-        apply_live_status(
+        success = apply_live_status(
             db, notif,
             status=item.get("orderStatus"),
             leg=item.get("legName"),
@@ -425,7 +465,8 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
             exit_price=exit_price,
             exit_time=exit_time,
         )
-        logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, item.get("orderStatus"), notif.id)
+        if success:
+            logger.info("Order status poll: order %s -> %s (notification %s)", notif.dhan_order_id, item.get("orderStatus"), notif.id)
     except DhanApiError as exc:
         if "DH-901" in str(exc):
             _auth_cooldown_until[notif.user_id] = dt.datetime.utcnow() + _AUTH_FAILURE_COOLDOWN

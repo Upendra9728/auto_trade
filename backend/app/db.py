@@ -90,6 +90,12 @@ def _apply_migrations() -> None:
                     conn.execute(text(f"ALTER TABLE signal_notifications ADD COLUMN {col} {ddl}"))
                 conn.commit()
             logger.info("Migration: added exit leg columns to signal_notifications: %s", list(missing_exit))
+        
+        if "version" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE signal_notifications ADD COLUMN version INTEGER DEFAULT 1"))
+                conn.commit()
+            logger.info("Migration: added version column to signal_notifications")
 
 
 def init_db() -> None:

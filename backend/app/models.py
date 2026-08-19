@@ -117,6 +117,8 @@ class SignalNotification(Base):
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Optimistic locking version to prevent concurrent WS + polling overwrites
+    version: Mapped[int] = mapped_column(Integer, default=1, index=True)
 
     # ---- Real-time exchange status, populated by the Dhan Live Order Update
     # WebSocket (see dhan_order_update.py). None until the first update arrives.

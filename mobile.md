@@ -60,7 +60,12 @@ It also lets admins:
   - has an "Export Report" button next to the date filter that downloads all orders (across signals) in that date range as an .xlsx file
 - mobile/app/(admin)/signal-create.tsx
 - mobile/app/(admin)/signal/[id].tsx
-  - per-user status list; tap any row to open a detail modal (status, order ID, full error, IST timestamps, IPv6)
+  - per-user status list with real-time auto-refresh every 5 seconds
+  - tap any row to open detail modal showing full order info, event timeline, error messages, and timestamps
+  - "Cancel All Orders" button to bulk-cancel active placed orders
+  - "Modify All" button to bulk-modify order parameters (price, target, stop-loss, trailing jump)
+  - per-row "Cancel" / "Modify" actions for individual orders
+  - error messages now clearly visible when API calls fail (replaces previous silent failures)
 - mobile/app/(admin)/users.tsx
   - has an "Export" button that downloads the (filtered) users list as an .xlsx file
 - mobile/app/(admin)/approvals.tsx
@@ -104,7 +109,28 @@ $env:EXPO_PUBLIC_API_URL = "http://13.126.206.167"; .\gradlew assembleRelease
   - mobile/app/(user)/index.tsx
   - mobile/app/(admin)/signals.tsx
 
-## Timestamp handling
+## Admin signals page optimizations
+
+### Real-time order status sync
+- Signal detail page (`signal/[id].tsx`) auto-refreshes signal and notification data every **5 seconds**
+- Backend polling for order status now runs every **5 seconds** (vs. 30s previously), reducing max latency from 2.5 min to <30s typical
+- **Typical flow**: 
+  1. User confirms order on mobile
+  2. Backend places order immediately, returns status="placed" 
+  3. Backend begins polling Dhan for live status
+  4. Admin's detail page auto-refreshes every 5s
+  5. Within 10s of placement, live_status becomes visible in admin UI
+  6. Admin sees status updates in real-time as orders fill
+
+### Improve modal interactions
+- **Modify modal race fix**: Closing detail modal now defers opening modify modal until animation completes, preventing blank forms
+- **Stale data fix**: Form always shows current signal parameters (price, target, SL, trailing) when opened, never stale values from previous signal
+- **Error visibility**: Network failures and API errors now show error messages to admin (replaces previous silent failures)
+
+### Better status visibility
+- `live_updated_at` timestamp in responses shows when exchange status was last refreshed (data freshness indicator)
+- Admin can distinguish between "just placed, awaiting exchange" vs "order is truly live" by checking timestamps
+- Exit leg tracking: shows if order exited via Target (green checkmark) or Stop-Loss (red alert)
 - All backend timestamps are UTC naive ISO strings (no `Z` suffix).
 - Use `formatDateTimeIST` or `formatDateIST` from `mobile/utils/time.ts` everywhere a date/time is shown.
 - These helpers append `Z` before parsing so UTC is never misread as local time, then format in `Asia/Kolkata`.

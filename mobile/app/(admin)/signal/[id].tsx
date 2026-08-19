@@ -31,6 +31,7 @@ export default function SignalDetailScreen() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [signalError, setSignalError] = useState<string | null>(null);
 
   // Detail modal
   const [selectedNotif, setSelectedNotif] = useState<AdminSignalNotificationRow | null>(null);
@@ -47,10 +48,15 @@ export default function SignalDetailScreen() {
 
   const loadSignal = useCallback(async () => {
     if (!id) return;
+    setSignalError(null);
     try {
       const detail = await adminApi.getSignal(Number(id));
       setSignal(detail.signal);
-    } catch {}
+    } catch (e: any) {
+      const msg = e?.message || 'Failed to load signal. Please check your connection.';
+      setSignalError(msg);
+      console.error('Load signal error:', e);
+    }
   }, [id]);
 
   const loadNotifications = useCallback(async (p: number, filter: StatusFilter) => {
@@ -62,7 +68,9 @@ export default function SignalDetailScreen() {
         status: filter === 'all' ? undefined : filter,
       });
       setNotifPage(res);
-    } catch {}
+    } catch (e: any) {
+      console.error('Load notifications error:', e);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -76,6 +84,15 @@ export default function SignalDetailScreen() {
   useEffect(() => {
     loadNotifications(page, statusFilter);
   }, [loadNotifications, page, statusFilter]);
+
+  // Auto-refresh signal data and notifications every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadSignal();
+      loadNotifications(page, statusFilter);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [page, statusFilter, id, loadSignal, loadNotifications]);
 
   const openModal = (notif: AdminSignalNotificationRow) => {
     setSelectedNotif(notif);
@@ -94,24 +111,29 @@ export default function SignalDetailScreen() {
       .finally(() => setEventsLoading(false));
   };
 
-  const closeModal = () => {
+  const closeModal = useCallback((maybeCallback?: (() => void) | any) => {
+    const callback = typeof maybeCallback === 'function' ? maybeCallback : undefined;
     Animated.parallel([
       Animated.timing(animOpacity, { toValue: 0, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
       Animated.timing(animScale, { toValue: 0.88, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-    ]).start(() => { setModalVisible(false); setSelectedNotif(null); setNotifEvents([]); });
-  };
+    ]).start(() => {
+      setModalVisible(false);
+      setSelectedNotif(null);
+      setNotifEvents([]);
+      callback?.();
+    });
+  }, []);
 
-  const openModify = (notifId: number | null) => {
-    const s = signal;
+  const openModify = useCallback((notifId: number | null) => {
     setModifyTarget(notifId);
     setModifyForm({
-      price: s ? String(s.price) : '',
-      target_price: s ? String(s.target_price) : '',
-      stop_loss_price: s ? String(s.stop_loss_price) : '',
-      trailing_jump: s ? String(s.trailing_jump) : '',
+      price: signal ? String(signal.price) : '',
+      target_price: signal ? String(signal.target_price) : '',
+      stop_loss_price: signal ? String(signal.stop_loss_price) : '',
+      trailing_jump: signal ? String(signal.trailing_jump) : '',
     });
     setModifyVisible(true);
-  };
+  }, [signal]);
 
   const handleCancelAll = () => {
     Alert.alert(
@@ -225,7 +247,7 @@ export default function SignalDetailScreen() {
               <TouchableOpacity style={styles.rowActionBtn} onPress={() => handleCancelOne(n)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.rowActionCancel}>✕ Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.rowActionBtn} onPress={() => { closeModal(); openModify(n.notification_id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <TouchableOpacity style={styles.rowActionBtn} onPress={() => closeModal(() => openModify(n.notification_id))} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                 <Text style={styles.rowActionModify}>✎ Modify</Text>
               </TouchableOpacity>
             </View>
@@ -239,6 +261,18 @@ export default function SignalDetailScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
+      </SafeAreaView>
+    );
+  }
+  if (signalError) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.center}>
+          <Text style={{ color: Colors.error, textAlign: 'center', marginBottom: Spacing.md }}>❌ {signalError}</Text>
+          <TouchableOpacity style={[styles.actionBtn, styles.modifyBtn]} onPress={() => { setSignalError(null); loadSignal(); }}>
+            <Text style={styles.modifyBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
