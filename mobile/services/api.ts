@@ -56,7 +56,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let msg = `Request failed (${res.status})`;
     try {
       const err = await res.json();
-      msg = err.detail ?? msg;
+      if (Array.isArray(err.detail)){
+        msg=err.detail.map((e: any) => e.msg ?? JSON.stringify(e)).join('; ');
+      }
+      else{
+        msg = err.detail ?? msg;
+      }
+      
     } catch {}
     throw new Error(msg);
   }

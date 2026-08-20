@@ -74,7 +74,7 @@ export default function GroupDetailScreen() {
     setUsersLoading(true);
     try {
       // Fetch all users (no isActive filter) so admin can add any user
-      const res: Paginated<AdminUser> = await adminApi.getUsers({ pageSize: 200 });
+      const res: Paginated<AdminUser> = await adminApi.getUsers({ pageSize: 100 });
       setAllUsers(res.items);
     } catch (err: any) {
       Alert.alert('Error', 'Failed to load users: ' + (err.message ?? 'Unknown error'));
