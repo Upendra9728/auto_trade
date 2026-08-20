@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl,
+  Modal, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
+import { Feather } from '@expo/vector-icons';
+import type { UserGroup } from '../../types';
 
 const SEGMENTS = ['NSE_FNO', 'BSE_FNO', 'NSE_EQ', 'BSE_EQ'];
 const PRODUCT_TYPES = ['INTRADAY', 'CNC', 'MARGIN', 'MTF'];
@@ -37,6 +40,16 @@ export default function SignalCreateScreen() {
   const [loading, setLoading] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Audience picker
+  const [groups, setGroups] = useState<UserGroup[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number>>(new Set());
+  const [audiencePickerVisible, setAudiencePickerVisible] = useState(false);
+  const [draftGroupIds, setDraftGroupIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    adminApi.getGroups().then(setGroups).catch(() => {});
+  }, []);
 
   // Pull-to-refresh resets the signal creation draft back to default state.
   const handleRefresh = () => {
@@ -168,11 +181,12 @@ export default function SignalCreateScreen() {
       const signal = await adminApi.createSignal({
         ...payload,
         ...(lotSize != null ? { lot_size: lotSize } : {}),
+        ...(selectedGroupIds.size > 0 ? { group_ids: Array.from(selectedGroupIds) } : {}),
       });
       Alert.alert(
-        '✅ Signal Sent',
-        `"${signal.title}" broadcast to all eligible users.`,
-        [{ text: 'OK', onPress: () => router.back() }],
+        '\u2705 Signal Sent',
+        `"${signal.title}" broadcast to ${selectedGroupIds.size > 0 ? `${selectedGroupIds.size} group${selectedGroupIds.size > 1 ? 's' : ''}` : 'all eligible users'}.`,
+        [{ text: 'View Signal', onPress: () => router.replace({ pathname: '/(admin)/signal/[id]', params: { id: signal.id } }) }],
       );
     } catch (err: any) {
       Alert.alert('Error', err.message);
@@ -269,8 +283,7 @@ export default function SignalCreateScreen() {
               )}
               {scripInfo && !scripInfo.found && (
                 <Text style={styles.parsedScripWarn}>\u26a0\ufe0f Security ID not found \u2014 switch to Fill Form to enter it manually</Text>
-              )}
-              <TouchableOpacity
+              )}              <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />              <TouchableOpacity
                 style={[styles.submitBtn, loading && { opacity: 0.55 }]}
                 onPress={handleCreate}
                 disabled={loading}
@@ -368,6 +381,8 @@ export default function SignalCreateScreen() {
             </Text>
           </View>
 
+          <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />
+
           <TouchableOpacity
             style={[styles.submitBtn, loading && { opacity: 0.6 }]}
             onPress={handleCreate}
@@ -380,6 +395,65 @@ export default function SignalCreateScreen() {
           </>}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Audience Picker Modal */}
+      <Modal visible={audiencePickerVisible} transparent animationType="slide" onRequestClose={() => setAudiencePickerVisible(false)}>
+        <Pressable style={audienceStyles.backdrop} onPress={() => setAudiencePickerVisible(false)} />
+        <View style={audienceStyles.sheet}>
+          <Text style={audienceStyles.sheetTitle}>Select Audience</Text>
+          <Text style={audienceStyles.sheetSub}>Default: All eligible users. Select groups to target specific users.</Text>
+
+          {/* All Users chip */}
+          <TouchableOpacity
+            style={[audienceStyles.groupRow, draftGroupIds.size === 0 && audienceStyles.groupRowSelected]}
+            onPress={() => setDraftGroupIds(new Set())}
+          >
+            <View style={audienceStyles.groupRowInfo}>
+              <Text style={audienceStyles.groupRowName}>All Users</Text>
+              <Text style={audienceStyles.groupRowSub}>Broadcast to every eligible user</Text>
+            </View>
+            <View style={[audienceStyles.radio, draftGroupIds.size === 0 && audienceStyles.radioSelected]}>
+              {draftGroupIds.size === 0 && <View style={audienceStyles.radioDot} />}
+            </View>
+          </TouchableOpacity>
+
+          <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
+            {groups.map((g) => {
+              const sel = draftGroupIds.has(g.id);
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[audienceStyles.groupRow, sel && audienceStyles.groupRowSelected]}
+                  onPress={() => {
+                    setDraftGroupIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(g.id)) next.delete(g.id); else next.add(g.id);
+                      return next;
+                    });
+                  }}
+                >
+                  <View style={audienceStyles.groupRowInfo}>
+                    <Text style={audienceStyles.groupRowName}>{g.name}</Text>
+                    <Text style={audienceStyles.groupRowSub}>{g.member_count} member{g.member_count !== 1 ? 's' : ''}</Text>
+                  </View>
+                  <View style={[audienceStyles.checkbox, sel && audienceStyles.checkboxSelected]}>
+                    {sel && <Feather name="check" size={12} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={audienceStyles.confirmBtn}
+            onPress={() => { setSelectedGroupIds(draftGroupIds); setAudiencePickerVisible(false); }}
+          >
+            <Text style={audienceStyles.confirmText}>
+              {draftGroupIds.size > 0 ? `Target ${draftGroupIds.size} Group${draftGroupIds.size > 1 ? 's' : ''}` : 'Send to All Users'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -537,4 +611,94 @@ const styles = StyleSheet.create({
     paddingVertical: 16, alignItems: 'center', marginTop: Spacing.sm,
   },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
+
+// ── Audience Picker helper component ──────────────────────────────────────────
+
+function AudiencePicker({
+  groups, selectedGroupIds, onPress,
+}: {
+  groups: UserGroup[];
+  selectedGroupIds: Set<number>;
+  onPress: () => void;
+}) {
+  const selectedGroups = groups.filter((g) => selectedGroupIds.has(g.id));
+  return (
+    <TouchableOpacity style={audienceStyles.row} onPress={onPress} activeOpacity={0.8}>
+      <View style={audienceStyles.rowLeft}>
+        <Text style={audienceStyles.rowLabel}>Audience</Text>
+        {selectedGroups.length === 0 ? (
+          <View style={audienceStyles.allChip}>
+            <Feather name="users" size={12} color={Colors.primary} />
+            <Text style={audienceStyles.allChipText}>All Users</Text>
+          </View>
+        ) : (
+          <View style={audienceStyles.groupChips}>
+            {selectedGroups.map((g) => (
+              <View key={g.id} style={audienceStyles.groupChip}>
+                <Text style={audienceStyles.groupChipText}>{g.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+      <Feather name="chevron-down" size={16} color={Colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+const audienceStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.surface, borderRadius: Radius.sm,
+    borderWidth: 1.5, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+  },
+  rowLeft: { flex: 1, gap: 6 },
+  rowLabel: { fontSize: 11, color: Colors.textMuted, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  allChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' },
+  allChipText: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  groupChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  groupChip: {
+    backgroundColor: Colors.primaryBg, borderRadius: Radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: Colors.primary,
+  },
+  groupChipText: { fontSize: 12, color: Colors.primary, fontWeight: '700' },
+
+  // Modal
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg,
+    padding: Spacing.lg, paddingBottom: 40,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: '800', color: Colors.text, marginBottom: 4 },
+  sheetSub: { fontSize: 13, color: Colors.textMuted, marginBottom: Spacing.md },
+  groupRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 12,
+    paddingHorizontal: Spacing.sm, borderRadius: Radius.sm, marginBottom: 4,
+  },
+  groupRowSelected: { backgroundColor: Colors.primaryBg },
+  groupRowInfo: { flex: 1 },
+  groupRowName: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  groupRowSub: { fontSize: 12, color: Colors.textSecondary },
+  radio: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioSelected: { borderColor: Colors.primary },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary },
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  confirmBtn: {
+    marginTop: Spacing.md, backgroundColor: Colors.primary,
+    borderRadius: Radius.sm, paddingVertical: 14, alignItems: 'center',
+  },
+  confirmText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

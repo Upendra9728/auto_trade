@@ -60,6 +60,8 @@ export interface Signal {
   exchange_confirmed?: number;
   exchange_rejected?: number;
   awaiting_confirmation?: number;
+  // Group IDs this signal was targeted to (undefined/null = all eligible users)
+  target_group_ids?: number[] | null;
 }
 
 export interface SignalNotification {
@@ -116,6 +118,7 @@ export interface SignalCreatePayload {
   target_price: number;
   stop_loss_price: number;
   trailing_jump: number;
+  group_ids?: number[];
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
@@ -258,4 +261,27 @@ export interface DateRangeFilter {
   // YYYY-MM-DD, IST calendar date, inclusive on both ends
   date_from?: string | null;
   date_to?: string | null;
+}
+
+// ── User Groups ───────────────────────────────────────────────────────────────
+
+export interface UserGroup {
+  id: number;
+  name: string;
+  description?: string | null;
+  member_count: number;
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserGroupDetail {
+  id: number;
+  name: string;
+  description?: string | null;
+  members: AdminUser[];
+  created_by_id: number;
+  created_at: string;
+  updated_at: string;
+}
 }

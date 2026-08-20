@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
@@ -15,6 +16,7 @@ import type { DhanCredential } from '../../types';
 
 export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
+  const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
   const [dhan, setDhan] = useState<DhanCredential | null>(null);
   const [dhanForm, setDhanForm] = useState({ dhan_client_id: '', pin: '', totp_secret: '' });
   const [savingDhan, setSavingDhan] = useState(false);
@@ -290,6 +292,10 @@ export default function ProfileScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Role</Text>
             <Text style={styles.monoValue}>{user?.role}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>App Version</Text>
+            <Text style={styles.monoValue}>v{currentVersion}</Text>
           </View>
         </View>
 

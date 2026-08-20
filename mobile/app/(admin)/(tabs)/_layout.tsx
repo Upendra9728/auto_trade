@@ -35,6 +35,13 @@ export default function AdminTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="groups"
+        options={{
+          title: 'Groups',
+          tabBarIcon: ({ color, size }) => <Feather name="tag" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="users"
         options={{
           title: 'Users',

@@ -47,11 +47,9 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       if (isNewer && info.apk_url) {
         setLatestVersion(info.latest_version);
         setApkUrl(info.apk_url);
-        setForceUpdate(Boolean(info.force_update));
+        setForceUpdate(true); // all updates are mandatory
         setUpdateAvailable(true);
-        if (info.force_update) {
-          setModalVisible(true);
-        }
+        setModalVisible(true); // always open modal when update is available
       } else {
         setUpdateAvailable(false);
       }
@@ -85,16 +83,12 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const closeModal = useCallback(() => {
-    if (!forceUpdate && !isDownloading) {
-      setModalVisible(false);
-    }
-  }, [forceUpdate, isDownloading]);
+    // Updates are always mandatory — modal cannot be dismissed
+  }, []);
 
   const dismissBadge = useCallback(() => {
-    if (!forceUpdate) {
-      setIsDismissed(true);
-    }
-  }, [forceUpdate]);
+    // Updates are always mandatory — badge cannot be dismissed
+  }, []);
 
   const triggerDownload = useCallback(async () => {
     if (!apkUrl) return;

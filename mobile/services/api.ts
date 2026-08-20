@@ -20,6 +20,8 @@ import type {
   AdminUserPnlRow,
   OrderEvent,
   UserPosition,
+  UserGroup,
+  UserGroupDetail,
 } from '../types';
 
 const BASE_URL: string =
@@ -287,4 +289,17 @@ export const adminApi = {
       option_type: string;
     }>>(`/api/admin/scrip-search?${q.toString()}`);
   },
+
+  // ── Groups ───────────────────────────────────────────────────────────────────────
+  getGroups: () => get<UserGroup[]>('/api/admin/groups'),
+  getGroup: (id: number) => get<UserGroupDetail>(`/api/admin/groups/${id}`),
+  createGroup: (data: { name: string; description?: string | null }) =>
+    post<UserGroup>('/api/admin/groups', data),
+  updateGroup: (id: number, data: { name?: string; description?: string | null }) =>
+    put<UserGroup>(`/api/admin/groups/${id}`, data),
+  deleteGroup: (id: number) => del<{ status: string }>(`/api/admin/groups/${id}`),
+  addGroupMembers: (groupId: number, userIds: number[]) =>
+    post<UserGroup>(`/api/admin/groups/${groupId}/members`, { user_ids: userIds }),
+  removeGroupMember: (groupId: number, userId: number) =>
+    del<{ status: string }>(`/api/admin/groups/${groupId}/members/${userId}`),
 };

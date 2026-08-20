@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 from typing import Any
@@ -13,7 +14,7 @@ from ..crypto import decrypt_token
 from ..dhan_client import DhanApiError, DhanClient
 from ..token_refresh import renew_and_save_credential_with_reason
 from ..ipv6_pool import assign_next_ipv6
-from ..models import DhanCredential, OrderEvent, PasswordResetOtp, Signal, SignalNotification, User, UserPosition, UserSession
+from ..models import DhanCredential, OrderEvent, PasswordResetOtp, Signal, SignalNotification, User, UserGroup, UserGroupMember, UserPosition, UserSession
 from ..notifications import send_signal_cancelled_notifications, send_signal_notifications
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
@@ -24,6 +25,11 @@ from ..schemas import (
     AdminUpdateUserRequest,
     AdminUserPnlRow,
     AdminUserResponse,
+    GroupAddMembersRequest,
+    GroupCreateRequest,
+    GroupDetailResponse,
+    GroupResponse,
+    GroupUpdateRequest,
     OrderActionResult,
     OrderEventResponse,
     PaginatedNotificationsAdminResponse,
@@ -117,6 +123,14 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
             elif row.live_status in ("REJECTED", "CANCELLED", "EXPIRED"):
                 exchange_rejected += 1
 
+    import json as _json
+    target_group_ids: list[int] | None = None
+    if signal.target_group_ids:
+        try:
+            target_group_ids = _json.loads(signal.target_group_ids)
+        except Exception:
+            pass
+
     return SignalResponse(
         id=signal.id,
         title=signal.title,
@@ -143,6 +157,7 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
         exchange_confirmed=exchange_confirmed,
         exchange_rejected=exchange_rejected,
         awaiting_confirmation=awaiting_confirmation,
+        target_group_ids=target_group_ids,
     )
 
 
@@ -467,12 +482,22 @@ def create_signal(
     admin: User = Depends(get_current_admin),
 ) -> SignalResponse:
     """
-    Create a trading signal and broadcast it to all eligible users
-    (active, has active Dhan credential and assigned IPv6).
-    Each eligible user gets a SignalNotification record and an FCM push.
-    FCM pushes are sent in a background task so the response returns immediately
-    (sending one-by-one to dozens of users can otherwise take 30+ seconds).
+    Create a trading signal and broadcast it to eligible users.
+    If group_ids is provided, only users in those groups receive the signal.
+    Otherwise all eligible users (active, has Dhan credential and IPv6) receive it.
     """
+    import json as _json
+
+    # Validate group IDs if provided
+    target_group_ids: list[int] | None = None
+    if req.group_ids:
+        groups = db.query(UserGroup).filter(UserGroup.id.in_(req.group_ids)).all()
+        if len(groups) != len(set(req.group_ids)):
+            found_ids = {g.id for g in groups}
+            missing = [gid for gid in req.group_ids if gid not in found_ids]
+            raise HTTPException(status_code=404, detail=f"Groups not found: {missing}")
+        target_group_ids = req.group_ids
+
     signal = Signal(
         created_by_id=admin.id,
         title=req.title.strip(),
@@ -488,12 +513,13 @@ def create_signal(
         trailing_jump=req.trailing_jump,
         expires_at=req.expires_at,
         status="active",
+        target_group_ids=_json.dumps(target_group_ids) if target_group_ids else None,
     )
     db.add(signal)
     db.flush()  # get signal.id
 
-    # Find eligible users
-    eligible_users = (
+    # Build base eligible-user query
+    eligible_query = (
         db.query(User)
         .join(DhanCredential, DhanCredential.user_id == User.id)
         .filter(
@@ -501,8 +527,19 @@ def create_signal(
             User.assigned_ipv6.isnot(None),
             DhanCredential.is_active.is_(True),
         )
-        .all()
     )
+
+    # If groups selected, further restrict to users who are members of those groups
+    if target_group_ids:
+        member_user_ids = (
+            db.query(UserGroupMember.user_id)
+            .filter(UserGroupMember.group_id.in_(target_group_ids))
+            .distinct()
+            .subquery()
+        )
+        eligible_query = eligible_query.filter(User.id.in_(member_user_ids))
+
+    eligible_users = eligible_query.all()
 
     fcm_tokens: list[str] = []
     for user in eligible_users:
@@ -737,9 +774,14 @@ def list_signal_notifications(
     )
 
 
-# Statuses that mean the order is still potentially active at the exchange
-_ACTIVE_LIVE_STATUSES = {"TRANSIT", "PENDING", "PART_TRADED"}
-_TERMINAL_LIVE_STATUSES = {"TRADED", "EXPIRED", "CANCELLED", "REJECTED"}
+# Statuses that mean the order is still potentially active at the exchange.
+# NOTE: TRADED is intentionally absent — entry filled means exit legs are still live.
+_ACTIVE_LIVE_STATUSES = {"TRANSIT", "PENDING", "PART_TRADED", "TRADED"}
+# Statuses where the order is fully terminal — no action possible.
+# CLOSED = entry + exit leg fully done. TRADED is NOT terminal (exit legs still open).
+_TERMINAL_LIVE_STATUSES = {"CLOSED", "EXPIRED", "CANCELLED", "REJECTED"}
+# Max concurrent outbound Dhan API calls during bulk cancel/modify (protects rate limits).
+_BULK_CONCURRENCY = 50
 
 
 async def _load_cred_and_token(db: Session, notif: SignalNotification) -> tuple[DhanCredential, str] | None:
@@ -771,60 +813,96 @@ async def cancel_signal_orders(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> list[OrderActionResult]:
-    """Cancel all active Dhan orders for a signal across all placed users."""
+    """Cancel all cancellable Dhan orders for a signal (PENDING/TRANSIT/PART_TRADED or no exchange update yet)."""
     signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
     if signal is None:
         raise HTTPException(status_code=404, detail="Signal not found")
 
+    # Include live_status IS NULL — freshly placed orders not yet updated by the WebSocket
+    # are the most important ones to cancel. SQL NOT IN silently excludes NULLs, so we
+    # must explicitly include them with an OR condition.
     notifications = (
         db.query(SignalNotification)
         .options(joinedload(SignalNotification.user))
         .filter(
             SignalNotification.signal_id == signal_id,
             SignalNotification.status == "placed",
-            ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+            SignalNotification.exit_leg.is_(None),  # skip orders whose exit leg already triggered
+            or_(
+                SignalNotification.live_status.is_(None),
+                ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+            ),
         )
         .all()
     )
 
-    results: list[OrderActionResult] = []
+    if not notifications:
+        return []
+
+    # Phase 1: load all credentials sequentially (may trigger JIT token refresh)
+    cred_infos: list[tuple[DhanCredential, str] | None] = []
     for notif in notifications:
+        cred_infos.append(await _load_cred_and_token(db, notif))
+
+    # Phase 2: fire all Dhan cancel calls in parallel, capped at _BULK_CONCURRENCY
+    sem = asyncio.Semaphore(_BULK_CONCURRENCY)
+
+    async def _cancel_one(
+        notif: SignalNotification,
+        cred_info: tuple[DhanCredential, str] | None,
+    ) -> OrderActionResult:
         if not notif.dhan_order_id:
-            results.append(OrderActionResult(
+            return OrderActionResult(
                 notification_id=notif.id, user_id=notif.user_id,
                 user_email=notif.user.email, dhan_order_id=None,
                 success=False, reason="No Dhan order ID recorded",
-            ))
-            continue
-        cred_info = await _load_cred_and_token(db, notif)
+            )
         if cred_info is None:
-            results.append(OrderActionResult(
+            return OrderActionResult(
                 notification_id=notif.id, user_id=notif.user_id,
                 user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
                 success=False, reason="No active Dhan credential",
-            ))
-            continue
-        cred, token = cred_info
-        try:
-            await DhanClient.cancel_super_order(
-                order_id=notif.dhan_order_id,
-                dhan_client_id=cred.dhan_client_id,
-                access_token=token,
-                source_ipv6=notif.user.assigned_ipv6,
             )
-            notif.status = "cancelled"
-            db.commit()
+        cred, token = cred_info
+        async with sem:
+            try:
+                await DhanClient.cancel_super_order(
+                    order_id=notif.dhan_order_id,
+                    dhan_client_id=cred.dhan_client_id,
+                    access_token=token,
+                    source_ipv6=notif.user.assigned_ipv6,
+                )
+                notif.status = "cancelled"  # mark dirty; committed in batch below
+                return OrderActionResult(
+                    notification_id=notif.id, user_id=notif.user_id,
+                    user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                    success=True, reason=None,
+                )
+            except DhanApiError as exc:
+                return OrderActionResult(
+                    notification_id=notif.id, user_id=notif.user_id,
+                    user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                    success=False, reason=str(exc),
+                )
+
+    raw = await asyncio.gather(
+        *[_cancel_one(n, ci) for n, ci in zip(notifications, cred_infos)],
+        return_exceptions=True,
+    )
+
+    results: list[OrderActionResult] = []
+    for notif, r in zip(notifications, raw):
+        if isinstance(r, Exception):
             results.append(OrderActionResult(
                 notification_id=notif.id, user_id=notif.user_id,
                 user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
-                success=True, reason=None,
+                success=False, reason=f"Unexpected error: {r}",
             ))
-        except DhanApiError as exc:
-            results.append(OrderActionResult(
-                notification_id=notif.id, user_id=notif.user_id,
-                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
-                success=False, reason=str(exc),
-            ))
+        else:
+            results.append(r)  # type: ignore[arg-type]
+
+    # Phase 3: single commit for all status mutations
+    db.commit()
     return results
 
 
@@ -835,7 +913,7 @@ async def modify_signal_orders(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> list[OrderActionResult]:
-    """Modify target/stop-loss on all active placed orders for a signal."""
+    """Modify price/target/stop-loss on all cancellable placed orders for a signal."""
     signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
     if signal is None:
         raise HTTPException(status_code=404, detail="Signal not found")
@@ -846,71 +924,130 @@ async def modify_signal_orders(
         .filter(
             SignalNotification.signal_id == signal_id,
             SignalNotification.status == "placed",
-            ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+            SignalNotification.exit_leg.is_(None),  # skip orders whose exit leg already triggered
+            or_(
+                SignalNotification.live_status.is_(None),
+                ~SignalNotification.live_status.in_(list(_TERMINAL_LIVE_STATUSES)),
+            ),
         )
         .all()
     )
 
-    results: list[OrderActionResult] = []
-    any_success = False
+    if not notifications:
+        return []
 
+    # Phase 1: load all credentials sequentially (may trigger JIT token refresh)
+    cred_infos: list[tuple[DhanCredential, str] | None] = []
     for notif in notifications:
+        cred_infos.append(await _load_cred_and_token(db, notif))
+
+    # Phase 2: parallel Dhan modify calls with bounded concurrency
+    sem = asyncio.Semaphore(_BULK_CONCURRENCY)
+
+    async def _modify_one(
+        notif: SignalNotification,
+        cred_info: tuple[DhanCredential, str] | None,
+    ) -> OrderActionResult:
         if not notif.dhan_order_id:
-            results.append(OrderActionResult(
+            return OrderActionResult(
                 notification_id=notif.id, user_id=notif.user_id,
                 user_email=notif.user.email, dhan_order_id=None,
                 success=False, reason="No Dhan order ID recorded",
-            ))
-            continue
-        cred_info = await _load_cred_and_token(db, notif)
+            )
         if cred_info is None:
-            results.append(OrderActionResult(
+            return OrderActionResult(
                 notification_id=notif.id, user_id=notif.user_id,
                 user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
                 success=False, reason="No active Dhan credential",
-            ))
-            continue
-        cred, token = cred_info
-        # When entry is still PENDING/PART_TRADED use ENTRY_LEG; otherwise modify exit legs
-        entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
-        leg = "ENTRY_LEG" if entry_pending else "TARGET_LEG"
-        try:
-            await DhanClient.modify_super_order(
-                order_id=notif.dhan_order_id,
-                dhan_client_id=cred.dhan_client_id,
-                access_token=token,
-                source_ipv6=notif.user.assigned_ipv6,
-                leg_name=leg,
-                price=req.price if entry_pending else None,
-                target_price=req.target_price,
-                stop_loss_price=req.stop_loss_price,
-                trailing_jump=req.trailing_jump,
             )
-            # If target_price changed and entry is filled, also modify STOP_LOSS_LEG
-            if not entry_pending and req.stop_loss_price is not None:
-                await DhanClient.modify_super_order(
-                    order_id=notif.dhan_order_id,
-                    dhan_client_id=cred.dhan_client_id,
-                    access_token=token,
-                    source_ipv6=notif.user.assigned_ipv6,
-                    leg_name="STOP_LOSS_LEG",
-                    stop_loss_price=req.stop_loss_price,
-                    trailing_jump=req.trailing_jump,
+        cred, token = cred_info
+        # entry still open (NULL = never updated by WS) → ENTRY_LEG
+        # entry already TRADED → modify exit legs independently per Dhan spec
+        entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
+        async with sem:
+            try:
+                if entry_pending:
+                    # ENTRY_LEG accepts price, targetPrice, stopLossPrice, trailingJump
+                    await DhanClient.modify_super_order(
+                        order_id=notif.dhan_order_id,
+                        dhan_client_id=cred.dhan_client_id,
+                        access_token=token,
+                        source_ipv6=notif.user.assigned_ipv6,
+                        leg_name="ENTRY_LEG",
+                        price=req.price,
+                        target_price=req.target_price,
+                        stop_loss_price=req.stop_loss_price,
+                        trailing_jump=req.trailing_jump,
+                    )
+                else:
+                    # Per Dhan spec:
+                    #   TARGET_LEG   → only targetPrice
+                    #   STOP_LOSS_LEG → stopLossPrice and/or trailingJump
+                    # IMPORTANT: Dhan cancels trailing stop if trailingJump is omitted or 0.
+                    # Always carry the signal's current trailing_jump forward if admin didn't change it.
+                    made_call = False
+                    if req.target_price is not None:
+                        await DhanClient.modify_super_order(
+                            order_id=notif.dhan_order_id,
+                            dhan_client_id=cred.dhan_client_id,
+                            access_token=token,
+                            source_ipv6=notif.user.assigned_ipv6,
+                            leg_name="TARGET_LEG",
+                            target_price=req.target_price,
+                        )
+                        made_call = True
+                    if req.stop_loss_price is not None or req.trailing_jump is not None:
+                        # Carry forward signal's trailing_jump if admin only changed stop_loss_price
+                        effective_trailing = req.trailing_jump if req.trailing_jump is not None else signal.trailing_jump
+                        await DhanClient.modify_super_order(
+                            order_id=notif.dhan_order_id,
+                            dhan_client_id=cred.dhan_client_id,
+                            access_token=token,
+                            source_ipv6=notif.user.assigned_ipv6,
+                            leg_name="STOP_LOSS_LEG",
+                            stop_loss_price=req.stop_loss_price,
+                            trailing_jump=effective_trailing,
+                        )
+                        made_call = True
+                    if not made_call:
+                        return OrderActionResult(
+                            notification_id=notif.id, user_id=notif.user_id,
+                            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                            success=False,
+                            reason="Entry is already filled; specify target_price or stop_loss_price/trailing_jump to modify exit legs",
+                        )
+                return OrderActionResult(
+                    notification_id=notif.id, user_id=notif.user_id,
+                    user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                    success=True, reason=None,
                 )
-            any_success = True
-            results.append(OrderActionResult(
-                notification_id=notif.id, user_id=notif.user_id,
-                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
-                success=True, reason=None,
-            ))
-        except DhanApiError as exc:
-            results.append(OrderActionResult(
-                notification_id=notif.id, user_id=notif.user_id,
-                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
-                success=False, reason=str(exc),
-            ))
+            except DhanApiError as exc:
+                return OrderActionResult(
+                    notification_id=notif.id, user_id=notif.user_id,
+                    user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                    success=False, reason=str(exc),
+                )
 
-    # Update signal DB values if any order was modified successfully
+    raw = await asyncio.gather(
+        *[_modify_one(n, ci) for n, ci in zip(notifications, cred_infos)],
+        return_exceptions=True,
+    )
+
+    results: list[OrderActionResult] = []
+    any_success = False
+    for notif, r in zip(notifications, raw):
+        if isinstance(r, Exception):
+            results.append(OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason=f"Unexpected error: {r}",
+            ))
+        else:
+            if r.success:  # type: ignore[union-attr]
+                any_success = True
+            results.append(r)  # type: ignore[arg-type]
+
+    # Update signal DB values to reflect the latest modify (only if at least one succeeded)
     if any_success:
         if req.price is not None:
             signal.price = req.price
@@ -979,7 +1116,7 @@ async def modify_notification_order(
     """Modify a single user's Dhan order."""
     notif = (
         db.query(SignalNotification)
-        .options(joinedload(SignalNotification.user))
+        .options(joinedload(SignalNotification.user), joinedload(SignalNotification.signal))
         .filter(SignalNotification.id == notification_id)
         .one_or_none()
     )
@@ -992,30 +1129,56 @@ async def modify_notification_order(
     if cred_info is None:
         raise HTTPException(status_code=400, detail="No active Dhan credential for this user")
     cred, token = cred_info
+    # TRADED means entry filled; exit legs still modifiable.
     entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
-    leg = "ENTRY_LEG" if entry_pending else "TARGET_LEG"
     try:
-        await DhanClient.modify_super_order(
-            order_id=notif.dhan_order_id,
-            dhan_client_id=cred.dhan_client_id,
-            access_token=token,
-            source_ipv6=notif.user.assigned_ipv6,
-            leg_name=leg,
-            price=req.price if entry_pending else None,
-            target_price=req.target_price,
-            stop_loss_price=req.stop_loss_price,
-            trailing_jump=req.trailing_jump,
-        )
-        if not entry_pending and req.stop_loss_price is not None:
+        if entry_pending:
             await DhanClient.modify_super_order(
                 order_id=notif.dhan_order_id,
                 dhan_client_id=cred.dhan_client_id,
                 access_token=token,
                 source_ipv6=notif.user.assigned_ipv6,
-                leg_name="STOP_LOSS_LEG",
+                leg_name="ENTRY_LEG",
+                price=req.price,
+                target_price=req.target_price,
                 stop_loss_price=req.stop_loss_price,
                 trailing_jump=req.trailing_jump,
             )
+        else:
+            # Per Dhan spec: TARGET_LEG → only targetPrice; STOP_LOSS_LEG → stopLossPrice/trailingJump
+            # Carry forward signal's trailing_jump to avoid silently cancelling the trailing stop.
+            made_call = False
+            if req.target_price is not None:
+                await DhanClient.modify_super_order(
+                    order_id=notif.dhan_order_id,
+                    dhan_client_id=cred.dhan_client_id,
+                    access_token=token,
+                    source_ipv6=notif.user.assigned_ipv6,
+                    leg_name="TARGET_LEG",
+                    target_price=req.target_price,
+                )
+                made_call = True
+            if req.stop_loss_price is not None or req.trailing_jump is not None:
+                effective_trailing = req.trailing_jump if req.trailing_jump is not None else (
+                    notif.signal.trailing_jump if notif.signal else None
+                )
+                await DhanClient.modify_super_order(
+                    order_id=notif.dhan_order_id,
+                    dhan_client_id=cred.dhan_client_id,
+                    access_token=token,
+                    source_ipv6=notif.user.assigned_ipv6,
+                    leg_name="STOP_LOSS_LEG",
+                    stop_loss_price=req.stop_loss_price,
+                    trailing_jump=effective_trailing,
+                )
+                made_call = True
+            if not made_call:
+                return OrderActionResult(
+                    notification_id=notif.id, user_id=notif.user_id,
+                    user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                    success=False,
+                    reason="Entry is already filled; specify target_price or stop_loss_price/trailing_jump",
+                )
         return OrderActionResult(
             notification_id=notif.id, user_id=notif.user_id,
             user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
@@ -1301,3 +1464,182 @@ def list_admin_positions(
         )
         for p in positions
     ]
+
+
+# ---------------------------------------------------------------------------
+# User Groups
+# ---------------------------------------------------------------------------
+
+def _to_group_response(group: UserGroup, db: Session) -> GroupResponse:
+    count = db.query(UserGroupMember).filter(UserGroupMember.group_id == group.id).count()
+    return GroupResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        member_count=count,
+        created_by_id=group.created_by_id,
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@router.get("/groups", response_model=list[GroupResponse])
+def list_groups(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> list[GroupResponse]:
+    """List all user groups."""
+    groups = db.query(UserGroup).order_by(UserGroup.name.asc()).all()
+    return [_to_group_response(g, db) for g in groups]
+
+
+@router.post("/groups", response_model=GroupResponse, status_code=201)
+def create_group(
+    req: GroupCreateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> GroupResponse:
+    """Create a new user group."""
+    existing = db.query(UserGroup).filter(UserGroup.name == req.name.strip()).one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A group named '{req.name}' already exists")
+    group = UserGroup(
+        name=req.name.strip(),
+        description=req.description.strip() if req.description else None,
+        created_by_id=admin.id,
+    )
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    return _to_group_response(group, db)
+
+
+@router.get("/groups/{group_id}", response_model=GroupDetailResponse)
+def get_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> GroupDetailResponse:
+    """Get a group with its full member list."""
+    group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    members = (
+        db.query(User)
+        .join(UserGroupMember, UserGroupMember.user_id == User.id)
+        .filter(UserGroupMember.group_id == group_id)
+        .order_by(User.name.asc())
+        .all()
+    )
+    return GroupDetailResponse(
+        id=group.id,
+        name=group.name,
+        description=group.description,
+        members=[_to_admin_user(u, db) for u in members],
+        created_by_id=group.created_by_id,
+        created_at=group.created_at.isoformat(),
+        updated_at=group.updated_at.isoformat(),
+    )
+
+
+@router.put("/groups/{group_id}", response_model=GroupResponse)
+def update_group(
+    group_id: int,
+    req: GroupUpdateRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> GroupResponse:
+    """Rename or update the description of a group."""
+    group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if req.name is not None:
+        name = req.name.strip()
+        clash = db.query(UserGroup).filter(UserGroup.name == name, UserGroup.id != group_id).one_or_none()
+        if clash:
+            raise HTTPException(status_code=409, detail=f"A group named '{name}' already exists")
+        group.name = name
+    if req.description is not None:
+        group.description = req.description.strip() or None
+    group.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(group)
+    return _to_group_response(group, db)
+
+
+@router.delete("/groups/{group_id}")
+def delete_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict[str, str]:
+    """Delete a group and all its memberships."""
+    group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    db.query(UserGroupMember).filter(UserGroupMember.group_id == group_id).delete(synchronize_session=False)
+    db.delete(group)
+    db.commit()
+    return {"status": "deleted", "group_id": str(group_id)}
+
+
+@router.post("/groups/{group_id}/members", response_model=GroupResponse)
+def add_group_members(
+    group_id: int,
+    req: GroupAddMembersRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> GroupResponse:
+    """Add one or more users to a group (silently skips duplicates)."""
+    group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    # Validate all user IDs
+    users = db.query(User).filter(User.id.in_(req.user_ids)).all()
+    if len(users) != len(set(req.user_ids)):
+        found_ids = {u.id for u in users}
+        missing = [uid for uid in req.user_ids if uid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Users not found: {missing}")
+
+    # Fetch existing members to skip
+    existing = {
+        m.user_id
+        for m in db.query(UserGroupMember).filter(
+            UserGroupMember.group_id == group_id,
+            UserGroupMember.user_id.in_(req.user_ids),
+        ).all()
+    }
+
+    for user_id in req.user_ids:
+        if user_id not in existing:
+            db.add(UserGroupMember(group_id=group_id, user_id=user_id))
+
+    group.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(group)
+    return _to_group_response(group, db)
+
+
+@router.delete("/groups/{group_id}/members/{user_id}")
+def remove_group_member(
+    group_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict[str, str]:
+    """Remove a single user from a group."""
+    group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    member = (
+        db.query(UserGroupMember)
+        .filter(UserGroupMember.group_id == group_id, UserGroupMember.user_id == user_id)
+        .one_or_none()
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="User is not a member of this group")
+    db.delete(member)
+    group.updated_at = dt.datetime.utcnow()
+    db.commit()
+    return {"status": "removed", "group_id": str(group_id), "user_id": str(user_id)}

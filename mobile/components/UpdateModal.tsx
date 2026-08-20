@@ -34,9 +34,7 @@ export default function UpdateModal() {
       onRequestClose={closeModal}
     >
       <View style={styles.backdrop}>
-        {!forceUpdate && !isDownloading && (
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
-        )}
+        {/* Updates are mandatory — backdrop tap does nothing */}
         <View style={styles.card}>
           <View style={styles.iconCircle}>
             {isDownloading ? (
@@ -86,20 +84,12 @@ export default function UpdateModal() {
           )}
 
           <View style={styles.btnRow}>
-            {!forceUpdate && !isDownloading && (
-              <TouchableOpacity
-                style={styles.laterBtn}
-                onPress={closeModal}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.laterBtnText}>Later</Text>
-              </TouchableOpacity>
-            )}
+            {/* No 'Later' button — all updates are mandatory */}
 
             <TouchableOpacity
               style={[
                 styles.downloadBtn,
-                (forceUpdate || isDownloading) && { flex: 1 },
+                { flex: 1 },
                 isDownloading && { opacity: 0.8 },
               ]}
               onPress={triggerDownload}

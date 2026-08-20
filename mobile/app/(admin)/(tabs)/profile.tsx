@@ -6,11 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 
 export default function AdminProfileScreen() {
   const { user, logout } = useAuth();
+  const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -79,6 +81,12 @@ export default function AdminProfileScreen() {
               </View>
             </>
           )}
+
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>App Version</Text>
+            <Text style={styles.infoValue}>v{currentVersion}</Text>
+          </View>
         </View>
 
         {/* Logout Button */}

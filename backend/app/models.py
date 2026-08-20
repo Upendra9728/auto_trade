@@ -4,6 +4,7 @@ import datetime as dt
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Table, Column
 
 from .db import Base
 
@@ -33,6 +34,9 @@ class User(Base):
         back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
     notifications: Mapped[list["SignalNotification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    group_memberships: Mapped[list["UserGroupMember"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -85,6 +89,8 @@ class Signal(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # JSON-encoded list of group IDs this signal was targeted to (None = all eligible users)
+    target_group_ids: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
     created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
     notifications: Mapped[list["SignalNotification"]] = relationship(
@@ -225,3 +231,40 @@ class EmailVerificationOtp(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
     user: Mapped[User] = relationship()
+
+
+# ---------------------------------------------------------------------------
+# User Groups
+# ---------------------------------------------------------------------------
+
+class UserGroup(Base):
+    """Admin-created groups used to target signals to a subset of users."""
+
+    __tablename__ = "user_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
+    members: Mapped[list["UserGroupMember"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class UserGroupMember(Base):
+    """Association table linking users to groups."""
+
+    __tablename__ = "user_group_members"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("user_groups.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+    group: Mapped[UserGroup] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="group_memberships")

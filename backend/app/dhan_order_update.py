@@ -48,13 +48,23 @@ logger = logging.getLogger(__name__)
 DHAN_ORDER_UPDATE_WS_URL = "wss://api-order-update.dhan.co"
 
 # Exchange-reported statuses that mean the order did NOT (and will not) execute.
+# NOTE: TRADED is NOT here — entry filled means exit legs are still live at the exchange.
+# CLOSED = entry + one exit leg done for full quantity = truly terminal.
 TERMINAL_FAILURE_STATUSES = {"REJECTED", "CANCELLED", "EXPIRED"}
 # Statuses that mean the order is genuinely live/registered at the exchange.
+# TRADED here means the ENTRY leg filled — exit legs (target/SL) are still active.
 CONFIRMED_LIVE_STATUSES = {"TRANSIT", "PENDING", "TRADED"}
 # CLOSED = entry filled AND one exit leg (target/SL) completed for full quantity.
 SUCCESS_TERMINAL_STATUSES = {"CLOSED"}
+# Statuses where no further action is possible (used by admin cancel/modify filter).
+# TRADED is intentionally excluded — exit legs can still be cancelled/modified after entry fills.
+ALL_TERMINAL_STATUSES = {"CLOSED", "EXPIRED", "CANCELLED", "REJECTED"}
 
 LEG_NO_TO_NAME = {1: "ENTRY_LEG", 2: "STOP_LOSS_LEG", 3: "TARGET_LEG"}
+
+# WebSocket manager settings
+_RECONCILE_INTERVAL_SECONDS = 10   # how often to start WS tasks for newly eligible users
+_RECONNECT_BACKOFF_SECONDS = 5     # wait between reconnect attempts after WS drop
 
 
 def _coerce_leg_no(value: object) -> int | None:
@@ -181,18 +191,18 @@ def apply_live_status(
     )
     db.add(event)
 
-    # Calculate realized P&L when exit leg & price are known
+    # Calculate realized P&L when exit leg & price are known, included in the same commit.
     if notif.exit_price and notif.exit_price > 0:
         entry_price = notif.traded_price or (notif.signal.price if notif.signal else None)
         qty = notif.traded_qty or notif.ordered_quantity or (notif.signal.quantity if notif.signal else 1)
         direction = 1.0 if (notif.signal and notif.signal.transaction_type == "BUY") else -1.0
         if entry_price and entry_price > 0:
             realized_pnl = round((notif.exit_price - entry_price) * qty * direction, 2)
-            # Update realized_pnl separately with version check
+            # Merge P&L into the already-in-progress transaction (no extra round-trip)
             db.execute(
                 update(SignalNotification)
-                .where(SignalNotification.id == notif.id, SignalNotification.version == new_version)
-                .values({"realized_pnl": realized_pnl, "version": new_version + 1})
+                .where(SignalNotification.id == notif.id)
+                .values({"realized_pnl": realized_pnl})
             )
 
     if status in SUCCESS_TERMINAL_STATUSES:
@@ -323,20 +333,21 @@ class DhanOrderUpdateManager:
             # WS payload identifies the leg via LegNo (int); LegName does not exist here.
             leg_name = LEG_NO_TO_NAME.get(_coerce_leg_no(data.get("LegNo")), "")
 
-            # Capture entry fill when ENTRY_LEG is traded (actual fill price may differ from limit price)
+            # Capture entry fill — use AvgTradedPrice for consistent P&L cost basis
             entry_traded_price: float | None = None
             entry_traded_qty: int | None = None
             if leg_name == "ENTRY_LEG" and status in ("TRADED", "PART_TRADED"):
-                entry_traded_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
+                entry_traded_price = data.get("AvgTradedPrice") or data.get("TradedPrice")
                 entry_traded_qty = data.get("TradedQty")
 
-            # Capture exit leg details when TARGET or STOP_LOSS leg is filled
+            # Capture exit leg details when TARGET or STOP_LOSS leg is filled.
+            # Per Dhan WS docs Status can be TRADED only (not TRIGGERED/CLOSED — those are REST-only).
             exit_leg: str | None = None
             exit_price: float | None = None
             exit_time: dt.datetime | None = None
-            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and status in ("TRADED", "TRIGGERED", "CLOSED"):
+            if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and status == "TRADED":
                 exit_leg = leg_name
-                exit_price = data.get("TradedPrice") or data.get("AvgTradedPrice")
+                exit_price = data.get("AvgTradedPrice") or data.get("TradedPrice")
                 exit_time = dt.datetime.utcnow()
 
             apply_live_status(
@@ -347,7 +358,7 @@ class DhanOrderUpdateManager:
                 exchange_order_no=data.get("ExchOrderNo"),
                 reason_description=data.get("ReasonDescription"),
                 traded_qty=entry_traded_qty or data.get("TradedQty"),
-                traded_price=entry_traded_price or data.get("TradedPrice") or data.get("AvgTradedPrice"),
+                traded_price=entry_traded_price or data.get("AvgTradedPrice") or data.get("TradedPrice"),
                 exit_leg=exit_leg,
                 exit_price=exit_price,
                 exit_time=exit_time,
@@ -448,7 +459,9 @@ async def _poll_one(db: Session, notif: SignalNotification) -> None:
             leg_status = leg.get("orderStatus")
             if leg_name in ("TARGET_LEG", "STOP_LOSS_LEG") and leg_status in ("TRADED", "TRIGGERED", "CLOSED"):
                 exit_leg = leg_name
-                exit_price = leg.get("price")
+                # REST legDetails has no execution price field; use averageTradedPrice if
+                # available, fall back to the leg's limit price (best effort from poll).
+                exit_price = leg.get("averageTradedPrice") or leg.get("price")
                 exit_time = dt.datetime.utcnow()
                 break
 
@@ -515,14 +528,26 @@ async def _poll_all_user_positions() -> None:
             .filter(User.is_active.is_(True), DhanCredential.is_active.is_(True))
             .all()
         )
-        for u in users:
-            cooldown_until = _auth_cooldown_until.get(u.id)
-            if cooldown_until and cooldown_until > now:
-                continue
-            await _poll_one_user_positions(db, u)
-            await asyncio.sleep(_REQUEST_DELAY_SECONDS)
     finally:
         db.close()
+
+    eligible = [
+        u for u in users
+        if not (_auth_cooldown_until.get(u.id) and _auth_cooldown_until[u.id] > now)
+    ]
+
+    # Run all users in parallel with a semaphore cap to avoid rate-limiting Dhan
+    sem = asyncio.Semaphore(20)
+
+    async def _run_one(u: User) -> None:
+        async with sem:
+            db2: Session = SessionLocal()
+            try:
+                await _poll_one_user_positions(db2, u)
+            finally:
+                db2.close()
+
+    await asyncio.gather(*[_run_one(u) for u in eligible], return_exceptions=True)
 
 
 async def _poll_one_user_positions(db: Session, user: User) -> None:

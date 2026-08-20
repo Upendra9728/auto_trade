@@ -97,6 +97,46 @@ def _apply_migrations() -> None:
                 conn.commit()
             logger.info("Migration: added version column to signal_notifications")
 
+    if "signals" in table_names:
+        existing = {c["name"] for c in inspector.get_columns("signals")}
+        if "target_group_ids" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE signals ADD COLUMN target_group_ids TEXT"))
+                conn.commit()
+            logger.info("Migration: added target_group_ids column to signals")
+
+    # Create user_groups and user_group_members tables if they don't exist yet
+    if "user_groups" not in table_names:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE user_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(128) NOT NULL UNIQUE,
+                    description TEXT,
+                    created_by_id INTEGER NOT NULL REFERENCES users(id),
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        logger.info("Migration: created user_groups table")
+
+    if "user_group_members" not in table_names:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE TABLE user_group_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL REFERENCES user_groups(id),
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (group_id, user_id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_group_id ON user_group_members (group_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_user_id ON user_group_members (user_id)"))
+            conn.commit()
+        logger.info("Migration: created user_group_members table")
+
 
 def init_db() -> None:
     from . import models  # noqa: F401

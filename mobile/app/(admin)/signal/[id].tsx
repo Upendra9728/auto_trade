@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator,
   Modal, Pressable, ScrollView, Animated, Easing, TextInput, Alert, Dimensions,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -20,8 +21,9 @@ import type {
 const STATUS_FILTERS = ['all', 'placed', 'pending', 'failed', 'cancelled', 'rejected'] as const;
 type StatusFilter = typeof STATUS_FILTERS[number];
 
-const ACTIVE_LIVE = new Set(['TRANSIT', 'PENDING', 'PART_TRADED']);
-const TERMINAL_LIVE = new Set(['TRADED', 'EXPIRED', 'CANCELLED', 'REJECTED']);
+const ACTIVE_LIVE = new Set(['TRANSIT', 'PENDING', 'PART_TRADED', 'TRADED']);
+// TRADED means entry filled — exit legs still live. CLOSED = fully done.
+const TERMINAL_LIVE = new Set(['CLOSED', 'EXPIRED', 'CANCELLED', 'REJECTED']);
 
 export default function SignalDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -111,8 +113,7 @@ export default function SignalDetailScreen() {
       .finally(() => setEventsLoading(false));
   };
 
-  const closeModal = useCallback((maybeCallback?: (() => void) | any) => {
-    const callback = typeof maybeCallback === 'function' ? maybeCallback : undefined;
+  const closeModal = useCallback((callback?: () => void) => {
     Animated.parallel([
       Animated.timing(animOpacity, { toValue: 0, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
       Animated.timing(animScale, { toValue: 0.88, duration: 160, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
@@ -149,7 +150,12 @@ export default function SignalDetailScreen() {
               const results: OrderActionResult[] = await adminApi.cancelSignalOrders(Number(id));
               const ok = results.filter(r => r.success).length;
               const fail = results.length - ok;
-              Alert.alert('Done', `Cancelled: ${ok} order(s). Failed: ${fail}.`);
+              const failedItems = results.filter(r => !r.success);
+              const failMsg = failedItems.length > 0
+                ? '\n\nFailed:\n' + failedItems.slice(0, 3).map(r => `\u2022 ${r.user_email}: ${r.reason ?? 'Unknown'}`).join('\n')
+                  + (failedItems.length > 3 ? `\n\u2026and ${failedItems.length - 3} more` : '')
+                : '';
+              Alert.alert('Done', `Cancelled: ${ok} order(s). Failed: ${fail}.${failMsg}`);
               await Promise.all([loadSignal(), loadNotifications(page, statusFilter)]);
             } catch (e: any) {
               Alert.alert('Error', e.message ?? 'Unknown error');
@@ -199,7 +205,13 @@ export default function SignalDetailScreen() {
       } else {
         const results = await adminApi.modifySignalOrders(Number(id), payload);
         const ok = results.filter(r => r.success).length;
-        Alert.alert('Done', `Modified: ${ok}/${results.length} order(s).`);
+        const fail = results.length - ok;
+        const failedItems = results.filter(r => !r.success);
+        const failMsg = failedItems.length > 0
+          ? '\n\nFailed:\n' + failedItems.slice(0, 3).map(r => `\u2022 ${r.user_email}: ${r.reason ?? 'Unknown'}`).join('\n')
+            + (failedItems.length > 3 ? `\n\u2026and ${failedItems.length - 3} more` : '')
+          : '';
+        Alert.alert('Done', `Modified: ${ok}/${results.length} order(s).${failMsg}`);
       }
       await Promise.all([loadSignal(), loadNotifications(page, statusFilter)]);
     } catch (e: any) {
@@ -207,9 +219,7 @@ export default function SignalDetailScreen() {
     } finally { setActionLoading(false); }
   };
 
-  const hasActivePlaced = (notifPage?.items ?? []).some(
-    (n: AdminSignalNotificationRow) => n.status === 'placed' && !TERMINAL_LIVE.has(n.live_status ?? '')
-  );
+  const hasActivePlaced = signal != null && signal.status === 'active' && (signal.placed ?? 0) > 0;
 
   const renderRow = ({ item: n }: { item: AdminSignalNotificationRow }) => {
     const isActivePlaced = n.status === 'placed' && !TERMINAL_LIVE.has(n.live_status ?? '');
@@ -481,25 +491,32 @@ export default function SignalDetailScreen() {
 
       {/* ── Modify modal ─────────────────────────────────────────────── */}
       <Modal visible={modifyVisible} transparent animationType="slide" onRequestClose={() => setModifyVisible(false)}>
-        <Pressable style={styles.modifyBackdrop} onPress={() => setModifyVisible(false)} />
-        <View style={styles.modifySheet}>
-          <Text style={styles.modifyTitle}>
-            {modifyTarget !== null ? 'Modify Order' : 'Modify All Orders'}
-          </Text>
-          <Text style={styles.modifySubtitle}>Leave a field blank to keep its current value.</Text>
-          <ModifyField label="Entry Price (PENDING only)" value={modifyForm.price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, price: v }))} />
-          <ModifyField label="Target Price" value={modifyForm.target_price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, target_price: v }))} />
-          <ModifyField label="Stop-Loss Price" value={modifyForm.stop_loss_price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, stop_loss_price: v }))} />
-          <ModifyField label="Trailing Jump" value={modifyForm.trailing_jump} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, trailing_jump: v }))} />
-          <View style={styles.modifyActions}>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setModifyVisible(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modifySubmitBtn} onPress={handleSubmitModify}>
-              <Text style={styles.modifySubmitText}>Confirm Modify</Text>
-            </TouchableOpacity>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <Pressable style={styles.modifyBackdrop} onPress={() => setModifyVisible(false)} />
+          <View style={styles.modifySheet}>
+            <Text style={styles.modifyTitle}>
+              {modifyTarget !== null ? 'Modify Order' : 'Modify All Orders'}
+            </Text>
+            <Text style={styles.modifySubtitle}>Leave a field blank to keep its current value.</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <ModifyField label="Entry Price (PENDING only)" value={modifyForm.price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, price: v }))} />
+              <ModifyField label="Target Price" value={modifyForm.target_price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, target_price: v }))} />
+              <ModifyField label="Stop-Loss Price" value={modifyForm.stop_loss_price} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, stop_loss_price: v }))} />
+              <ModifyField label="Trailing Jump" value={modifyForm.trailing_jump} onChangeText={(v) => setModifyForm((f: typeof modifyForm) => ({ ...f, trailing_jump: v }))} />
+              <View style={styles.modifyActions}>
+                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setModifyVisible(false)}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modifySubmitBtn} onPress={handleSubmitModify}>
+                  <Text style={styles.modifySubmitText}>Confirm Modify</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

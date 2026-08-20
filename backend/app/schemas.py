@@ -114,6 +114,8 @@ class SignalCreateRequest(BaseModel):
     stop_loss_price: float = Field(ge=0)
     trailing_jump: float = Field(default=0, ge=0)
     expires_at: dt.datetime | None = None
+    # Optional list of group IDs to target; None/empty = broadcast to all eligible users
+    group_ids: list[int] | None = None
 
 
 class SignalResponse(BaseModel):
@@ -145,6 +147,8 @@ class SignalResponse(BaseModel):
     exchange_confirmed: int | None = None
     exchange_rejected: int | None = None
     awaiting_confirmation: int | None = None
+    # IDs of the groups this signal was targeted at (None = all eligible users)
+    target_group_ids: list[int] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -344,3 +348,41 @@ class AdminBootstrapRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+# ---------------------------------------------------------------------------
+# User Groups
+# ---------------------------------------------------------------------------
+
+class GroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=512)
+
+
+class GroupUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = None
+
+
+class GroupResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    member_count: int
+    created_by_id: int
+    created_at: str
+    updated_at: str
+
+
+class GroupDetailResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    members: list[AdminUserResponse]
+    created_by_id: int
+    created_at: str
+    updated_at: str
+
+
+class GroupAddMembersRequest(BaseModel):
+    user_ids: list[int] = Field(min_length=1)

@@ -4,7 +4,7 @@ import {
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 import { formatDateTimeIST } from '../../../utils/time';
@@ -35,6 +35,11 @@ export default function AdminSignalsScreen() {
   }, []);
 
   useEffect(() => { load(page, dateFrom, dateTo); }, [load, page, dateFrom, dateTo]);
+
+  // Refresh when navigating back to this screen (e.g. after creating a new signal)
+  useFocusEffect(
+    useCallback(() => { load(page, dateFrom, dateTo); }, [load, page, dateFrom, dateTo])
+  );
 
   const handleDateChange = (from: string | null, to: string | null) => {
     setDateFrom(from);
