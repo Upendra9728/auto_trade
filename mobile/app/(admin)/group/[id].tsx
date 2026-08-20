@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Alert, ActivityIndicator, TextInput, Modal, Pressable,
-  ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -73,10 +73,15 @@ export default function GroupDetailScreen() {
     setAddVisible(true);
     setUsersLoading(true);
     try {
-      const res: Paginated<AdminUser> = await adminApi.getUsers({ pageSize: 200, isActive: true });
+      // Fetch all users (no isActive filter) so admin can add any user
+      const res: Paginated<AdminUser> = await adminApi.getUsers({ pageSize: 200 });
       setAllUsers(res.items);
-    } catch {}
-    finally { setUsersLoading(false); }
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to load users: ' + (err.message ?? 'Unknown error'));
+      setAddVisible(false);
+    } finally {
+      setUsersLoading(false);
+    }
   };
 
   const handleAddMembers = async () => {
@@ -210,64 +215,77 @@ export default function GroupDetailScreen() {
 
       {/* Add Members Modal */}
       <Modal visible={addVisible} transparent animationType="slide" onRequestClose={() => setAddVisible(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setAddVisible(false)} />
-        <View style={styles.addSheet}>
-          <View style={styles.addSheetHeader}>
-            <Text style={styles.addSheetTitle}>Add Members</Text>
-            <TouchableOpacity onPress={() => setAddVisible(false)}>
-              <Feather name="x" size={20} color={Colors.textMuted} />
+        <KeyboardAvoidingView
+          style={styles.modalOuter}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setAddVisible(false)} />
+          <View style={styles.addSheet}>
+            <View style={styles.addSheetHeader}>
+              <Text style={styles.addSheetTitle}>Add Members</Text>
+              <TouchableOpacity onPress={() => setAddVisible(false)}>
+                <Feather name="x" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by name or email..."
+              placeholderTextColor={Colors.textMuted}
+              value={userSearch}
+              onChangeText={setUserSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {usersLoading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator color={Colors.primary} />
+                <Text style={styles.loadingText}>Loading users...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredUsers}
+                keyExtractor={(u: AdminUser) => String(u.id)}
+                style={styles.userList}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item: u }: { item: AdminUser }) => {
+                  const selected = selectedUserIds.has(u.id);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.userRow, selected && styles.userRowSelected]}
+                      onPress={() => toggleUser(u.id)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={styles.userRowInfo}>
+                        <Text style={styles.userName}>{u.name}</Text>
+                        <Text style={styles.userEmail}>{u.email}</Text>
+                      </View>
+                      <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+                        {selected && <Feather name="check" size={12} color="#fff" />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <Text style={styles.noUsersText}>
+                    {allUsers.length === 0
+                      ? 'No users found'
+                      : userSearch.trim()
+                        ? `No users match "${userSearch}"`
+                        : 'All users are already members of this group'}
+                  </Text>
+                }
+              />
+            )}
+            <TouchableOpacity
+              style={[styles.addConfirmBtn, selectedUserIds.size === 0 && { opacity: 0.5 }]}
+              onPress={handleAddMembers}
+            >
+              <Text style={styles.addConfirmText}>
+                {selectedUserIds.size > 0 ? `Add ${selectedUserIds.size} Member${selectedUserIds.size > 1 ? 's' : ''}` : 'Done'}
+              </Text>
             </TouchableOpacity>
           </View>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name or email..."
-            placeholderTextColor={Colors.textMuted}
-            value={userSearch}
-            onChangeText={setUserSearch}
-            autoCorrect={false}
-          />
-          {usersLoading ? (
-            <View style={{ paddingVertical: Spacing.lg, alignItems: 'center' }}>
-              <ActivityIndicator color={Colors.primary} />
-            </View>
-          ) : (
-            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
-              {filteredUsers.length === 0 ? (
-                <Text style={styles.noUsersText}>
-                  {allUsers.length === 0
-                    ? 'No eligible users found'
-                    : 'All eligible users are already members'}
-                </Text>
-              ) : filteredUsers.map((u) => {
-                const selected = selectedUserIds.has(u.id);
-                return (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={[styles.userRow, selected && styles.userRowSelected]}
-                    onPress={() => toggleUser(u.id)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.userRowInfo}>
-                      <Text style={styles.userName}>{u.name}</Text>
-                      <Text style={styles.userEmail}>{u.email}</Text>
-                    </View>
-                    <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                      {selected && <Feather name="check" size={12} color="#fff" />}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          )}
-          <TouchableOpacity
-            style={[styles.addConfirmBtn, selectedUserIds.size === 0 && { opacity: 0.5 }]}
-            onPress={handleAddMembers}
-          >
-            <Text style={styles.addConfirmText}>
-              {selectedUserIds.size > 0 ? `Add ${selectedUserIds.size} Member${selectedUserIds.size > 1 ? 's' : ''}` : 'Done'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rename Modal */}
@@ -335,10 +353,11 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
 
   // Add members modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalOuter: { flex: 1, justifyContent: 'flex-end' },
   addSheet: {
     backgroundColor: Colors.surface, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg,
     padding: Spacing.lg, paddingBottom: 36,
+    maxHeight: '80%',
   },
   addSheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   addSheetTitle: { ...Typography.h3 },
@@ -348,6 +367,9 @@ const styles = StyleSheet.create({
     color: Colors.text, marginBottom: Spacing.sm,
   },
   noUsersText: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', padding: Spacing.md },
+  userList: { flexGrow: 0, maxHeight: 280 },
+  loadingBox: { paddingVertical: Spacing.lg, alignItems: 'center', gap: 8 },
+  loadingText: { fontSize: 13, color: Colors.textMuted },
   userRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 10, paddingHorizontal: Spacing.sm,
