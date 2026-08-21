@@ -395,16 +395,16 @@ export default function SignalDetailScreen() {
       />
 
       {/* ── Detail modal ─────────────────────────────────────────────── */}
-      <Modal visible={modalVisible} transparent animationType="none" onRequestClose={closeModal}>
+      <Modal visible={modalVisible} transparent animationType="none" onRequestClose={() => closeModal()}>
         <Animated.View style={[styles.backdrop, { opacity: animOpacity }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={closeModal} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => closeModal()} />
           <Animated.View style={[styles.modalCard, { transform: [{ scale: animScale }] }]}>
             <View style={styles.modalHeader}>
               <View style={{ flex: 1, marginRight: Spacing.sm }}>
                 <Text style={styles.modalName} numberOfLines={1}>{selectedNotif?.user_name}</Text>
                 <Text style={styles.modalEmail} numberOfLines={1}>{selectedNotif?.user_email}</Text>
               </View>
-              <TouchableOpacity onPress={closeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity onPress={() => closeModal()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
