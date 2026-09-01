@@ -19,6 +19,9 @@ from ..notifications import send_signal_cancelled_notifications, send_signal_not
 from ..pagination import paginate_meta, parse_ist_date_range
 from ..scrip_lookup import search as scrip_search_fn
 from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_fn
+from ..scrip_lookup import list_symbols as scrip_list_symbols_fn
+from ..scrip_lookup import list_expiries as scrip_list_expiries_fn
+from ..scrip_lookup import list_strikes as scrip_list_strikes_fn
 from ..schemas import (
     AdminSignalDetailResponse,
     AdminSignalNotificationRow,
@@ -91,6 +94,24 @@ def scrip_search(
     return results
 
 
+@router.get("/scrip-symbols")
+def scrip_symbols(_: User = Depends(get_current_admin)) -> list[str]:
+    """List all index/underlying symbols available for the Quick Select signal-creation flow."""
+    return scrip_list_symbols_fn()
+
+
+@router.get("/scrip-expiries")
+def scrip_expiries(symbol: str, _: User = Depends(get_current_admin)) -> list[str]:
+    """List upcoming expiry dates (YYYY-MM-DD) available for a symbol."""
+    return scrip_list_expiries_fn(symbol)
+
+
+@router.get("/scrip-strikes")
+def scrip_strikes(symbol: str, expiry: str, _: User = Depends(get_current_admin)) -> list[dict]:
+    """List distinct strikes for a symbol+expiry, each annotated with available option types (CE/PE)."""
+    return scrip_list_strikes_fn(symbol, expiry)
+
+
 def _to_admin_user(u: User, db: Session) -> AdminUserResponse:
     has_cred = db.query(DhanCredential).filter(DhanCredential.user_id == u.id).count() > 0
     return AdminUserResponse(
@@ -110,9 +131,11 @@ def _to_admin_user(u: User, db: Session) -> AdminUserResponse:
 def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True) -> SignalResponse:
     counts: dict[str, int] = {}
     exchange_confirmed = exchange_rejected = awaiting_confirmation = None
+    cancellable_count = None
     if include_counts:
         rows = db.query(SignalNotification).filter(SignalNotification.signal_id == signal.id).all()
         exchange_confirmed = exchange_rejected = awaiting_confirmation = 0
+        cancellable_count = 0
         for row in rows:
             counts[row.status] = counts.get(row.status, 0) + 1
             if row.status == "placed":
@@ -120,6 +143,9 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
                     exchange_confirmed += 1
                 else:
                     awaiting_confirmation += 1
+                # Same predicate as the bulk cancel/modify endpoints below.
+                if row.exit_leg is None and row.live_status not in _TERMINAL_LIVE_STATUSES:
+                    cancellable_count += 1
             elif row.live_status in ("REJECTED", "CANCELLED", "EXPIRED"):
                 exchange_rejected += 1
 
@@ -157,6 +183,7 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
         exchange_confirmed=exchange_confirmed,
         exchange_rejected=exchange_rejected,
         awaiting_confirmation=awaiting_confirmation,
+        cancellable_count=cancellable_count,
         target_group_ids=target_group_ids,
     )
 
@@ -1294,6 +1321,19 @@ def dashboard(
     total_realized_pnl = float(db.query(func.coalesce(func.sum(SignalNotification.realized_pnl), 0.0)).scalar() or 0.0)
     total_unrealized_pnl = float(db.query(func.coalesce(func.sum(UserPosition.unrealized_profit), 0.0)).scalar() or 0.0)
 
+    pending_approvals = db.query(User).filter(User.is_active.is_(False)).count()
+    recent_signals = [
+        {
+            "id": s.id,
+            "title": s.title,
+            "status": s.status,
+            "created_at": s.created_at.isoformat(),
+            "total_notified": s.notifications and len(s.notifications) or 0,
+            "placed": sum(1 for n in s.notifications if n.status == "placed"),
+        }
+        for s in db.query(Signal).order_by(Signal.created_at.desc()).limit(5).all()
+    ]
+
     return {
         "users": {
             "total": total_users,
@@ -1316,6 +1356,8 @@ def dashboard(
             "total_realized_pnl": round(total_realized_pnl, 2),
             "total_unrealized_pnl": round(total_unrealized_pnl, 2),
         },
+        "pending_approvals": pending_approvals,
+        "recent_signals": recent_signals,
     }
 
 
@@ -1326,10 +1368,11 @@ def dashboard(
 @router.get("/notifications/{notification_id}/events", response_model=list[OrderEventResponse])
 def get_admin_notification_events(
     notification_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> list[OrderEventResponse]:
-    """Return historical audit-log events for any notification."""
+    """Return historical audit-log events for any notification (most recent `limit`, oldest first)."""
     notif = db.query(SignalNotification).filter(SignalNotification.id == notification_id).one_or_none()
     if notif is None:
         raise HTTPException(status_code=404, detail="Notification not found")
@@ -1337,9 +1380,11 @@ def get_admin_notification_events(
     events = (
         db.query(OrderEvent)
         .filter(OrderEvent.notification_id == notification_id)
-        .order_by(OrderEvent.created_at.asc())
+        .order_by(OrderEvent.created_at.desc())
+        .limit(limit)
         .all()
     )
+    events.reverse()
     return [
         OrderEventResponse(
             id=e.id,

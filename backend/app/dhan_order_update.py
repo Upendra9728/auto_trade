@@ -176,20 +176,36 @@ def apply_live_status(
     else:
         event_type = status or "UPDATE"
 
-    # Audit log event
-    event = OrderEvent(
-        notification_id=notif.id,
-        source=source,
-        event_type=event_type,
-        leg=leg or exit_leg,
-        status=status,
-        price=exit_price or traded_price,
-        quantity=traded_qty,
-        reason_description=reason_description,
-        exchange_order_no=exchange_order_no,
-        created_at=dt.datetime.utcnow(),
+    # Audit log event — skip if it's an exact repeat of the last recorded event
+    # (WS + 5s polling both call this repeatedly while an order sits unchanged,
+    # e.g. TRANSIT/PENDING for minutes; without dedup this floods the timeline
+    # and can crash the admin app when rendering it).
+    last_event = (
+        db.query(OrderEvent)
+        .filter(OrderEvent.notification_id == notif.id)
+        .order_by(OrderEvent.created_at.desc())
+        .first()
     )
-    db.add(event)
+    is_duplicate = (
+        last_event is not None
+        and last_event.event_type == event_type
+        and last_event.leg == (leg or exit_leg)
+        and last_event.status == status
+    )
+    if not is_duplicate:
+        event = OrderEvent(
+            notification_id=notif.id,
+            source=source,
+            event_type=event_type,
+            leg=leg or exit_leg,
+            status=status,
+            price=exit_price or traded_price,
+            quantity=traded_qty,
+            reason_description=reason_description,
+            exchange_order_no=exchange_order_no,
+            created_at=dt.datetime.utcnow(),
+        )
+        db.add(event)
 
     # Calculate realized P&L when exit leg & price are known, included in the same commit.
     if notif.exit_price and notif.exit_price > 0:

@@ -9,6 +9,7 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/
 import { formatDateTimeIST } from '../../../utils/time';
 import EmptyState from '../../../components/EmptyState';
 import Pagination from '../../../components/Pagination';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import { Feather } from '@expo/vector-icons';
 import type { AdminUser, PaginationMeta } from '../../../types';
 
@@ -107,9 +108,7 @@ export default function AdminApprovalsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <Text style={styles.pageTitle}>Pending Approval ({meta?.total ?? users.length})</Text>
-      </View>
+      <AdminScreenHeader title={`Pending Approval (${meta?.total ?? users.length})`} />
 
       <FlatList
         data={users}

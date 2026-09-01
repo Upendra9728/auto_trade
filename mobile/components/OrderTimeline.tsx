@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Colors, Spacing, Radius, Typography, moderateScale } from '../constants/theme';
 import { formatDateIST } from '../utils/time';
@@ -9,6 +9,10 @@ interface Props {
   events: OrderEvent[];
   loading?: boolean;
 }
+
+// Render only the most recent events by default — the backend already caps and
+// dedupes the history, but this keeps the timeline light even at that cap.
+const INITIAL_VISIBLE = 25;
 
 const EVENT_CONFIG: Record<string, { label: string; color: string; bg: string; icon: keyof typeof Feather.glyphMap }> = {
   ENTRY_TRADED:   { label: 'Entry Filled',     color: '#2563EB', bg: '#EFF6FF', icon: 'check-circle' },
@@ -22,6 +26,8 @@ const EVENT_CONFIG: Record<string, { label: string; color: string; bg: string; i
 };
 
 export default function OrderTimeline({ events, loading = false }: Props) {
+  const [showAll, setShowAll] = useState(false);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -40,10 +46,18 @@ export default function OrderTimeline({ events, loading = false }: Props) {
     );
   }
 
+  const hiddenCount = events.length - INITIAL_VISIBLE;
+  const visibleEvents = showAll || hiddenCount <= 0 ? events : events.slice(hiddenCount);
+
   return (
     <View style={styles.container}>
-      {events.map((ev, index) => {
-        const isLast = index === events.length - 1;
+      {hiddenCount > 0 && !showAll && (
+        <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAll(true)}>
+          <Text style={styles.showMoreText}>Show {hiddenCount} earlier event{hiddenCount > 1 ? 's' : ''}</Text>
+        </TouchableOpacity>
+      )}
+      {visibleEvents.map((ev, index) => {
+        const isLast = index === visibleEvents.length - 1;
         const cfg = EVENT_CONFIG[ev.event_type] || {
           label: ev.event_type || 'Update',
           color: Colors.textSecondary,
@@ -109,6 +123,15 @@ const styles = StyleSheet.create({
   loadingText: { ...Typography.caption, color: Colors.textSecondary },
   empty: { padding: Spacing.lg, alignItems: 'center', gap: Spacing.xs },
   emptyText: { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center' },
+  showMoreBtn: {
+    alignSelf: 'center',
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryBg,
+    marginBottom: Spacing.sm,
+  },
+  showMoreText: { ...Typography.caption, color: Colors.primary, fontWeight: '700' },
 
   timelineRow: {
     flexDirection: 'row',

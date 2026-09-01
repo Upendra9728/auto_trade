@@ -10,6 +10,7 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/
 import EmptyState from '../../../components/EmptyState';
 import Pagination from '../../../components/Pagination';
 import DateRangeFilter from '../../../components/DateRangeFilter';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import { Feather } from '@expo/vector-icons';
 import type { AdminUser, PaginationMeta } from '../../../types';
 
@@ -109,17 +110,10 @@ export default function AdminUsersScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <Text style={styles.pageTitle}>Users ({meta?.total ?? users.length})</Text>
-        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} disabled={exporting}>
-          {exporting ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Feather name="download" size={14} color={Colors.primary} />
-          )}
-          <Text style={styles.exportText}>Export</Text>
-        </TouchableOpacity>
-      </View>
+      <AdminScreenHeader
+        title={`Users (${meta?.total ?? users.length})`}
+        rightAction={{ icon: 'download', label: 'Export', onPress: handleExport, loading: exporting }}
+      />
 
       <View style={styles.searchBar}>
         <Feather name="search" size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />

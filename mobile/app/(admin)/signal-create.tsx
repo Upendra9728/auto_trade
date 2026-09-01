@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl,
-  Modal, Pressable,
+  Modal, Pressable, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { Feather } from '@expo/vector-icons';
+import AdminScreenHeader from '../../components/AdminScreenHeader';
 import type { UserGroup } from '../../types';
 
 const SEGMENTS = ['NSE_FNO', 'BSE_FNO', 'NSE_EQ', 'BSE_EQ'];
@@ -31,7 +32,7 @@ const DEFAULT_FORM = {
 };
 
 export default function SignalCreateScreen() {
-  const [entryMode, setEntryMode] = useState<'form' | 'paste'>('paste');
+  const [entryMode, setEntryMode] = useState<'quick' | 'paste' | 'form'>('quick');
   const [rawSignal, setRawSignal] = useState(DEFAULT_RAW_SIGNAL);
   const [lotSize, setLotSize] = useState<number | null>(null);
   const [hasParsed, setHasParsed] = useState(false);
@@ -41,6 +42,19 @@ export default function SignalCreateScreen() {
   const [lookingUp, setLookingUp] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Quick Select (symbol -> expiry -> CE/PE -> strike, driven by the scrip sheet)
+  const [quickSymbols, setQuickSymbols] = useState<string[]>([]);
+  const [quickSymbol, setQuickSymbol] = useState<string | null>(null);
+  const [quickExpiries, setQuickExpiries] = useState<string[]>([]);
+  const [quickExpiry, setQuickExpiry] = useState<string | null>(null);
+  const [quickLoadingExpiries, setQuickLoadingExpiries] = useState(false);
+  const [quickOptionType, setQuickOptionType] = useState<'CE' | 'PE' | null>(null);
+  const [quickStrikes, setQuickStrikes] = useState<{ strike: number; option_types: string[] }[]>([]);
+  const [quickStrike, setQuickStrike] = useState<number | null>(null);
+  const [quickLoadingStrikes, setQuickLoadingStrikes] = useState(false);
+  const [strikeModalVisible, setStrikeModalVisible] = useState(false);
+  const [strikeSearchText, setStrikeSearchText] = useState('');
+
   // Audience picker
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number>>(new Set());
@@ -49,7 +63,84 @@ export default function SignalCreateScreen() {
 
   useEffect(() => {
     adminApi.getGroups().then(setGroups).catch(() => {});
+    adminApi.scripSymbols().then(setQuickSymbols).catch(() => {});
   }, []);
+
+  const selectQuickSymbol = (symbol: string) => {
+    setQuickSymbol(symbol);
+    setQuickExpiry(null);
+    setQuickOptionType(null);
+    setQuickStrikes([]);
+    setQuickStrike(null);
+    setScripInfo(null);
+    setForm((prev) => ({ ...prev, security_id: '' }));
+    setQuickLoadingExpiries(true);
+    adminApi.scripExpiries(symbol)
+      .then(setQuickExpiries)
+      .catch(() => setQuickExpiries([]))
+      .finally(() => setQuickLoadingExpiries(false));
+  };
+
+  const selectQuickExpiry = (expiry: string) => {
+    if (!quickSymbol) return;
+    setQuickExpiry(expiry);
+    setQuickOptionType(null);
+    setQuickStrike(null);
+    setScripInfo(null);
+    setForm((prev) => ({ ...prev, security_id: '' }));
+    setQuickLoadingStrikes(true);
+    adminApi.scripStrikes(quickSymbol, expiry)
+      .then(setQuickStrikes)
+      .catch(() => setQuickStrikes([]))
+      .finally(() => setQuickLoadingStrikes(false));
+  };
+
+  const selectQuickOptionType = (type: 'CE' | 'PE') => {
+    setQuickOptionType(type);
+    setQuickStrike(null);
+    setScripInfo(null);
+    setForm((prev) => ({ ...prev, security_id: '' }));
+  };
+
+  const selectQuickStrike = async (strike: number) => {
+    if (!quickSymbol || !quickExpiry || !quickOptionType) return;
+    setQuickStrike(strike);
+    setStrikeModalVisible(false);
+    setLookingUp(true);
+    setScripInfo(null);
+    const exchange = quickSymbol.includes('SENSEX') || quickSymbol.includes('BANKEX') ? 'BSE' : 'NSE';
+    try {
+      const results = await adminApi.scripSearch({
+        symbol: quickSymbol,
+        strike,
+        option_type: quickOptionType,
+        expiry: quickExpiry,
+        exchange,
+      });
+      if (results.length > 0) {
+        const match = results[0];
+        setLotSize(match.lot_size);
+        setForm((prev) => ({
+          ...prev,
+          title: `${quickSymbol} ${strike}${quickOptionType} ${match.expiry_date}`,
+          security_id: match.security_id,
+          exchange_segment: match.exchange_segment,
+          quantity: prev.quantity || String(match.lot_size),
+        }));
+        setScripInfo({ found: true, tradingSymbol: match.trading_symbol, expiryDate: match.expiry_date });
+      } else {
+        setScripInfo({ found: false });
+      }
+    } catch {
+      setScripInfo({ found: false });
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  const filteredStrikes = quickStrikes
+    .filter((s) => !quickOptionType || s.option_types.includes(quickOptionType))
+    .filter((s) => !strikeSearchText.trim() || String(s.strike).includes(strikeSearchText.trim()));
 
   // Pull-to-refresh resets the signal creation draft back to default state.
   const handleRefresh = () => {
@@ -60,6 +151,11 @@ export default function SignalCreateScreen() {
     setLotSize(null);
     setHasParsed(false);
     setScripInfo(null);
+    setQuickSymbol(null);
+    setQuickExpiry(null);
+    setQuickOptionType(null);
+    setQuickStrikes([]);
+    setQuickStrike(null);
     setRefreshing(false);
   };
 
@@ -198,13 +294,7 @@ export default function SignalCreateScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.pageTitle}>New Signal</Text>
-          <View style={{ width: 60 }} />
-        </View>
+        <AdminScreenHeader title="New Signal" onBack={() => router.back()} />
 
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -221,6 +311,12 @@ export default function SignalCreateScreen() {
         >
           <View style={styles.modeToggle}>
             <TouchableOpacity
+              style={[styles.modeBtn, entryMode === 'quick' && styles.modeBtnActive]}
+              onPress={() => setEntryMode('quick')}
+            >
+              <Text style={[styles.modeBtnText, entryMode === 'quick' && styles.modeBtnTextActive]}>Quick Select</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.modeBtn, entryMode === 'paste' && styles.modeBtnActive]}
               onPress={() => setEntryMode('paste')}
             >
@@ -230,9 +326,145 @@ export default function SignalCreateScreen() {
               style={[styles.modeBtn, entryMode === 'form' && styles.modeBtnActive]}
               onPress={() => setEntryMode('form')}
             >
-              <Text style={[styles.modeBtnText, entryMode === 'form' && styles.modeBtnTextActive]}>Fill Form</Text>
+              <Text style={[styles.modeBtnText, entryMode === 'form' && styles.modeBtnTextActive]}>Manual Form</Text>
             </TouchableOpacity>
           </View>
+
+          {entryMode === 'quick' && (
+            <>
+              <View style={styles.pasteCard}>
+                <Text style={styles.label}>1. Symbol</Text>
+                {quickSymbols.length === 0 ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <View style={styles.chips}>
+                    {quickSymbols.map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[styles.chip, quickSymbol === s && styles.chipActive]}
+                        onPress={() => selectQuickSymbol(s)}
+                      >
+                        <Text style={[styles.chipText, quickSymbol === s && styles.chipTextActive]}>{s}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {quickSymbol && (
+                  <>
+                    <Text style={styles.label}>2. Expiry</Text>
+                    {quickLoadingExpiries ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : quickExpiries.length === 0 ? (
+                      <Text style={styles.parsedScripWarn}>No upcoming expiries found for {quickSymbol}.</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={[styles.chips, { flexWrap: 'nowrap' }]}>
+                          {quickExpiries.map((e) => (
+                            <TouchableOpacity
+                              key={e}
+                              style={[styles.chip, quickExpiry === e && styles.chipActive]}
+                              onPress={() => selectQuickExpiry(e)}
+                            >
+                              <Text style={[styles.chipText, quickExpiry === e && styles.chipTextActive]}>{e}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    )}
+                  </>
+                )}
+
+                {quickExpiry && (
+                  <>
+                    <Text style={styles.label}>3. Option Type</Text>
+                    <View style={styles.toggle}>
+                      {(['CE', 'PE'] as const).map((t) => (
+                        <TouchableOpacity
+                          key={t}
+                          style={[styles.toggleBtn, quickOptionType === t && (t === 'CE' ? styles.buyActive : styles.sellActive)]}
+                          onPress={() => selectQuickOptionType(t)}
+                        >
+                          <Text style={[styles.toggleText, quickOptionType === t && { color: '#fff' }]}>{t}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {quickOptionType && (
+                  <>
+                    <Text style={styles.label}>4. Strike</Text>
+                    <TouchableOpacity
+                      style={styles.input}
+                      onPress={() => { setStrikeSearchText(''); setStrikeModalVisible(true); }}
+                      disabled={quickLoadingStrikes}
+                    >
+                      {quickLoadingStrikes ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Text style={{ color: quickStrike != null ? Colors.text : Colors.textMuted, fontSize: 15 }}>
+                          {quickStrike != null ? `${quickStrike} ${quickOptionType}` : `Tap to pick a strike (${filteredStrikes.length} available)`}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+
+              {lookingUp && (
+                <View style={styles.parsedScripRow}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.parsedScripText}>Looking up security ID…</Text>
+                </View>
+              )}
+
+              {scripInfo && !scripInfo.found && (
+                <Text style={styles.parsedScripWarn}>⚠️ No contract found for {quickSymbol} {quickStrike}{quickOptionType} on {quickExpiry}. Try Manual Form instead.</Text>
+              )}
+
+              {scripInfo?.found && (
+                <View style={styles.parsedPreview}>
+                  <Text style={styles.parsedPreviewLabel}>Signal Preview</Text>
+                  <Text style={styles.parsedTitle} numberOfLines={2}>{form.title}</Text>
+                  <Text style={styles.parsedScripOk}>✅ {scripInfo.tradingSymbol} · ID: {form.security_id} · Expiry: {scripInfo.expiryDate}</Text>
+
+                  <View style={styles.toggle}>
+                    {(['BUY', 'SELL'] as const).map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.toggleBtn, form.transaction_type === t && (t === 'BUY' ? styles.buyActive : styles.sellActive)]}
+                        onPress={() => set('transaction_type')(t)}
+                      >
+                        <Text style={[styles.toggleText, form.transaction_type === t && { color: '#fff' }]}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Field label="Quantity *" value={form.quantity} onChangeText={set('quantity')} placeholder="e.g. 1300" keyboardType="numeric" />
+                  <Field label="Entry Price *" value={form.price} onChangeText={set('price')} placeholder="3" keyboardType="decimal-pad" />
+                  <Field label="Target Price *" value={form.target_price} onChangeText={set('target_price')} placeholder="15" keyboardType="decimal-pad" />
+                  <Field label="Stop Loss Price *" value={form.stop_loss_price} onChangeText={set('stop_loss_price')} placeholder="0" keyboardType="decimal-pad" />
+                  <Field label="Trailing Jump" value={form.trailing_jump} onChangeText={set('trailing_jump')} placeholder="0" keyboardType="decimal-pad" />
+
+                  <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />
+
+                  <TouchableOpacity
+                    style={[styles.submitBtn, loading && { opacity: 0.55 }]}
+                    onPress={handleCreate}
+                    disabled={loading}
+                  >
+                    {loading ? <ActivityIndicator color="#fff" /> : (
+                      <View style={styles.submitContent}>
+                        <Feather name="send" size={18} color="#fff" />
+                        <Text style={styles.submitText}>Broadcast Signal</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
 
           {entryMode === 'paste' && (
             <View style={styles.pasteCard}>
@@ -275,20 +507,29 @@ export default function SignalCreateScreen() {
               {lookingUp && (
                 <View style={styles.parsedScripRow}>
                   <ActivityIndicator size="small" color={Colors.primary} />
-                  <Text style={styles.parsedScripText}>Looking up security ID\u2026</Text>
+                  <Text style={styles.parsedScripText}>Looking up security ID…</Text>
                 </View>
               )}
               {scripInfo?.found && (
-                <Text style={styles.parsedScripOk}>\u2705 {scripInfo.tradingSymbol} \u00b7 ID: {form.security_id} \u00b7 Expiry: {scripInfo.expiryDate}</Text>
+                <Text style={styles.parsedScripOk}>✅ {scripInfo.tradingSymbol} · ID: {form.security_id} · Expiry: {scripInfo.expiryDate}</Text>
               )}
               {scripInfo && !scripInfo.found && (
-                <Text style={styles.parsedScripWarn}>\u26a0\ufe0f Security ID not found \u2014 switch to Fill Form to enter it manually</Text>
-              )}              <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />              <TouchableOpacity
+                <Text style={styles.parsedScripWarn}>⚠️ Security ID not found — switch to Manual Form to enter it manually</Text>
+              )}
+
+              <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />
+
+              <TouchableOpacity
                 style={[styles.submitBtn, loading && { opacity: 0.55 }]}
                 onPress={handleCreate}
                 disabled={loading}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>🚀 Broadcast Signal</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : (
+                  <View style={styles.submitContent}>
+                    <Feather name="send" size={18} color="#fff" />
+                    <Text style={styles.submitText}>Broadcast Signal</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
           )}
@@ -388,13 +629,46 @@ export default function SignalCreateScreen() {
             onPress={handleCreate}
             disabled={loading}
           >
-            {loading
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.submitText}>🚀 Broadcast Signal</Text>}
+            {loading ? <ActivityIndicator color="#fff" /> : (
+              <View style={styles.submitContent}>
+                <Feather name="send" size={18} color="#fff" />
+                <Text style={styles.submitText}>Broadcast Signal</Text>
+              </View>
+            )}
           </TouchableOpacity>
           </>}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Strike Picker Modal (Quick Select mode) */}
+      <Modal visible={strikeModalVisible} transparent animationType="slide" onRequestClose={() => setStrikeModalVisible(false)}>
+        <Pressable style={audienceStyles.backdrop} onPress={() => setStrikeModalVisible(false)} />
+        <View style={audienceStyles.sheet}>
+          <Text style={audienceStyles.sheetTitle}>Select Strike</Text>
+          <Text style={audienceStyles.sheetSub}>{quickSymbol} · {quickExpiry} · {quickOptionType}</Text>
+          <TextInput
+            style={styles.input}
+            value={strikeSearchText}
+            onChangeText={setStrikeSearchText}
+            placeholder="Search strike, e.g. 23800"
+            placeholderTextColor={Colors.textMuted}
+            keyboardType="numeric"
+            autoFocus
+          />
+          <FlatList
+            data={filteredStrikes}
+            keyExtractor={(item) => String(item.strike)}
+            style={{ maxHeight: 280, marginTop: Spacing.sm }}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity style={audienceStyles.groupRow} onPress={() => selectQuickStrike(item.strike)}>
+                <Text style={audienceStyles.groupRowName}>{item.strike}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<Text style={{ padding: Spacing.md, color: Colors.textMuted, textAlign: 'center' }}>No strikes match.</Text>}
+          />
+        </View>
+      </Modal>
 
       {/* Audience Picker Modal */}
       <Modal visible={audiencePickerVisible} transparent animationType="slide" onRequestClose={() => setAudiencePickerVisible(false)}>
@@ -490,13 +764,6 @@ function Field({ label, value, onChangeText, placeholder, keyboardType = 'defaul
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  headerBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  backText: { color: Colors.primary, fontSize: 15, fontWeight: '600', width: 60 },
-  pageTitle: { ...Typography.h3 },
   scroll: { padding: Spacing.lg, gap: Spacing.md },
   modeToggle: {
     flexDirection: 'row',
@@ -610,6 +877,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, borderRadius: Radius.sm,
     paddingVertical: 16, alignItems: 'center', marginTop: Spacing.sm,
   },
+  submitContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 

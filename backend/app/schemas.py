@@ -147,6 +147,9 @@ class SignalResponse(BaseModel):
     exchange_confirmed: int | None = None
     exchange_rejected: int | None = None
     awaiting_confirmation: int | None = None
+    # Count of 'placed' notifications that are still actually cancellable/modifiable
+    # at the exchange (mirrors the exact filter used by the bulk cancel/modify endpoints).
+    cancellable_count: int | None = None
     # IDs of the groups this signal was targeted at (None = all eligible users)
     target_group_ids: list[int] | None = None
 

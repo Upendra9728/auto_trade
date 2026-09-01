@@ -4,6 +4,7 @@ import {
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
@@ -12,10 +13,12 @@ import StatusBadge from '../../../components/StatusBadge';
 import EmptyState from '../../../components/EmptyState';
 import Pagination from '../../../components/Pagination';
 import DateRangeFilter from '../../../components/DateRangeFilter';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import { Feather } from '@expo/vector-icons';
 import type { Signal, PaginationMeta } from '../../../types';
 
 export default function AdminSignalsScreen() {
+  const insets = useSafeAreaInsets();
   const [signals, setSignals] = useState<Signal[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -125,13 +128,7 @@ export default function AdminSignalsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <Text style={styles.pageTitle}>Signals</Text>
-        <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/(admin)/signal-create')}>
-          <Feather name="plus" size={16} color="#fff" />
-          <Text style={styles.createText}>New Signal</Text>
-        </TouchableOpacity>
-      </View>
+      <AdminScreenHeader title="Signals" />
 
       <View style={styles.filterBar}>
         <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
@@ -151,11 +148,19 @@ export default function AdminSignalsScreen() {
         renderItem={renderItem}
         contentContainerStyle={[styles.list, !signals.length && { flex: 1 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
-        ListEmptyComponent={<EmptyState icon="radio" title="No signals yet" subtitle='Tap "New Signal" to broadcast a trading signal to all users.' />}
+        ListEmptyComponent={<EmptyState icon="radio" title="No signals yet" subtitle='Tap the + button below to broadcast a trading signal to all users.' />}
         showsVerticalScrollIndicator={false}
       />
 
       <Pagination meta={meta} onPageChange={setPage} loading={loading} />
+
+      <TouchableOpacity
+        style={[styles.fab, { bottom: 60 + insets.bottom + Spacing.md }]}
+        onPress={() => router.push('/(admin)/signal-create')}
+        activeOpacity={0.85}
+      >
+        <Feather name="plus" size={26} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -172,17 +177,6 @@ function ProgressPill({ label, value, color }: { label: string; value: number; c
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  pageTitle: { ...Typography.h3 },
-  createBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.sm,
-  },
-  createText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   filterBar: {
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
     backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
@@ -208,4 +202,17 @@ const styles = StyleSheet.create({
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   timeText: { ...Typography.caption },
   cancelLink: { fontSize: 13, color: Colors.error, fontWeight: '700' },
+  fab: {
+    position: 'absolute',
+    right: Spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadow.card,
+    shadowOpacity: 0.25,
+    elevation: 6,
+  },
 });

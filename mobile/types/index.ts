@@ -60,6 +60,8 @@ export interface Signal {
   exchange_confirmed?: number;
   exchange_rejected?: number;
   awaiting_confirmation?: number;
+  // How many 'placed' notifications are still actually cancellable/modifiable at the exchange
+  cancellable_count?: number;
   // Group IDs this signal was targeted to (undefined/null = all eligible users)
   target_group_ids?: number[] | null;
 }
@@ -241,6 +243,15 @@ export interface Dashboard {
     total_realized_pnl?: number;
     total_unrealized_pnl?: number;
   };
+  pending_approvals: number;
+  recent_signals: {
+    id: number;
+    title: string;
+    status: 'active' | 'cancelled';
+    created_at: string;
+    total_notified: number;
+    placed: number;
+  }[];
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────

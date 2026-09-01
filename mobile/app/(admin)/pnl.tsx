@@ -10,6 +10,7 @@ import { adminApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateIST } from '../../utils/time';
 import EmptyState from '../../components/EmptyState';
+import AdminScreenHeader from '../../components/AdminScreenHeader';
 import type { AdminUserPnlRow, UserPosition } from '../../types';
 
 export default function AdminPnlScreen() {
@@ -126,15 +127,7 @@ export default function AdminPnlScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={20} color={Colors.primary} />
-          <Text style={styles.backText}>Dashboard</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageTitle}>P&L & Positions</Text>
-        <View style={{ width: 60 }} />
-      </View>
+      <AdminScreenHeader title="P&L & Positions" onBack={() => router.back()} />
 
       {/* Overview Totals Card */}
       <View style={styles.overviewCard}>

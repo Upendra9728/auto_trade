@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow, moderateScale, Screen } from '../../../constants/theme';
 import { formatDateTimeIST } from '../../../utils/time';
@@ -13,6 +14,7 @@ import StatusBadge from '../../../components/StatusBadge';
 import LiveStatusBadge from '../../../components/LiveStatusBadge';
 import Pagination from '../../../components/Pagination';
 import OrderTimeline from '../../../components/OrderTimeline';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import type {
   Signal, AdminSignalNotificationRow, AdminSignalNotificationsResponse,
   SignalOrderModifyPayload, OrderActionResult, OrderEvent,
@@ -219,7 +221,7 @@ export default function SignalDetailScreen() {
     } finally { setActionLoading(false); }
   };
 
-  const hasActivePlaced = signal != null && signal.status === 'active' && (signal.placed ?? 0) > 0;
+  const hasActivePlaced = signal != null && signal.status === 'active' && (signal.cancellable_count ?? 0) > 0;
 
   const renderRow = ({ item: n }: { item: AdminSignalNotificationRow }) => {
     const isActivePlaced = n.status === 'placed' && !TERMINAL_LIVE.has(n.live_status ?? '');
@@ -255,10 +257,12 @@ export default function SignalDetailScreen() {
           {isActivePlaced && (
             <View style={styles.rowActions}>
               <TouchableOpacity style={styles.rowActionBtn} onPress={() => handleCancelOne(n)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={styles.rowActionCancel}>✕ Cancel</Text>
+                <Feather name="x" size={12} color={Colors.error} />
+                <Text style={styles.rowActionCancel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.rowActionBtn} onPress={() => closeModal(() => openModify(n.notification_id))} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={styles.rowActionModify}>✎ Modify</Text>
+                <Feather name="edit-2" size={12} color={Colors.primary} />
+                <Text style={styles.rowActionModify}>Modify</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -278,7 +282,8 @@ export default function SignalDetailScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.center}>
-          <Text style={{ color: Colors.error, textAlign: 'center', marginBottom: Spacing.md }}>❌ {signalError}</Text>
+          <Feather name="alert-circle" size={28} color={Colors.error} style={{ marginBottom: Spacing.sm }} />
+          <Text style={{ color: Colors.error, textAlign: 'center', marginBottom: Spacing.md }}>{signalError}</Text>
           <TouchableOpacity style={[styles.actionBtn, styles.modifyBtn]} onPress={() => { setSignalError(null); loadSignal(); }}>
             <Text style={styles.modifyBtnText}>Retry</Text>
           </TouchableOpacity>
@@ -298,14 +303,7 @@ export default function SignalDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header bar */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageTitle} numberOfLines={1}>Signal #{signal.id}</Text>
-        <View style={{ width: 60 }} />
-      </View>
+      <AdminScreenHeader title={`Signal #${signal.id}`} onBack={() => router.back()} />
 
       <FlatList
         data={notifPage?.items ?? []}
@@ -341,7 +339,12 @@ export default function SignalDetailScreen() {
                     onPress={handleCancelAll}
                     disabled={actionLoading}
                   >
-                    {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.cancelAllText}>✕ Cancel All Orders</Text>}
+                    {actionLoading ? <ActivityIndicator size="small" color="#fff" /> : (
+                      <>
+                        <Feather name="x-circle" size={14} color="#fff" />
+                        <Text style={styles.cancelAllText}>Cancel All Orders</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                 )}
                 {hasActivePlaced && (
@@ -350,7 +353,8 @@ export default function SignalDetailScreen() {
                     onPress={() => openModify(null)}
                     disabled={actionLoading}
                   >
-                    <Text style={styles.modifyBtnText}>✎ Modify All</Text>
+                    <Feather name="edit-2" size={14} color={Colors.primary} />
+                    <Text style={styles.modifyBtnText}>Modify All</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -405,7 +409,7 @@ export default function SignalDetailScreen() {
                 <Text style={styles.modalEmail} numberOfLines={1}>{selectedNotif?.user_email}</Text>
               </View>
               <TouchableOpacity onPress={() => closeModal()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Text style={styles.closeBtn}>✕</Text>
+                <Feather name="x" size={22} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -578,13 +582,6 @@ function ModifyField({ label, value, onChangeText }: { label: string; value: str
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  headerBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
-    backgroundColor: Colors.surface, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  backText: { color: Colors.primary, fontSize: moderateScale(15), fontWeight: '600', width: 60 },
-  pageTitle: { ...Typography.h3, flex: 1, textAlign: 'center' },
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xl },
   header: { gap: Spacing.md, marginBottom: Spacing.sm },
   signalCard: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: 8 },
@@ -594,7 +591,10 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', backgroundColor: Colors.background, borderRadius: Radius.sm, paddingVertical: 8 },
   timeText: { ...Typography.caption },
   actionsBar: { flexDirection: 'row', gap: Spacing.sm },
-  actionBtn: { flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center' },
+  actionBtn: {
+    flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', gap: 6,
+  },
   cancelAllBtn: { backgroundColor: Colors.error },
   cancelAllText: { color: '#fff', fontSize: moderateScale(13), fontWeight: '700' },
   modifyBtn: { backgroundColor: Colors.primaryBg, borderWidth: 1.5, borderColor: Colors.primary },
@@ -628,8 +628,9 @@ const styles = StyleSheet.create({
   exitTag: { fontSize: moderateScale(12), fontWeight: '700' },
   rowActions: { flexDirection: 'row', gap: 6, marginTop: 4 },
   rowActionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 5, borderRadius: Radius.sm,
-    borderWidth: 1, borderColor: Colors.border, minHeight: 28, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border, minHeight: 28, justifyContent: 'center',
   },
   rowActionCancel: { fontSize: moderateScale(11), color: Colors.error, fontWeight: '700' },
   rowActionModify: { fontSize: moderateScale(11), color: Colors.primary, fontWeight: '700' },

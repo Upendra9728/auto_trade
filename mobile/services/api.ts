@@ -256,8 +256,8 @@ export const adminApi = {
     post<OrderActionResult>(`/api/admin/notifications/${notifId}/modify-order`, data),
   createSignal: (data: SignalCreatePayload) => post<Signal>('/api/admin/signals', data),
   cancelSignal: (id: number) => put<{ status: string }>(`/api/admin/signals/${id}/cancel`),
-  getNotificationEvents: (notifId: number) =>
-    get<OrderEvent[]>(`/api/admin/notifications/${notifId}/events`),
+  getNotificationEvents: (notifId: number, limit = 100) =>
+    get<OrderEvent[]>(`/api/admin/notifications/${notifId}/events${buildQuery({ limit })}`),
   getUsersPnl: (params: { search?: string } = {}) =>
     get<AdminUserPnlRow[]>(`/api/admin/users/pnl${buildQuery({ search: params.search })}`),
   getPositions: (params: { userId?: number } = {}) =>
@@ -295,6 +295,13 @@ export const adminApi = {
       option_type: string;
     }>>(`/api/admin/scrip-search?${q.toString()}`);
   },
+  scripSymbols: () => get<string[]>('/api/admin/scrip-symbols'),
+  scripExpiries: (symbol: string) =>
+    get<string[]>(`/api/admin/scrip-expiries${buildQuery({ symbol })}`),
+  scripStrikes: (symbol: string, expiry: string) =>
+    get<Array<{ strike: number; option_types: string[] }>>(
+      `/api/admin/scrip-strikes${buildQuery({ symbol, expiry })}`,
+    ),
 
   // ── Groups ───────────────────────────────────────────────────────────────────────
   getGroups: () => get<UserGroup[]>('/api/admin/groups'),

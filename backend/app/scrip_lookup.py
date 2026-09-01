@@ -195,6 +195,41 @@ async def scrip_master_refresh_loop() -> None:
             reload()
 
 
+def list_symbols() -> list[str]:
+    """Return all distinct index/underlying symbols available for quick-select, sorted alphabetically."""
+    _load()
+    return sorted({key[0] for key in _BY_CONTRACT})
+
+
+def list_expiries(symbol: str) -> list[str]:
+    """Return upcoming expiry dates (YYYY-MM-DD, sorted) available for a symbol."""
+    _load()
+    symbol = symbol.upper().strip()
+    today = dt.date.today().isoformat()
+    expiries = {
+        key[3] for key in _INDEX if key[0] == symbol and key[3] >= today
+    }
+    return sorted(expiries)
+
+
+def list_strikes(symbol: str, expiry: str) -> list[dict]:
+    """
+    Return distinct strikes for a symbol+expiry, each with which option types (CE/PE) exist.
+    Sorted ascending by strike price.
+    """
+    _load()
+    symbol = symbol.upper().strip()
+    expiry = expiry.strip()[:10]
+    strikes: dict[float, set[str]] = {}
+    for key in _INDEX:
+        if key[0] == symbol and key[3] == expiry:
+            strikes.setdefault(key[1], set()).add(key[2])
+    return [
+        {"strike": strike, "option_types": sorted(types)}
+        for strike, types in sorted(strikes.items())
+    ]
+
+
 def search(
     *,
     symbol: str,

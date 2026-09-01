@@ -9,6 +9,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 import { Feather } from '@expo/vector-icons';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import type { UserGroup } from '../../../types';
 
 export default function GroupsScreen() {
@@ -112,13 +113,10 @@ export default function GroupsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <Text style={styles.pageTitle}>Groups</Text>
-        <TouchableOpacity style={styles.createBtn} onPress={() => setCreateVisible(true)}>
-          <Feather name="plus" size={16} color="#fff" />
-          <Text style={styles.createText}>New Group</Text>
-        </TouchableOpacity>
-      </View>
+      <AdminScreenHeader
+        title="Groups"
+        rightAction={{ icon: 'plus', label: 'New Group', onPress: () => setCreateVisible(true) }}
+      />
 
       <FlatList
         data={groups}

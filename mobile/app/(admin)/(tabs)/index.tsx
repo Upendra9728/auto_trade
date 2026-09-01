@@ -8,13 +8,16 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../../contexts/AuthContext';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import { formatDateTimeIST } from '../../../utils/time';
+import StatusBadge from '../../../components/StatusBadge';
 import type { Dashboard } from '../../../types';
 
 export default function AdminDashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -26,6 +29,14 @@ export default function AdminDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      await adminApi.exportOrders({});
+    } catch {}
+    finally { setExporting(false); }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -33,6 +44,9 @@ export default function AdminDashboard() {
       </SafeAreaView>
     );
   }
+
+  const pendingApprovals = stats?.pending_approvals ?? 0;
+  const ipv6Missing = Math.max((stats?.users.active ?? 0) - (stats?.users.with_ipv6_assigned ?? 0), 0);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -50,102 +64,112 @@ export default function AdminDashboard() {
           <View style={styles.adminPill}><Text style={styles.adminPillText}>ADMIN</Text></View>
         </View>
 
-        {/* Users section */}
-        <Text style={styles.sectionTitle}>Users</Text>
-        <View style={styles.grid}>
-          <StatCard label="Total" value={stats?.users.total ?? 0} color={Colors.primary} />
-          <StatCard label="Active" value={stats?.users.active ?? 0} color={Colors.success} />
-          <StatCard label="With IPv6" value={stats?.users.with_ipv6_assigned ?? 0} color={Colors.info} />
-          <StatCard label="With Dhan" value={stats?.users.with_dhan_credential ?? 0} color={Colors.warning} />
+        {/* Needs Attention */}
+        {(pendingApprovals > 0 || ipv6Missing > 0) && (
+          <View style={styles.attentionCard}>
+            <Text style={styles.sectionTitle}>Needs Attention</Text>
+            {pendingApprovals > 0 && (
+              <TouchableOpacity style={styles.attentionRow} onPress={() => router.push('/(admin)/(tabs)/approvals')}>
+                <Feather name="user-check" size={16} color={Colors.warning} />
+                <Text style={styles.attentionText}>
+                  {pendingApprovals} user{pendingApprovals > 1 ? 's' : ''} awaiting approval
+                </Text>
+                <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+            {ipv6Missing > 0 && (
+              <TouchableOpacity style={styles.attentionRow} onPress={() => router.push('/(admin)/(tabs)/users')}>
+                <Feather name="wifi-off" size={16} color={Colors.warning} />
+                <Text style={styles.attentionText}>
+                  {ipv6Missing} active user{ipv6Missing > 1 ? 's' : ''} missing an IPv6
+                </Text>
+                <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* Quick Actions */}
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.quickActionsRow}>
+          <QuickAction icon="plus-circle" label="New Signal" onPress={() => router.push('/(admin)/signal-create')} />
+          <QuickAction icon="download" label="Export Report" onPress={handleExportAll} loading={exporting} />
+          <QuickAction icon="user-check" label="Approvals" onPress={() => router.push('/(admin)/(tabs)/approvals')} />
+          <QuickAction icon="pie-chart" label="P&L" onPress={() => router.push('/(admin)/pnl')} />
         </View>
 
-        {/* Signals section */}
-        <Text style={styles.sectionTitle}>Signals</Text>
+        {/* Key metrics */}
+        <Text style={styles.sectionTitle}>Overview</Text>
         <View style={styles.grid}>
-          <StatCard label="Total" value={stats?.signals.total ?? 0} color={Colors.primary} />
-          <StatCard label="Active" value={stats?.signals.active ?? 0} color={Colors.success} />
-        </View>
-
-        {/* Orders section */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={styles.sectionTitle}>Orders & P&L</Text>
-          <TouchableOpacity
-            style={styles.pnlLinkBtn}
-            onPress={() => router.push('/(admin)/pnl')}
-          >
-            <Text style={styles.pnlLinkText}>View All P&L →</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.grid}>
+          <StatCard label="Active Signals" value={stats?.signals.active ?? 0} color={Colors.primary} />
           <StatCard label="Live Confirmed" value={stats?.orders.placed ?? 0} color={Colors.success} />
-          <StatCard label="Pending" value={stats?.orders.pending ?? 0} color={Colors.warning} />
-          <StatCard label="Awaiting Live" value={stats?.orders.awaiting_confirmation ?? 0} color={Colors.info} />
-          <StatCard label="Rejected / Failed" value={(stats?.orders.exchange_rejected ?? 0) + (stats?.orders.failed ?? 0)} color={Colors.error} />
+          <StatCard label="Pending Approvals" value={pendingApprovals} color={Colors.warning} />
+          <StatCard
+            label="Realized P&L"
+            value={stats?.orders.total_realized_pnl ?? 0}
+            color={(stats?.orders.total_realized_pnl ?? 0) >= 0 ? Colors.success : Colors.error}
+            isCurrency
+          />
         </View>
-
-        {/* P&L Total Summary Card */}
-        <TouchableOpacity
-          style={styles.pnlBannerCard}
-          onPress={() => router.push('/(admin)/pnl')}
-          activeOpacity={0.8}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={styles.pnlBannerTitle}>Total Realized P&L</Text>
-              <Text
-                style={[
-                  styles.pnlBannerValue,
-                  { color: (stats?.orders.total_realized_pnl ?? 0) >= 0 ? Colors.success : Colors.error },
-                ]}
-              >
-                {(stats?.orders.total_realized_pnl ?? 0) >= 0
-                  ? `+₹${(stats?.orders.total_realized_pnl ?? 0).toFixed(2)}`
-                  : `-₹${Math.abs(stats?.orders.total_realized_pnl ?? 0).toFixed(2)}`}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.pnlBannerTitle}>Open Unrealized</Text>
-              <Text
-                style={[
-                  styles.pnlBannerValue,
-                  { color: (stats?.orders.total_unrealized_pnl ?? 0) >= 0 ? Colors.success : Colors.error },
-                ]}
-              >
-                {(stats?.orders.total_unrealized_pnl ?? 0) >= 0
-                  ? `+₹${(stats?.orders.total_unrealized_pnl ?? 0).toFixed(2)}`
-                  : `-₹${Math.abs(stats?.orders.total_unrealized_pnl ?? 0).toFixed(2)}`}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.pnlBannerFooter}>
-            <Text style={styles.pnlBannerFooterText}>Tap to inspect per-user P&L and live Dhan positions</Text>
-            <Feather name="chevron-right" size={16} color={Colors.primary} />
-          </View>
-        </TouchableOpacity>
-
         <Text style={styles.helperText}>
           "Live Confirmed" counts only orders confirmed by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
           not just requests accepted by the API.
         </Text>
 
-        {/* Readiness warning */}
-        {(stats?.users.with_ipv6_assigned ?? 0) < (stats?.users.active ?? 0) && (
-          <View style={styles.warnBox}>
-            <Text style={styles.warnText}>
-              ⚠️ {(stats!.users.active - stats!.users.with_ipv6_assigned)} active user(s) don't have an IPv6 assigned. Go to Users to assign.
-            </Text>
-          </View>
-        )}
+        {/* Recent Signals */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.sectionTitle}>Recent Signals</Text>
+          <TouchableOpacity style={styles.pnlLinkBtn} onPress={() => router.push('/(admin)/(tabs)/signals')}>
+            <Text style={styles.pnlLinkText}>View All →</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.recentList}>
+          {stats?.recent_signals && stats.recent_signals.length > 0 ? (
+            stats.recent_signals.map((s) => <RecentSignalRow key={s.id} signal={s} />)
+          ) : (
+            <Text style={styles.helperText}>No signals created yet.</Text>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function QuickAction({ icon, label, onPress, loading }: {
+  icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void; loading?: boolean;
+}) {
+  return (
+    <TouchableOpacity style={styles.quickAction} onPress={onPress} disabled={loading} activeOpacity={0.75}>
+      {loading ? <ActivityIndicator size="small" color={Colors.primary} /> : <Feather name={icon} size={20} color={Colors.primary} />}
+      <Text style={styles.quickActionText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function RecentSignalRow({ signal }: { signal: NonNullable<Dashboard['recent_signals']>[number] }) {
+  return (
+    <TouchableOpacity
+      style={styles.recentRow}
+      onPress={() => router.push({ pathname: '/(admin)/signal/[id]', params: { id: signal.id } })}
+      activeOpacity={0.75}
+    >
+      <View style={{ flex: 1, marginRight: Spacing.sm }}>
+        <Text style={styles.recentTitle} numberOfLines={1}>{signal.title}</Text>
+        <Text style={styles.recentMeta}>{formatDateTimeIST(signal.created_at)} · {signal.placed}/{signal.total_notified} placed</Text>
+      </View>
+      <StatusBadge status={signal.status} size="sm" />
+      <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+function StatCard({ label, value, color, isCurrency }: { label: string; value: number; color: string; isCurrency?: boolean }) {
+  const display = isCurrency
+    ? (value >= 0 ? `+₹${value.toFixed(2)}` : `-₹${Math.abs(value).toFixed(2)}`)
+    : String(value);
   return (
     <View style={[styles.statCard, { borderTopColor: color, borderTopWidth: 3 }]}>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
+      <Text style={[styles.statValue, isCurrency && styles.statValueCurrency, { color }]}>{display}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -169,34 +193,38 @@ const styles = StyleSheet.create({
   sectionTitle: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.8 },
   pnlLinkBtn: { paddingVertical: 2, paddingHorizontal: 6 },
   pnlLinkText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  pnlBannerCard: {
-    backgroundColor: Colors.surface,
+  attentionCard: {
+    backgroundColor: Colors.warningBg,
     borderRadius: Radius.md,
     padding: Spacing.md,
-    ...Shadow.card,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
     gap: Spacing.sm,
   },
-  pnlBannerTitle: { ...Typography.caption, textTransform: 'uppercase', letterSpacing: 0.5 },
-  pnlBannerValue: { fontSize: 20, fontWeight: '800', marginTop: 2 },
-  pnlBannerFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+  attentionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.surface, borderRadius: Radius.sm, padding: Spacing.sm,
   },
-  pnlBannerFooterText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  attentionText: { flex: 1, fontSize: 13, color: Colors.text, fontWeight: '600' },
+  quickActionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  quickAction: {
+    flex: 1, minWidth: '22%', backgroundColor: Colors.surface, borderRadius: Radius.sm,
+    paddingVertical: Spacing.md, alignItems: 'center', gap: 6, ...Shadow.card,
+  },
+  quickActionText: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textAlign: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   statCard: {
     flex: 1, minWidth: '45%', backgroundColor: Colors.surface, borderRadius: Radius.sm,
     padding: Spacing.md, alignItems: 'center', ...Shadow.card, gap: 4,
   },
   statValue: { fontSize: 28, fontWeight: '800' },
+  statValueCurrency: { fontSize: 20 },
   statLabel: { ...Typography.caption, textTransform: 'uppercase', letterSpacing: 0.5 },
-  warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.md },
-  warnText: { fontSize: 13, color: Colors.warning, lineHeight: 18 },
   helperText: { ...Typography.caption, lineHeight: 16 },
+  recentList: { backgroundColor: Colors.surface, borderRadius: Radius.md, ...Shadow.card, overflow: 'hidden' },
+  recentRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: Colors.divider,
+  },
+  recentTitle: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  recentMeta: { ...Typography.caption, marginTop: 2 },
 });
