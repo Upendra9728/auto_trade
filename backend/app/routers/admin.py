@@ -24,6 +24,7 @@ from ..scrip_lookup import list_expiries as scrip_list_expiries_fn
 from ..scrip_lookup import list_strikes as scrip_list_strikes_fn
 from ..scrip_lookup import search_contracts as scrip_search_contracts_fn
 from ..schemas import (
+    AdminAddCreditsRequest,
     AdminSignalDetailResponse,
     AdminSignalNotificationRow,
     AdminUpdateUserRequest,
@@ -130,6 +131,7 @@ def _to_admin_user(u: User, db: Session) -> AdminUserResponse:
         assigned_ipv6=u.assigned_ipv6,
         is_active=u.is_active,
         has_dhan_credential=has_cred,
+        credits=u.credits,
         created_at=u.created_at.isoformat(),
         updated_at=u.updated_at.isoformat(),
     )
@@ -357,6 +359,40 @@ def delete_user(
     return {"status": "deleted", "user_id": str(user_id)}
 
 
+@router.post("/users/{user_id}/credits", response_model=AdminUserResponse)
+def add_user_credits(
+    user_id: int,
+    req: AdminAddCreditsRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> AdminUserResponse:
+    """Add trading signal credits to a specific user."""
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.credits += req.amount
+    user.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return _to_admin_user(user, db)
+
+
+@router.post("/users/credits/add-all", response_model=dict[str, int])
+def add_credits_to_all_users(
+    req: AdminAddCreditsRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> dict[str, int]:
+    """Add trading signal credits to all active users at once."""
+    count = db.query(User).filter(User.is_active.is_(True)).update(
+        {User.credits: User.credits + req.amount, User.updated_at: dt.datetime.utcnow()},
+        synchronize_session=False,
+    )
+    db.commit()
+    return {"updated": count}
+
+
 @router.get("/users/{user_id}/dhan-ip")
 async def get_user_dhan_ip(
     user_id: int,
@@ -559,6 +595,7 @@ def create_signal(
         .filter(
             User.is_active.is_(True),
             User.assigned_ipv6.isnot(None),
+            User.credits > 0,
             DhanCredential.is_active.is_(True),
         )
     )

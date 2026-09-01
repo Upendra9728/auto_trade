@@ -11,6 +11,7 @@ interface UpdateContextValue {
   currentVersion: string;
   apkUrl: string | null;
   forceUpdate: boolean;
+  releaseNotes: string | null;
   modalVisible: boolean;
   isDismissed: boolean;
   isDownloading: boolean;
@@ -32,6 +33,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [apkUrl, setApkUrl] = useState<string | null>(null);
   const [forceUpdate, setForceUpdate] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -47,6 +49,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       if (isNewer && info.apk_url) {
         setLatestVersion(info.latest_version);
         setApkUrl(info.apk_url);
+        setReleaseNotes(info.release_notes || null);
         setForceUpdate(true); // all updates are mandatory
         setUpdateAvailable(true);
         setModalVisible(true); // always open modal when update is available
@@ -140,6 +143,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
         currentVersion,
         apkUrl,
         forceUpdate,
+        releaseNotes,
         modalVisible,
         isDismissed,
         isDownloading,

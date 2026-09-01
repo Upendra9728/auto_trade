@@ -187,7 +187,7 @@ export const userApi = {
 
 export const systemApi = {
   getAppVersion: () =>
-    request<{ latest_version: string; apk_url: string; force_update: boolean }>(
+    request<{ latest_version: string; apk_url: string; force_update: boolean; release_notes: string }>(
       '/api/app-version',
       { method: 'GET' },
     ),
@@ -211,6 +211,10 @@ export const adminApi = {
     put<AdminUser>(`/api/admin/users/${id}`, data),
   approveUser: (id: number) => post<AdminUser>(`/api/admin/users/${id}/approve`),
   deleteUser: (id: number) => del<{ status: string }>(`/api/admin/users/${id}`),
+  addUserCredits: (id: number, amount: number) =>
+    post<AdminUser>(`/api/admin/users/${id}/credits`, { amount }),
+  addCreditsToAllUsers: (amount: number) =>
+    post<{ updated: number }>(`/api/admin/users/credits/add-all`, { amount }),
   getUserDhanIp: (id: number) =>
     get<{
       assigned_ipv6: string | null;

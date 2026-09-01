@@ -1,25 +1,29 @@
 import { Tabs } from 'expo-router';
+import { View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CreditsBanner from '../../components/CreditsBanner';
 
 export default function UserTabsLayout() {
   const insets = useSafeAreaInsets();
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: Colors.surface,
-          borderTopColor: Colors.border,
-          height: 60 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      <CreditsBanner />
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: Colors.primary,
+          tabBarInactiveTintColor: Colors.textMuted,
+          tabBarStyle: {
+            backgroundColor: Colors.surface,
+            borderTopColor: Colors.border,
+            height: 60 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
+          },
+          tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -42,5 +46,6 @@ export default function UserTabsLayout() {
         }}
       />
     </Tabs>
+    </View>
   );
 }

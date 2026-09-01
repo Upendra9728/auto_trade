@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  TextInput, RefreshControl, ActivityIndicator, Alert,
+  TextInput, RefreshControl, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -25,6 +25,9 @@ export default function AdminUsersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [bulkCreditsModalVisible, setBulkCreditsModalVisible] = useState(false);
+  const [bulkCreditsInput, setBulkCreditsInput] = useState('');
+  const [addingBulkCredits, setAddingBulkCredits] = useState(false);
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (targetPage: number, q: string, from: string | null, to: string | null) => {
@@ -64,6 +67,27 @@ export default function AdminUsersScreen() {
     }
   };
 
+  const handleBulkAddCredits = async () => {
+    const amount = parseInt(bulkCreditsInput, 10);
+    if (!amount || amount < 1) {
+      Alert.alert('Invalid amount', 'Please enter a positive number.');
+      return;
+    }
+    setAddingBulkCredits(true);
+    try {
+      const result = await adminApi.addCreditsToAllUsers(amount);
+      Alert.alert('✅ Credits added', `Added ${amount} credit(s) to ${result.updated} user(s).`);
+      setBulkCreditsModalVisible(false);
+      setBulkCreditsInput('');
+      // Reload users to show updated credits
+      load(page, search, dateFrom, dateTo);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setAddingBulkCredits(false);
+    }
+  };
+
   const renderItem = ({ item: u }: { item: AdminUser }) => (
     <TouchableOpacity
       style={styles.card}
@@ -96,6 +120,7 @@ export default function AdminUsersScreen() {
           ok={!!u.assigned_ipv6}
         />
         <Pill icon={u.has_dhan_credential ? 'check' : 'x'} label="Dhan cred" ok={u.has_dhan_credential} />
+        <Pill icon="zap" label={`${u.credits} credits`} ok={u.credits > 0} />
       </View>
     </TouchableOpacity>
   );
@@ -137,6 +162,16 @@ export default function AdminUsersScreen() {
         <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
       </View>
 
+      <View style={styles.actionBar}>
+        <TouchableOpacity
+          style={styles.bulkActionBtn}
+          onPress={() => setBulkCreditsModalVisible(true)}
+        >
+          <Feather name="plus-circle" size={16} color="#fff" />
+          <Text style={styles.bulkActionBtnText}>Add Credits to All</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={users}
         keyExtractor={(u) => String(u.id)}
@@ -148,6 +183,52 @@ export default function AdminUsersScreen() {
       />
 
       <Pagination meta={meta} onPageChange={setPage} loading={loading} />
+
+      {/* Bulk Credits Modal */}
+      <Modal
+        visible={bulkCreditsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBulkCreditsModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Credits to All Users</Text>
+            <Text style={styles.modalText}>
+              This will add the specified number of credits to all active users.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={bulkCreditsInput}
+              onChangeText={setBulkCreditsInput}
+              placeholder="Number of credits (e.g. 5)"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="number-pad"
+              editable={!addingBulkCredits}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setBulkCreditsModalVisible(false)}
+                disabled={addingBulkCredits}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, addingBulkCredits && { opacity: 0.6 }]}
+                onPress={handleBulkAddCredits}
+                disabled={addingBulkCredits}
+              >
+                {addingBulkCredits ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmBtnText}>Add Credits</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -203,4 +284,32 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', gap: 8 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full },
   pillText: { fontSize: 11, fontWeight: '600' },
+  actionBar: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
+  bulkActionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.primary, borderRadius: Radius.sm, paddingVertical: 10,
+  },
+  bulkActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg,
+    width: '100%', maxWidth: 320,
+    ...Shadow.card, elevation: 10,
+  },
+  modalTitle: { ...Typography.h3, marginBottom: Spacing.sm, textAlign: 'center' },
+  modalText: { ...Typography.bodySmall, marginBottom: Spacing.md, textAlign: 'center', color: Colors.textSecondary, lineHeight: 19 },
+  modalInput: {
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 12, fontSize: 14, color: Colors.text,
+    marginBottom: Spacing.lg, keyboardType: 'number-pad',
+  },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm },
+  modalCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center' },
+  modalCancelBtnText: { color: Colors.text, fontSize: 14, fontWeight: '700' },
+  modalConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: Radius.sm, backgroundColor: Colors.primary, alignItems: 'center' },
+  modalConfirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

@@ -100,6 +100,8 @@ async def place_order_for_notification(
         notification.dhan_order_id = order_id
         notification.placed_at = dt.datetime.utcnow()
         notification.ordered_quantity = quantity_override if quantity_override is not None else signal.quantity
+        # Deduct one credit for successful order placement
+        user.credits = max(0, user.credits - 1)
         db.commit()
         logger.info(
             "Order placed for user %s (notification %s), Dhan order ID: %s",

@@ -18,6 +18,7 @@ export default function UpdateModal() {
     latestVersion,
     currentVersion,
     forceUpdate,
+    releaseNotes,
     isDownloading,
     downloadProgress,
     closeModal,
@@ -80,6 +81,18 @@ export default function UpdateModal() {
                   v{latestVersion ?? 'Latest'}
                 </Text>
               </View>
+            </View>
+          )}
+
+          {!isDownloading && releaseNotes && (
+            <View style={styles.releaseNotesSection}>
+              <Text style={styles.releaseNotesTitle}>What's New</Text>
+              {releaseNotes.split('\n').map((note, idx) => (
+                <View key={idx} style={styles.bulletPoint}>
+                  <Text style={styles.bullet}>•</Text>
+                  <Text style={styles.bulletText}>{note.trim()}</Text>
+                </View>
+              ))}
             </View>
           )}
 
@@ -235,5 +248,34 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: '700',
     color: '#fff',
+  },
+  releaseNotesSection: {
+    width: '100%',
+    backgroundColor: Colors.background,
+    borderRadius: Radius.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  releaseNotesTitle: {
+    fontSize: moderateScale(13),
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: Spacing.sm,
+  },
+  bulletPoint: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  bullet: {
+    fontSize: moderateScale(13),
+    color: Colors.primary,
+    marginRight: 8,
+    fontWeight: '700',
+  },
+  bulletText: {
+    fontSize: moderateScale(12),
+    color: Colors.textSecondary,
+    flex: 1,
+    lineHeight: 18,
   },
 });

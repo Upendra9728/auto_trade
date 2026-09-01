@@ -33,6 +33,7 @@ class UserProfileResponse(BaseModel):
     email_verified: bool
     terms_accepted: bool = False
     terms_accepted_at: str | None = None
+    credits: int = 0
 
 
 class UserAuthResponse(BaseModel):
@@ -214,6 +215,7 @@ class AdminUserResponse(BaseModel):
     assigned_ipv6: str | None = None
     is_active: bool
     has_dhan_credential: bool
+    credits: int = 0
     created_at: str
     updated_at: str
 
@@ -222,6 +224,10 @@ class AdminUpdateUserRequest(BaseModel):
     assigned_ipv6: str | None = None
     role: Literal["user", "admin"] | None = None
     is_active: bool | None = None
+
+
+class AdminAddCreditsRequest(BaseModel):
+    amount: int = Field(ge=1, description="Number of credits to add to the user(s)")
 
 
 class AdminSignalDetailResponse(BaseModel):

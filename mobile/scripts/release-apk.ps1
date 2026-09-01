@@ -6,6 +6,11 @@
 .PARAMETER Version
     New version string, e.g. "1.0.3". Required.
 
+.PARAMETER ReleaseNotes
+    Release notes for this version. Separate multiple lines with "|".
+    Example: "Bug fixes|Performance improvements|UI polish"
+    If omitted, defaults to "Bug fixes and improvements."
+
 .PARAMETER SkipBuild
     Skip the gradlew assembleRelease step (use the existing APK on disk).
 
@@ -15,10 +20,13 @@
 
 .EXAMPLE
     .\release-apk.ps1 -Version 1.0.3
+    .\release-apk.ps1 -Version 1.0.3 -ReleaseNotes "Bug fixes|New features|Performance improvements"
 #>
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
+
+    [string]$ReleaseNotes = "Bug fixes and improvements.",
 
     [switch]$SkipBuild,
 
@@ -60,6 +68,10 @@ Set-FileContentUtf8NoBom -Path $appJsonPath -Content $appJsonText
 Write-Host "Updating backend/app/config.py app_latest_version -> $Version" -ForegroundColor Cyan
 $configText = Get-FileContentUtf8 -Path $configPath
 $configText = $configText -replace 'app_latest_version: str = "[^"]*"', "app_latest_version: str = `"$Version`""
+
+# Convert release notes from "|"-separated to "\n"-separated
+$releaseNotesEscaped = $ReleaseNotes -replace '\|', '\n'
+$configText = $configText -replace 'app_release_notes: str = "[^"]*"', "app_release_notes: str = `"$releaseNotesEscaped`""
 Set-FileContentUtf8NoBom -Path $configPath -Content $configText
 
 # ── 3. Build ────────────────────────────────────────────────────────────────

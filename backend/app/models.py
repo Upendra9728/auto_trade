@@ -27,6 +27,8 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     terms_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     terms_accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Trading signal order placement credits (1 credit = 1 successful order placed)
+    credits: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 

@@ -41,6 +41,11 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN terms_accepted_at TIMESTAMP"))
                 conn.commit()
             logger.info("Migration: added terms_accepted_at column to users")
+        if "credits" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 0"))
+                conn.commit()
+            logger.info("Migration: added credits column to users")
 
     if "dhan_credentials" in table_names:
         existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}

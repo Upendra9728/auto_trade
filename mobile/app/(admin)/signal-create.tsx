@@ -301,7 +301,7 @@ export default function SignalCreateScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <AdminScreenHeader title="New Signal" onBack={() => router.back()} />
 
         <ScrollView

@@ -59,6 +59,7 @@ def _to_profile(user: User) -> UserProfileResponse:
         email_verified=user.email_verified,
         terms_accepted=user.terms_accepted,
         terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
+        credits=user.credits,
     )
 
 

@@ -11,6 +11,7 @@ export interface User {
   email_verified: boolean;
   terms_accepted: boolean;
   terms_accepted_at?: string | null;
+  credits: number;
 }
 
 export interface AuthResponse {
@@ -134,6 +135,7 @@ export interface AdminUser {
   assigned_ipv6: string | null;
   is_active: boolean;
   has_dhan_credential: boolean;
+  credits: number;
   created_at: string;
   updated_at: string;
 }

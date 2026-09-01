@@ -224,6 +224,15 @@ def apply_live_status(
     if status in SUCCESS_TERMINAL_STATUSES:
         logger.info("Order %s CLOSED (full exit complete, exit leg tracked separately)", notif.dhan_order_id)
 
+    # Refund one credit if the order failed
+    if workflow_status_update == "failed":
+        db.execute(
+            update(User)
+            .where(User.id == notif.user_id)
+            .values({User.credits: User.credits + 1})
+        )
+        logger.info("Credit refunded to user %s for failed order (notification %s)", notif.user_id, notif.id)
+
     db.commit()
     return True
 

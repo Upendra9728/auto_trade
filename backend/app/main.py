@@ -75,4 +75,5 @@ def app_version() -> dict:
         "latest_version": settings.app_latest_version,
         "apk_url": settings.app_apk_url,
         "force_update": settings.app_force_update,
+        "release_notes": settings.app_release_notes,
     }

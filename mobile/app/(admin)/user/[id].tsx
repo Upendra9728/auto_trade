@@ -18,6 +18,8 @@ export default function UserDetailScreen() {
   const [ipv6, setIpv6] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [role, setRole] = useState<'user' | 'admin'>('user');
+  const [creditsInput, setCreditsInput] = useState('');
+  const [addingCredits, setAddingCredits] = useState(false);
   const [dhanIp, setDhanIp] = useState<{
     assigned_ipv6: string | null;
     dhan_primary_ip: string | null;
@@ -88,6 +90,25 @@ export default function UserDetailScreen() {
       Alert.alert('Error', err.message);
     } finally {
       setFixingIp(false);
+    }
+  };
+
+  const handleAddCredits = async () => {
+    const amount = parseInt(creditsInput, 10);
+    if (!amount || amount < 1) {
+      Alert.alert('Invalid amount', 'Please enter a positive number.');
+      return;
+    }
+    setAddingCredits(true);
+    try {
+      const updated = await adminApi.addUserCredits(Number(id), amount);
+      setUser(updated);
+      setCreditsInput('');
+      Alert.alert('✅ Credits added', `Added ${amount} credit(s). User now has ${updated.credits} credit(s).`);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setAddingCredits(false);
     }
   };
 
@@ -185,6 +206,34 @@ export default function UserDetailScreen() {
             </View>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Trading Credits</Text>
+          <Text style={styles.helperText}>
+            Each successful order placement costs 1 credit. Failed orders refund the credit.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: Colors.textSecondary, marginBottom: 6 }}>Current: {user?.credits ?? 0} credits</Text>
+              <TextInput
+                style={styles.input}
+                value={creditsInput}
+                onChangeText={setCreditsInput}
+                placeholder="Add credits (e.g. 5)"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="number-pad"
+                editable={!addingCredits}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.addCreditsBtn, addingCredits && { opacity: 0.6 }]}
+              onPress={handleAddCredits}
+              disabled={addingCredits}
+            >
+              {addingCredits ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.addCreditsBtnText}>Add</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Role</Text>
@@ -305,4 +354,9 @@ const styles = StyleSheet.create({
   },
   ipFixBtn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   ipActionText: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+  addCreditsBtn: {
+    paddingHorizontal: Spacing.md, paddingVertical: 12, borderRadius: Radius.sm,
+    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+  },
+  addCreditsBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

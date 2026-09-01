@@ -148,3 +148,4 @@ aws command: aws s3 cp ".\app\build\outputs\apk\release\app-release.apk" "s3://a
 
 cd mobile\scripts
 .\release-apk.ps1 -Version 1.0.5
+.\release-apk.ps1 -Version 1.5.0 -ReleaseNotes "New features|Bug fixes|Performance"
