@@ -302,6 +302,10 @@ export const adminApi = {
     get<Array<{ strike: number; option_types: string[] }>>(
       `/api/admin/scrip-strikes${buildQuery({ symbol, expiry })}`,
     ),
+  scripContracts: (query: string, limit = 30) =>
+    get<Array<{ symbol: string; expiry_date: string; option_type: string }>>(
+      `/api/admin/scrip-contracts${buildQuery({ query, limit })}`,
+    ),
 
   // ── Groups ───────────────────────────────────────────────────────────────────────
   getGroups: () => get<UserGroup[]>('/api/admin/groups'),

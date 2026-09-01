@@ -22,6 +22,7 @@ from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_
 from ..scrip_lookup import list_symbols as scrip_list_symbols_fn
 from ..scrip_lookup import list_expiries as scrip_list_expiries_fn
 from ..scrip_lookup import list_strikes as scrip_list_strikes_fn
+from ..scrip_lookup import search_contracts as scrip_search_contracts_fn
 from ..schemas import (
     AdminSignalDetailResponse,
     AdminSignalNotificationRow,
@@ -110,6 +111,12 @@ def scrip_expiries(symbol: str, _: User = Depends(get_current_admin)) -> list[st
 def scrip_strikes(symbol: str, expiry: str, _: User = Depends(get_current_admin)) -> list[dict]:
     """List distinct strikes for a symbol+expiry, each annotated with available option types (CE/PE)."""
     return scrip_list_strikes_fn(symbol, expiry)
+
+
+@router.get("/scrip-contracts")
+def scrip_contracts(query: str, limit: int = 30, _: User = Depends(get_current_admin)) -> list[dict]:
+    """Search distinct symbol+expiry+option-type contracts by free-text symbol match (e.g. 'NIFTY')."""
+    return scrip_search_contracts_fn(query, limit=limit)
 
 
 def _to_admin_user(u: User, db: Session) -> AdminUserResponse:

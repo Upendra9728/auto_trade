@@ -230,6 +230,44 @@ def list_strikes(symbol: str, expiry: str) -> list[dict]:
     ]
 
 
+def search_contracts(query: str, limit: int = 30) -> list[dict]:
+    """
+    Search distinct (symbol, expiry, option_type) contracts by free-text symbol match,
+    e.g. typing "NIFTY" surfaces "NIFTY 2026-09-04 CE", "NIFTY 2026-09-11 PE", etc.
+    Used by the admin app's single-search Quick Select flow. Only upcoming expiries
+    are considered. Exact/prefix symbol matches are ranked above substring matches.
+    """
+    _load()
+    q = query.upper().strip()
+    if not q:
+        return []
+
+    today = dt.date.today().isoformat()
+    seen: set[tuple[str, str, str]] = set()
+    matches: list[tuple[str, str, str]] = []
+    for symbol, _strike, option_type, expiry in _INDEX:
+        if expiry < today or q not in symbol:
+            continue
+        key = (symbol, expiry, option_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        matches.append(key)
+
+    def _rank(symbol: str) -> int:
+        if symbol == q:
+            return 0
+        if symbol.startswith(q):
+            return 1
+        return 2
+
+    matches.sort(key=lambda m: (_rank(m[0]), m[0], m[1], m[2]))
+    return [
+        {"symbol": s, "expiry_date": e, "option_type": o}
+        for (s, e, o) in matches[:limit]
+    ]
+
+
 def search(
     *,
     symbol: str,
