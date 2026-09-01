@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateIST } from '../../utils/time';
+import CreditsHeader from '../../components/CreditsHeader';
 import type { DhanCredential } from '../../types';
 
 export default function ProfileScreen() {
@@ -117,6 +118,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <CreditsHeader />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>Profile</Text>
 

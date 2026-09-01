@@ -15,6 +15,7 @@ import OrderTimeline from '../../components/OrderTimeline';
 import EmptyState from '../../components/EmptyState';
 import Pagination from '../../components/Pagination';
 import DateRangeFilter from '../../components/DateRangeFilter';
+import CreditsHeader from '../../components/CreditsHeader';
 import type { SignalNotification, PaginationMeta, OrderEvent } from '../../types';
 
 export default function OrdersScreen() {
@@ -163,6 +164,7 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <CreditsHeader />
       <View style={styles.headerBar}>
         <Text style={styles.pageTitle}>Order History</Text>
         <Text style={styles.count}>{meta?.total ?? orders.length} orders</Text>

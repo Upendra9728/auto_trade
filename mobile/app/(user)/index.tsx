@@ -12,6 +12,7 @@ import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import Pagination from '../../components/Pagination';
 import DateRangeFilter from '../../components/DateRangeFilter';
+import CreditsHeader from '../../components/CreditsHeader';
 import type { SignalNotification, PaginationMeta } from '../../types';
 
 const QTY_PRESETS = [5, 15, 20, 25, 30];
@@ -214,6 +215,7 @@ export default function NotificationsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <CreditsHeader />
       <View style={styles.headerBar}>
         <Text style={styles.pageTitle}>Signals</Text>
         <Text style={styles.pendingCount}>
