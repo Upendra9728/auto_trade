@@ -142,6 +142,8 @@ export const userApi = {
     put<User>('/api/users/me', data),
   updateFcmToken: (fcm_token: string) =>
     put<{ status: string }>('/api/users/me/fcm-token', { fcm_token }),
+  updateAutoTrade: (data: { auto_trade_enabled: boolean; auto_trade_quantity: number | null }) =>
+    put<User>('/api/users/me/auto-trade', data),
   clearFcmToken: () =>
     del<{ status: string }>('/api/users/me/fcm-token'),
   testPush: () =>

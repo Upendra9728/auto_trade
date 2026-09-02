@@ -84,10 +84,17 @@ export default function OrdersScreen() {
     return (
       <View style={styles.card}>
         <View style={styles.row}>
-          <View style={[styles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
-            <Text style={[styles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>
-              {o.signal.transaction_type}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={[styles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
+              <Text style={[styles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>
+                {o.signal.transaction_type}
+              </Text>
+            </View>
+            {o.is_auto_placed && (
+              <View style={styles.autoBadge}>
+                <Text style={styles.autoBadgeText}>AUTO</Text>
+              </View>
+            )}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             {pnl != null && (
@@ -236,6 +243,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   txBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
   txText: { fontSize: 12, fontWeight: '800' },
+  autoBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full, backgroundColor: Colors.primaryBg },
+  autoBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.primary, letterSpacing: 0.5 },
   pnlBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.sm },
   pnlText: { fontSize: 12, fontWeight: '800' },
   title: { ...Typography.h3 },

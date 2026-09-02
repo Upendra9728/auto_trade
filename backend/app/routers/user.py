@@ -24,6 +24,7 @@ from ..schemas import (
     PaginatedNotificationsResponse,
     SignalNotificationResponse,
     SignalResponse,
+    UpdateAutoTradeRequest,
     UpdateFcmTokenRequest,
     UpdateProfileRequest,
     UserProfileResponse,
@@ -46,6 +47,8 @@ def _to_profile(user: User) -> UserProfileResponse:
         terms_accepted=user.terms_accepted,
         terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         credits=user.credits,
+        auto_trade_enabled=user.auto_trade_enabled,
+        auto_trade_quantity=user.auto_trade_quantity,
     )
 
 
@@ -92,6 +95,7 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
         exit_price=notif.exit_price,
         exit_time=notif.exit_time.isoformat() if notif.exit_time else None,
         realized_pnl=notif.realized_pnl,
+        is_auto_placed=notif.is_auto_placed,
     )
 
 
@@ -143,6 +147,25 @@ def update_fcm_token(
     current_user.updated_at = dt.datetime.utcnow()
     db.commit()
     return {"status": "updated"}
+
+
+@router.put("/me/auto-trade", response_model=UserProfileResponse)
+def update_auto_trade(
+    req: UpdateAutoTradeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserProfileResponse:
+    """
+    Premium: when enabled, every future signal is auto-confirmed and placed immediately
+    (costs 3 credits/order instead of 1). auto_trade_quantity, if set, overrides the
+    admin's quantity for every signal; None falls back to the admin's quantity.
+    """
+    current_user.auto_trade_enabled = req.auto_trade_enabled
+    current_user.auto_trade_quantity = req.auto_trade_quantity
+    current_user.updated_at = dt.datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+    return _to_profile(current_user)
 
 
 @router.delete("/me/fcm-token")

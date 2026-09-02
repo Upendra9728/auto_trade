@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, RefreshControl,
-  Modal, Pressable,
+  Modal, Pressable, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -58,6 +58,7 @@ export default function SignalCreateScreen() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number>>(new Set());
   const [audiencePickerVisible, setAudiencePickerVisible] = useState(false);
   const [draftGroupIds, setDraftGroupIds] = useState<Set<number>>(new Set());
+  const [sendToTelegram, setSendToTelegram] = useState(false);
 
   useEffect(() => {
     adminApi.getGroups().then(setGroups).catch(() => {});
@@ -163,6 +164,7 @@ export default function SignalCreateScreen() {
     setLotSize(null);
     setHasParsed(false);
     setScripInfo(null);
+    setSendToTelegram(false);
     resetContract();
     setRefreshing(false);
   };
@@ -286,6 +288,7 @@ export default function SignalCreateScreen() {
         ...payload,
         ...(lotSize != null ? { lot_size: lotSize } : {}),
         ...(selectedGroupIds.size > 0 ? { group_ids: Array.from(selectedGroupIds) } : {}),
+        send_to_telegram: sendToTelegram,
       });
       Alert.alert(
         '\u2705 Signal Sent',
@@ -464,6 +467,8 @@ export default function SignalCreateScreen() {
 
                   <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />
 
+                  <SendToTelegramToggle value={sendToTelegram} onValueChange={setSendToTelegram} />
+
                   <TouchableOpacity
                     style={[styles.submitBtn, loading && { opacity: 0.55 }]}
                     onPress={handleCreate}
@@ -533,6 +538,8 @@ export default function SignalCreateScreen() {
               )}
 
               <AudiencePicker groups={groups} selectedGroupIds={selectedGroupIds} onPress={() => { setDraftGroupIds(new Set(selectedGroupIds)); setAudiencePickerVisible(true); }} />
+
+              <SendToTelegramToggle value={sendToTelegram} onValueChange={setSendToTelegram} />
 
               <TouchableOpacity
                 style={[styles.submitBtn, loading && { opacity: 0.55 }]}
@@ -810,6 +817,26 @@ function AudiencePicker({
       </View>
       <Feather name="chevron-down" size={16} color={Colors.textMuted} />
     </TouchableOpacity>
+  );
+}
+
+function SendToTelegramToggle({
+  value, onValueChange,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+}) {
+  return (
+    <View style={audienceStyles.row}>
+      <View style={audienceStyles.rowLeft}>
+        <Text style={audienceStyles.rowLabel}>Send to Telegram</Text>
+        <View style={audienceStyles.allChip}>
+          <Feather name="send" size={12} color={Colors.primary} />
+          <Text style={audienceStyles.allChipText}>Post this signal in the admin group too</Text>
+        </View>
+      </View>
+      <Switch value={value} onValueChange={onValueChange} trackColor={{ false: Colors.border, true: Colors.primary }} />
+    </View>
   );
 }
 

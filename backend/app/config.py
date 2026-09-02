@@ -65,5 +65,14 @@ class Settings(BaseSettings):
     app_force_update: bool = False
     app_release_notes: str = "Optimizations\nBug fixes\nCredit based system"
 
+    # Telegram <-> app signal integration
+    # Bot token from @BotFather; used both by the standalone bot/ process (inbound) and by this
+    # backend to send messages to the group (outbound, when a signal's send_to_telegram is True).
+    telegram_bot_token: str | None = None
+    # Chat ID of the admin's Telegram group; the bot only listens to/sends to this chat.
+    telegram_group_chat_id: str | None = None
+    # Email of the admin User that Telegram-originated signals are attributed to (created_by_id).
+    telegram_signal_admin_email: str | None = None
+
 
 settings = Settings()

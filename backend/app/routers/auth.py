@@ -60,6 +60,8 @@ def _to_profile(user: User) -> UserProfileResponse:
         terms_accepted=user.terms_accepted,
         terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
         credits=user.credits,
+        auto_trade_enabled=user.auto_trade_enabled,
+        auto_trade_quantity=user.auto_trade_quantity,
     )
 
 

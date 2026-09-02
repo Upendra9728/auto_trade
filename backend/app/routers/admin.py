@@ -5,13 +5,17 @@ import datetime as dt
 import logging
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_current_admin, get_db
 from ..crypto import decrypt_token
+from ..config import settings
+from ..db import SessionLocal
 from ..dhan_client import DhanApiError, DhanClient
+from ..order_service import place_order_for_notification
 from ..token_refresh import renew_and_save_credential_with_reason
 from ..ipv6_pool import assign_next_ipv6
 from ..models import DhanCredential, OrderEvent, PasswordResetOtp, Signal, SignalNotification, User, UserGroup, UserGroupMember, UserPosition, UserSession
@@ -544,17 +548,17 @@ async def refresh_all_tokens(
 # Signals
 # ---------------------------------------------------------------------------
 
-@router.post("/signals", response_model=SignalResponse, status_code=201)
-def create_signal(
-    req: SignalCreateRequest,
+def _create_and_broadcast_signal(
+    db: Session,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin),
-) -> SignalResponse:
+    *,
+    created_by_id: int,
+    req: SignalCreateRequest,
+) -> Signal:
     """
-    Create a trading signal and broadcast it to eligible users.
-    If group_ids is provided, only users in those groups receive the signal.
-    Otherwise all eligible users (active, has Dhan credential and IPv6) receive it.
+    Creates a Signal, fans out SignalNotification rows to eligible users, auto-confirms
+    and schedules order placement for users with Auto-Trade enabled, and dispatches FCM
+    push notifications. Shared by the admin HTTP endpoint and the Telegram ingest route.
     """
     import json as _json
 
@@ -569,7 +573,7 @@ def create_signal(
         target_group_ids = req.group_ids
 
     signal = Signal(
-        created_by_id=admin.id,
+        created_by_id=created_by_id,
         title=req.title.strip(),
         exchange_segment=req.exchange_segment.upper(),
         security_id=req.security_id.strip(),
@@ -613,14 +617,31 @@ def create_signal(
     eligible_users = eligible_query.all()
 
     fcm_tokens: list[str] = []
+    notifs: list[SignalNotification] = []
     for user in eligible_users:
         notif = SignalNotification(signal_id=signal.id, user_id=user.id, status="pending")
+        if user.auto_trade_enabled:
+            notif.status = "confirmed"
+            notif.confirmed_at = dt.datetime.utcnow()
+            notif.is_auto_placed = True
         db.add(notif)
+        notifs.append(notif)
         if user.fcm_token:
             fcm_tokens.append(user.fcm_token)
 
+    db.flush()  # assign notif.id before we collect the auto-trade subset
+    auto_trade_notification_ids = [n.id for n in notifs if n.is_auto_placed]
+
     db.commit()
     db.refresh(signal)
+
+    # Auto-place orders for Auto-Trade users after the response is returned
+    if auto_trade_notification_ids:
+        background_tasks.add_task(_auto_place_signal_notifications, auto_trade_notification_ids)
+
+    # Post the signal to the Telegram group after the response is returned (best-effort)
+    if req.send_to_telegram:
+        background_tasks.add_task(_send_signal_to_telegram, signal.id)
 
     # Send FCM push notifications after the response is returned (best-effort)
     if fcm_tokens:
@@ -630,7 +651,82 @@ def create_signal(
     else:
         logger.info("Signal %s created; no FCM tokens to notify (%d eligible users)", signal.id, len(eligible_users))
 
+    return signal
+
+
+@router.post("/signals", response_model=SignalResponse, status_code=201)
+def create_signal(
+    req: SignalCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+) -> SignalResponse:
+    """
+    Create a trading signal and broadcast it to eligible users.
+    If group_ids is provided, only users in those groups receive the signal.
+    Otherwise all eligible users (active, has Dhan credential and IPv6) receive it.
+    """
+    signal = _create_and_broadcast_signal(db, background_tasks, created_by_id=admin.id, req=req)
     return _to_signal_response(signal, db)
+
+
+async def _auto_place_signal_notifications(notification_ids: list[int]) -> None:
+    """Runs after the HTTP response is sent — places Dhan orders for Auto-Trade users."""
+    db = SessionLocal()
+    try:
+        notifs = (
+            db.query(SignalNotification)
+            .options(joinedload(SignalNotification.signal), joinedload(SignalNotification.user))
+            .filter(SignalNotification.id.in_(notification_ids))
+            .all()
+        )
+        for notif in notifs:
+            await place_order_for_notification(
+                notification=notif, db=db, quantity_override=notif.user.auto_trade_quantity,
+            )
+    finally:
+        db.close()
+
+
+async def _send_signal_to_telegram(signal_id: int) -> None:
+    """Runs after the HTTP response is sent — posts the signal to the configured Telegram group,
+    using the same key:value format the bot/ process parses on the way in."""
+    if not settings.telegram_bot_token or not settings.telegram_group_chat_id:
+        logger.warning("send_to_telegram requested but telegram_bot_token/telegram_group_chat_id not configured")
+        return
+    db = SessionLocal()
+    try:
+        signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
+        if signal is None:
+            return
+        # signal.title follows the "{SYMBOL} {STRIKE}{CE|PE} {EXPIRY}" convention used by both
+        # the Quick Select and Paste Message signal-creation flows.
+        parts = signal.title.strip().split()
+        symbol = parts[0] if parts else signal.title
+        strike_opt = parts[1] if len(parts) > 1 else ""
+        expiry = parts[2] if len(parts) > 2 else (
+            signal.expires_at.strftime("%Y-%m-%d") if signal.expires_at else ""
+        )
+        lines = [
+            symbol, strike_opt,
+            f"PRICE: {signal.price}",
+            f"STOPLOSS: {signal.stop_loss_price}",
+            f"TARGETS: {signal.target_price}",
+            f"QTY: {signal.quantity}",
+        ]
+        if expiry:
+            lines.append(f"EXPIRY: {expiry}")
+        text = "\n".join(lines)
+
+        url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json={"chat_id": settings.telegram_group_chat_id, "text": text})
+        if resp.status_code >= 400:
+            logger.warning("Failed to send signal %s to Telegram: HTTP %s %s", signal_id, resp.status_code, resp.text[:300])
+    except Exception as exc:
+        logger.warning("Failed to send signal %s to Telegram: %s", signal_id, exc)
+    finally:
+        db.close()
 
 
 def _broadcast_signal_push(signal_id: int, signal_title: str, fcm_tokens: list[str], eligible_count: int) -> None:

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator,
+  ScrollView, Alert, ActivityIndicator, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -24,10 +24,19 @@ export default function ProfileScreen() {
   const [showDhanForm, setShowDhanForm] = useState(false);
   const [testingIp, setTestingIp] = useState(false);
   const [refreshingDhan, setRefreshingDhan] = useState(false);
+  const [autoTradeEnabled, setAutoTradeEnabled] = useState(false);
+  const [autoTradeQty, setAutoTradeQty] = useState('');
+  const [savingAutoTrade, setSavingAutoTrade] = useState(false);
 
   useEffect(() => {
     userApi.getDhanCredential().then(setDhan).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setAutoTradeEnabled(user.auto_trade_enabled);
+    setAutoTradeQty(user.auto_trade_quantity != null ? String(user.auto_trade_quantity) : '');
+  }, [user?.auto_trade_enabled, user?.auto_trade_quantity]);
 
   const handleSaveDhan = async () => {
     if (!dhanForm.dhan_client_id.trim() || !dhanForm.pin.trim() || !dhanForm.totp_secret.trim()) {
@@ -98,6 +107,40 @@ export default function ProfileScreen() {
       Alert.alert('Error', err.message ?? 'Unknown error');
     } finally {
       setRefreshingDhan(false);
+    }
+  };
+
+  const handleToggleAutoTrade = async (value: boolean) => {
+    setAutoTradeEnabled(value);
+    setSavingAutoTrade(true);
+    try {
+      const qty = autoTradeQty.trim() ? parseInt(autoTradeQty.trim(), 10) : null;
+      await userApi.updateAutoTrade({ auto_trade_enabled: value, auto_trade_quantity: qty });
+      await refreshUser();
+    } catch (err: any) {
+      setAutoTradeEnabled(!value);
+      Alert.alert('Error', err.message ?? 'Failed to update Auto-Trade.');
+    } finally {
+      setSavingAutoTrade(false);
+    }
+  };
+
+  const handleSaveAutoTradeQty = async () => {
+    const trimmed = autoTradeQty.trim();
+    if (trimmed && (!/^\d+$/.test(trimmed) || parseInt(trimmed, 10) < 1)) {
+      Alert.alert('Invalid quantity', 'Preset quantity must be a positive whole number.');
+      return;
+    }
+    setSavingAutoTrade(true);
+    try {
+      const qty = trimmed ? parseInt(trimmed, 10) : null;
+      await userApi.updateAutoTrade({ auto_trade_enabled: autoTradeEnabled, auto_trade_quantity: qty });
+      await refreshUser();
+      Alert.alert('Saved', 'Auto-Trade preset quantity updated.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to update Auto-Trade.');
+    } finally {
+      setSavingAutoTrade(false);
     }
   };
 
@@ -284,6 +327,45 @@ export default function ProfileScreen() {
           )}
         </View>
 
+        {/* Auto-Trade (premium) */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.autoTradeTitleRow}>
+              <Text style={styles.sectionTitle}>Auto-Trade</Text>
+              <View style={styles.premiumBadge}>
+                <Feather name="star" size={10} color="#7A4A00" />
+                <Text style={styles.premiumText}>PREMIUM</Text>
+              </View>
+            </View>
+            <Switch
+              value={autoTradeEnabled}
+              onValueChange={handleToggleAutoTrade}
+              disabled={savingAutoTrade}
+              trackColor={{ false: Colors.border, true: Colors.primary }}
+            />
+          </View>
+          <Text style={styles.autoTradeDesc}>
+            Signals are confirmed and ordered automatically the instant they arrive — no tap needed.
+            Costs 3 credits per successful order (vs 1 for manual confirmation).
+          </Text>
+          <View style={[styles.field, !autoTradeEnabled && { opacity: 0.5 }]}>
+            <Text style={styles.label}>Preset Quantity (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={autoTradeQty}
+              onChangeText={setAutoTradeQty}
+              onBlur={handleSaveAutoTradeQty}
+              editable={autoTradeEnabled}
+              placeholder="Leave blank to use admin's qty"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="numeric"
+            />
+            <Text style={styles.hintText}>
+              Overrides the admin's quantity for every future signal while Auto-Trade is on.
+            </Text>
+          </View>
+        </View>
+
         {/* Account info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
@@ -400,6 +482,14 @@ const styles = StyleSheet.create({
   },
   noteBox: { backgroundColor: Colors.primaryBg, borderRadius: Radius.sm, padding: Spacing.sm },
   noteText: { fontSize: 12, color: Colors.primary },
+  autoTradeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  premiumBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#FFF3D6', paddingHorizontal: 7, paddingVertical: 2, borderRadius: Radius.full,
+  },
+  premiumText: { fontSize: 10, fontWeight: '800', color: '#7A4A00', letterSpacing: 0.5 },
+  autoTradeDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 17 },
+  hintText: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   formActions: { flexDirection: 'row', gap: Spacing.sm },
   cancelBtn: {
     flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center',

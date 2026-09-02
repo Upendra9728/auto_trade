@@ -12,6 +12,8 @@ export interface User {
   terms_accepted: boolean;
   terms_accepted_at?: string | null;
   credits: number;
+  auto_trade_enabled: boolean;
+  auto_trade_quantity: number | null;
 }
 
 export interface AuthResponse {
@@ -90,6 +92,7 @@ export interface SignalNotification {
   exit_price?: number | null;
   exit_time?: string | null;
   realized_pnl?: number | null;
+  is_auto_placed?: boolean;
 }
 
 export interface OrderEvent {
@@ -122,6 +125,7 @@ export interface SignalCreatePayload {
   stop_loss_price: number;
   trailing_jump: number;
   group_ids?: number[];
+  send_to_telegram?: boolean;
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

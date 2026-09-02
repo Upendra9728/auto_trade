@@ -34,6 +34,8 @@ class UserProfileResponse(BaseModel):
     terms_accepted: bool = False
     terms_accepted_at: str | None = None
     credits: int = 0
+    auto_trade_enabled: bool = False
+    auto_trade_quantity: int | None = None
 
 
 class UserAuthResponse(BaseModel):
@@ -73,6 +75,12 @@ class UpdateProfileRequest(BaseModel):
 
 class UpdateFcmTokenRequest(BaseModel):
     fcm_token: str = Field(min_length=1, max_length=4096)
+
+
+class UpdateAutoTradeRequest(BaseModel):
+    auto_trade_enabled: bool
+    # Preset quantity overriding admin's signal quantity for every future signal; None = use admin's qty
+    auto_trade_quantity: int | None = Field(default=None, ge=1)
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +125,8 @@ class SignalCreateRequest(BaseModel):
     expires_at: dt.datetime | None = None
     # Optional list of group IDs to target; None/empty = broadcast to all eligible users
     group_ids: list[int] | None = None
+    # If True, this signal is also posted to the configured Telegram group after creation
+    send_to_telegram: bool = False
 
 
 class SignalResponse(BaseModel):
@@ -181,6 +191,7 @@ class SignalNotificationResponse(BaseModel):
     exit_price: float | None = None
     exit_time: str | None = None
     realized_pnl: float | None = None
+    is_auto_placed: bool = False
 
 
 class OrderEventResponse(BaseModel):
@@ -200,6 +211,11 @@ class OrderEventResponse(BaseModel):
 class ConfirmNotificationRequest(BaseModel):
     """Optional body for the confirm endpoint — lets users override quantity."""
     quantity: int | None = Field(default=None, ge=1)
+
+
+class TelegramIngestRequest(BaseModel):
+    """Body posted by the standalone Telegram bot process for every group message."""
+    raw_text: str = Field(min_length=1, max_length=4096)
 
 
 # ---------------------------------------------------------------------------

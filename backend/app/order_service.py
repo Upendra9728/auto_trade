@@ -100,8 +100,9 @@ async def place_order_for_notification(
         notification.dhan_order_id = order_id
         notification.placed_at = dt.datetime.utcnow()
         notification.ordered_quantity = quantity_override if quantity_override is not None else signal.quantity
-        # Deduct one credit for successful order placement
-        user.credits = max(0, user.credits - 1)
+        # Auto-trade placements cost 3 credits; manually confirmed orders cost 1.
+        credit_cost = 3 if notification.is_auto_placed else 1
+        user.credits = max(0, user.credits - credit_cost)
         db.commit()
         logger.info(
             "Order placed for user %s (notification %s), Dhan order ID: %s",

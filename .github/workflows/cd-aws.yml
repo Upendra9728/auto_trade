@@ -59,15 +59,34 @@ jobs:
             for i in {1..12}; do
               if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
                 echo "✅ Backend is healthy."
-                exit 0
+                break
+              fi
+
+              if [ "$i" -eq 12 ]; then
+                echo "❌ Backend failed health check."
+                sudo journalctl -u automate-backend -n 100 --no-pager
+                exit 1
               fi
 
               echo "Waiting... ($i/12)"
               sleep 5
             done
 
-            echo "❌ Backend failed health check."
+            echo "==> Installing Telegram bot dependencies..."
+            source bot/.venv/bin/activate
+            python -m pip install --upgrade pip
+            pip install -r bot/requirements.txt
+            deactivate
 
-            sudo journalctl -u automate-backend -n 100 --no-pager
+            echo "==> Restarting Telegram bot..."
+            sudo systemctl restart automate-telegram-bot
+            sleep 3
 
+            if systemctl is-active --quiet automate-telegram-bot; then
+              echo "✅ Telegram bot is running."
+              exit 0
+            fi
+
+            echo "❌ Telegram bot failed to start."
+            sudo journalctl -u automate-telegram-bot -n 100 --no-pager
             exit 1

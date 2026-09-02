@@ -46,6 +46,14 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN credits INTEGER DEFAULT 0"))
                 conn.commit()
             logger.info("Migration: added credits column to users")
+        auto_trade_columns = {"auto_trade_enabled": "BOOLEAN DEFAULT FALSE", "auto_trade_quantity": "INTEGER"}
+        missing_auto_trade = {col: ddl for col, ddl in auto_trade_columns.items() if col not in existing}
+        if missing_auto_trade:
+            with engine.connect() as conn:
+                for col, ddl in missing_auto_trade.items():
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {ddl}"))
+                conn.commit()
+            logger.info("Migration: added auto-trade columns to users: %s", list(missing_auto_trade))
 
     if "dhan_credentials" in table_names:
         existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
@@ -101,6 +109,11 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE signal_notifications ADD COLUMN version INTEGER DEFAULT 1"))
                 conn.commit()
             logger.info("Migration: added version column to signal_notifications")
+        if "is_auto_placed" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE signal_notifications ADD COLUMN is_auto_placed BOOLEAN DEFAULT FALSE"))
+                conn.commit()
+            logger.info("Migration: added is_auto_placed column to signal_notifications")
 
     if "signals" in table_names:
         existing = {c["name"] for c in inspector.get_columns("signals")}

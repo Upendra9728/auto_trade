@@ -29,6 +29,10 @@ class User(Base):
     terms_accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Trading signal order placement credits (1 credit = 1 successful order placed)
     credits: Mapped[int] = mapped_column(Integer, default=0)
+    # Premium feature: auto-confirm every incoming signal and place the order immediately (costs 3 credits/order)
+    auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Preset quantity that overrides the admin's signal quantity for every auto-trade order; None = use admin's qty
+    auto_trade_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
@@ -127,6 +131,8 @@ class SignalNotification(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Optimistic locking version to prevent concurrent WS + polling overwrites
     version: Mapped[int] = mapped_column(Integer, default=1, index=True)
+    # True if this order was auto-confirmed/placed via the user's Auto-Trade setting (costs 3 credits, not 1)
+    is_auto_placed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # ---- Real-time exchange status, populated by the Dhan Live Order Update
     # WebSocket (see dhan_order_update.py). None until the first update arrives.

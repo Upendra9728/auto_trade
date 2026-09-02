@@ -384,6 +384,15 @@ FIREBASE_CREDENTIALS_PATH=/etc/automate-trading/firebase-service-account.json
 # The app assigns ::1, ::2, ... starting at IPV6_POOL_START
 IPV6_POOL_PREFIX=2406:da1a:xxxx:xx00:abcd:
 IPV6_POOL_START=1
+
+# Telegram <-> app signal integration — see Section E2 for the bot/ process itself.
+# TELEGRAM_BOT_TOKEN: from @BotFather. TELEGRAM_GROUP_CHAT_ID: the admin group's chat id
+# (send any message in the group, then GET https://api.telegram.org/bot<TOKEN>/getUpdates
+# and read the "chat":{"id": ...} field — group privacy mode must be disabled in BotFather
+# for the bot to see normal messages, not just commands).
+TELEGRAM_BOT_TOKEN=<bot token from @BotFather>
+TELEGRAM_GROUP_CHAT_ID=<admin group chat id, e.g. -1001234567890>
+TELEGRAM_SIGNAL_ADMIN_EMAIL=<email of the admin user Telegram signals are attributed to>
 ```
 
 ---
@@ -461,6 +470,78 @@ sudo journalctl -u automate-backend -n 50 --no-pager
 
 ---
 
+## Section E2 — Telegram Bot (systemd service)
+
+The bot is a separate standalone process (`bot/`) — it does not run inside the
+FastAPI backend. It needs its own virtual environment and its own `.env`
+(never committed — `bot/.env.example` only holds placeholders).
+
+### E2.1 Virtual environment
+
+```bash
+cd /var/www/auto_trade/bot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+deactivate
+```
+
+### E2.2 Create .env
+
+```bash
+cp /var/www/auto_trade/bot/.env.example /var/www/auto_trade/bot/.env
+nano /var/www/auto_trade/bot/.env
+```
+
+```env
+TELEGRAM_BOT_TOKEN=<same bot token as backend's TELEGRAM_BOT_TOKEN>
+TELEGRAM_ALLOWED_CHAT_ID=<same value as backend's TELEGRAM_GROUP_CHAT_ID>
+BACKEND_BASE_URL=http://127.0.0.1:8000
+BACKEND_INTERNAL_SECRET=<same value as backend's INTERNAL_SECRET>
+```
+
+### E2.3 Systemd service
+
+```bash
+sudo tee /etc/systemd/system/automate-telegram-bot.service > /dev/null << 'EOF'
+[Unit]
+Description=Automate Trading — Telegram Bot
+After=network.target automate-backend.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/var/www/auto_trade/bot
+EnvironmentFile=/var/www/auto_trade/bot/.env
+Environment="PATH=/var/www/auto_trade/bot/.venv/bin"
+ExecStart=/var/www/auto_trade/bot/.venv/bin/python bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now automate-telegram-bot
+
+# Verify
+sudo systemctl status automate-telegram-bot --no-pager
+```
+
+If it fails:
+
+```bash
+sudo journalctl -u automate-telegram-bot -n 50 --no-pager
+```
+
+> The GitHub Actions CD workflow (Section G) reinstalls `bot/requirements.txt`
+> into `bot/.venv` and restarts `automate-telegram-bot` on every push, exactly
+> like the backend — no manual redeploy needed after this one-time setup.
+
+---
+
 ## Section F — Nginx
 
 ```bash
@@ -531,9 +612,12 @@ Every push to `aws-prod` triggers `.github/workflows/cd-aws.yml`:
 
 1. SSHes into the EC2 instance
 2. `git pull` from `aws-prod`
-3. Updates Python dependencies
-4. Restarts `automate-backend`
-5. Polls `/health` until healthy (or fails the deploy)
+3. Updates backend Python dependencies, restarts `automate-backend`, polls `/health`
+4. Updates bot Python dependencies, restarts `automate-telegram-bot`, checks it's active
+5. Fails the deploy if either service doesn't come up healthy
+
+> Requires the one-time `bot/.venv` setup and `automate-telegram-bot` systemd
+> service from Section E2 to already exist on the server.
 
 ---
 
@@ -725,3 +809,12 @@ sudo nginx -t
 | `/api/admin/users/{id}` | PUT | Admin | Assign IPv6 / role / active |
 | `/api/admin/dashboard` | GET | Admin | Stats overview |
 | `/health` | GET | Anyone | Health check |
+
+
+
+
+ssh -i "dhan-prod-key.pem" ec2-user@13.126.206.167
+
+sudo -u postgres psql -d automate_trading
+
+cd /var/www/auto_trade/backend
