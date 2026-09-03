@@ -60,10 +60,10 @@ class Settings(BaseSettings):
 
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.5.0"
+    app_latest_version: str = "1.5.1"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
-    app_release_notes: str = "Optimizations\nBug fixes\nCredit based system"
+    app_release_notes: str = "New features\nBug fixes\nPerformance"
 
     # Telegram <-> app signal integration
     # Bot token from @BotFather; used both by the standalone bot/ process (inbound) and by this
