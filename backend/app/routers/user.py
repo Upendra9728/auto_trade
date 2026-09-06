@@ -365,7 +365,7 @@ def list_notification_days(
         query = query.filter(SignalNotification.status == status)
     days, meta = list_day_buckets(query, SignalNotification.created_at, page=page, page_size=page_size)
     return PaginatedDayBucketsResponse(
-        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        items=[DayBucket(**row) for row in days],
         meta=meta,
     )
 
@@ -486,7 +486,7 @@ def list_order_days(
     )
     days, meta = list_day_buckets(query, SignalNotification.created_at, page=page, page_size=page_size)
     return PaginatedDayBucketsResponse(
-        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        items=[DayBucket(**row) for row in days],
         meta=meta,
     )
 

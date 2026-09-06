@@ -792,7 +792,7 @@ def list_signal_days(
     query = db.query(Signal)
     days, meta = list_day_buckets(query, Signal.created_at, page=page, page_size=page_size)
     return PaginatedDayBucketsResponse(
-        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        items=[DayBucket(**row) for row in days],
         meta=meta,
     )
 
