@@ -89,6 +89,16 @@ export default function DayGroupedList<T>({
   const [loadingMoreDays, setLoadingMoreDays] = useState(false);
   const mountedRef = useRef(false);
 
+  // Callers (screens) often pass inline arrow functions that get a new identity on every
+  // render; keep the latest version in a ref so the callbacks below don't need them as
+  // dependencies — otherwise every parent re-render would reset/reload this whole list.
+  const fetchDaysRef = useRef(fetchDays);
+  fetchDaysRef.current = fetchDays;
+  const fetchItemsForDayRef = useRef(fetchItemsForDay);
+  fetchItemsForDayRef.current = fetchItemsForDay;
+  const onVisibleItemsChangeRef = useRef(onVisibleItemsChange);
+  onVisibleItemsChangeRef.current = onVisibleItemsChange;
+
   const loadDayItems = useCallback(async (date: string, page: number, append: boolean) => {
     setDayState((prev) => ({
       ...prev,
@@ -101,7 +111,7 @@ export default function DayGroupedList<T>({
     }));
 
     try {
-      const data = await fetchItemsForDay({ date, page, pageSize: itemPageSize });
+      const data = await fetchItemsForDayRef.current({ date, page, pageSize: itemPageSize });
       setDayState((prev) => {
         const current = prev[date];
         const nextItems = append && current?.loaded ? [...(current.items ?? []), ...data.items] : data.items;
@@ -126,12 +136,12 @@ export default function DayGroupedList<T>({
         },
       }));
     }
-  }, [fetchItemsForDay, itemPageSize]);
+  }, [itemPageSize]);
 
   const loadDays = useCallback(async (page: number, replace: boolean) => {
     if (page > 1) setLoadingMoreDays(true);
     try {
-      const data = await fetchDays({ page, pageSize: dayPageSize });
+      const data = await fetchDaysRef.current({ page, pageSize: dayPageSize });
       setDaysMeta(data.meta);
       setDays((prev) => (replace ? data.items : [...prev, ...data.items.filter((bucket) => !prev.some((day) => day.date === bucket.date))]));
     } catch {
@@ -144,7 +154,7 @@ export default function DayGroupedList<T>({
       setRefreshing(false);
       setLoadingMoreDays(false);
     }
-  }, [dayPageSize, fetchDays]);
+  }, [dayPageSize]);
 
   const hardRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -164,6 +174,8 @@ export default function DayGroupedList<T>({
       await Promise.all(visibleDates.map((date) => loadDayItems(date, 1, false)));
     }
   }, [expandedDates, loadDayItems, loadDays]);
+  const softRefreshRef = useRef(softRefresh);
+  softRefreshRef.current = softRefresh;
 
   useEffect(() => {
     void hardRefresh().finally(() => {
@@ -173,8 +185,8 @@ export default function DayGroupedList<T>({
 
   useEffect(() => {
     if (!mountedRef.current) return;
-    void softRefresh();
-  }, [refreshNonce, softRefresh]);
+    void softRefreshRef.current();
+  }, [refreshNonce]);
 
   useEffect(() => {
     if (!initialLoading && expandedDates.has(today)) {
@@ -234,9 +246,9 @@ export default function DayGroupedList<T>({
   }, [days, dayState, expandedDates, today]);
 
   useEffect(() => {
-    if (!onVisibleItemsChange) return;
-    onVisibleItemsChange(sections.flatMap((section) => (section.expanded ? section.items : [])));
-  }, [onVisibleItemsChange, sections]);
+    if (!onVisibleItemsChangeRef.current) return;
+    onVisibleItemsChangeRef.current(sections.flatMap((section) => (section.expanded ? section.items : [])));
+  }, [sections]);
 
   const rows = useMemo<Row<T>[]>(() => {
     const nextRows: Row<T>[] = [];
