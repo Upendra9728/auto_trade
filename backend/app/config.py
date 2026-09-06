@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.5.2"
+    app_latest_version: str = "1.5.4"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
     app_release_notes: str = "1.UI Improvements\n2.Bug fixes\n3. Added 10 Free credits"

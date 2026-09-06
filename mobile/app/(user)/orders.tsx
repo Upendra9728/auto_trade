@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet,
-  ActivityIndicator, TouchableOpacity, Modal,
+  ActivityIndicator, TouchableOpacity, Modal, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -29,9 +29,9 @@ export default function OrdersScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      setRefreshNonce((value) => value + 1);
+      setRefreshNonce((value: number) => value + 1);
       const intervalId = setInterval(() => {
-        setRefreshNonce((value) => value + 1);
+        setRefreshNonce((value: number) => value + 1);
       }, 7000);
       return () => clearInterval(intervalId);
     }, []),
@@ -170,13 +170,9 @@ export default function OrdersScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList
-              data={[]}
-              renderItem={null}
-              ListHeaderComponent={<OrderTimeline events={timelineEvents} loading={timelineLoading} />}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: Spacing.xl }}
-            />
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Spacing.xl }}>
+              <OrderTimeline events={timelineEvents} loading={timelineLoading} />
+            </ScrollView>
           </View>
         </View>
       </Modal>
