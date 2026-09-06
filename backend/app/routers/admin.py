@@ -403,8 +403,8 @@ def add_credits_to_all_users(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> dict[str, int]:
-    """Add trading signal credits to all active users at once."""
-    count = db.query(User).filter(User.is_active.is_(True)).update(
+    """Add trading signal credits to all users, regardless of active status."""
+    count = db.query(User).update(
         {User.credits: User.credits + req.amount, User.updated_at: dt.datetime.utcnow()},
         synchronize_session=False,
     )
