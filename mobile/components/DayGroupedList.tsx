@@ -2,13 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
-  LayoutAnimation,
-  Platform,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -91,12 +88,6 @@ export default function DayGroupedList<T>({
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMoreDays, setLoadingMoreDays] = useState(false);
   const mountedRef = useRef(false);
-
-  useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
 
   const loadDayItems = useCallback(async (date: string, page: number, append: boolean) => {
     setDayState((prev) => ({
@@ -196,7 +187,6 @@ export default function DayGroupedList<T>({
 
   const toggleDay = useCallback((date: string) => {
     const shouldExpand = !expandedDates.has(date);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedDates((prev) => {
       const next = new Set(prev);
       if (shouldExpand) next.add(date);
@@ -405,6 +395,14 @@ const styles = StyleSheet.create({
   },
   itemWrap: {
     marginTop: Spacing.sm,
+  },
+  sectionFooter: {
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   loadMoreBtn: {
     marginTop: Spacing.sm,
