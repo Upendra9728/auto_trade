@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   LayoutAnimation,
   Platform,
   RefreshControl,
-  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -32,6 +32,14 @@ type DaySection<T> = {
   meta: PaginationMeta | null;
   isToday: boolean;
 };
+
+type Row<T> =
+  | { type: 'header'; date: string }
+  | { type: 'item'; date: string; item: T; index: number }
+  | { type: 'loading'; date: string }
+  | { type: 'empty'; date: string }
+  | { type: 'day-load-more'; date: string }
+  | { type: 'days-load-more' };
 
 interface Props<T> {
   fetchDays: (params: { page?: number; pageSize?: number }) => Promise<Paginated<DayBucket>>;
@@ -240,6 +248,31 @@ export default function DayGroupedList<T>({
     onVisibleItemsChange(sections.flatMap((section) => (section.expanded ? section.items : [])));
   }, [onVisibleItemsChange, sections]);
 
+  const rows = useMemo<Row<T>[]>(() => {
+    const nextRows: Row<T>[] = [];
+
+    for (const section of sections) {
+      nextRows.push({ type: 'header', date: section.date });
+      if (!section.expanded) continue;
+      section.items.forEach((item, index) => {
+        nextRows.push({ type: 'item', date: section.date, item, index });
+      });
+      if (section.loading) {
+        nextRows.push({ type: 'loading', date: section.date });
+      } else if (!section.items.length) {
+        nextRows.push({ type: 'empty', date: section.date });
+      } else if (section.meta && section.meta.page < section.meta.total_pages) {
+        nextRows.push({ type: 'day-load-more', date: section.date });
+      }
+    }
+
+    if (daysMeta && daysMeta.page < daysMeta.total_pages) {
+      nextRows.push({ type: 'days-load-more' });
+    }
+
+    return nextRows;
+  }, [daysMeta, sections]);
+
   const isListEmpty = initialLoading && days.length === 0 && (dayState[today]?.items.length ?? 0) === 0;
 
   if (isListEmpty) {
@@ -251,69 +284,77 @@ export default function DayGroupedList<T>({
   }
 
   return (
-    <SectionList
-      sections={sections}
-      keyExtractor={keyExtractor}
-      renderItem={({ item, section }) => (
-        section.expanded ? <View style={styles.itemWrap}>{renderItem({ item })}</View> : null
-      )}
-      renderSectionHeader={({ section }) => (
-        <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleDay(section.date)} activeOpacity={0.8}>
-          <View style={styles.sectionHeaderLeft}>
-            <View style={styles.badgeIcon}>
-              <Feather name="calendar" size={14} color={Colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sectionTitle}>{section.isToday ? 'Today' : formatDayLabel(section.date)}</Text>
-              <Text style={styles.sectionSubtitle}>{section.count} item{section.count === 1 ? '' : 's'}</Text>
-            </View>
-          </View>
-          <Feather name={section.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textMuted} />
-        </TouchableOpacity>
-      )}
-      renderSectionFooter={({ section }) => {
-        if (!section.expanded) return null;
-        if (section.loading) {
+    <FlatList
+      data={rows}
+      keyExtractor={(row, index) => {
+        if (row.type === 'header') return `header-${row.date}`;
+        if (row.type === 'item') return `item-${row.date}-${keyExtractor(row.item, row.index)}`;
+        if (row.type === 'day-load-more') return `day-load-more-${row.date}`;
+        return `days-load-more-${index}`;
+      }}
+      renderItem={({ item: row }) => {
+        if (row.type === 'header') {
+          const section = sections.find((entry) => entry.date === row.date);
+          if (!section) return null;
+          return (
+            <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleDay(section.date)} activeOpacity={0.8}>
+              <View style={styles.sectionHeaderLeft}>
+                <View style={styles.badgeIcon}>
+                  <Feather name="calendar" size={14} color={Colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>{section.isToday ? 'Today' : formatDayLabel(section.date)}</Text>
+                  <Text style={styles.sectionSubtitle}>{section.count} item{section.count === 1 ? '' : 's'}</Text>
+                </View>
+              </View>
+              <Feather name={section.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textMuted} />
+            </TouchableOpacity>
+          );
+        }
+
+        if (row.type === 'item') {
+          const section = sections.find((entry) => entry.date === row.date);
+          if (!section || !section.expanded) return null;
+          return <View style={styles.itemWrap}>{renderItem({ item: row.item })}</View>;
+        }
+
+        if (row.type === 'loading') {
           return (
             <View style={styles.sectionFooter}>
               <ActivityIndicator size="small" color={Colors.primary} />
             </View>
           );
         }
-        if (!section.items.length) {
+
+        if (row.type === 'empty') {
           return (
             <View style={styles.sectionFooter}>
               <Text style={styles.emptyText}>No items for this day.</Text>
             </View>
           );
         }
-        if (section.meta && section.meta.page < section.meta.total_pages) {
+
+        if (row.type === 'day-load-more') {
           return (
-            <TouchableOpacity style={styles.loadMoreBtn} onPress={() => loadMoreForDay(section.date)} activeOpacity={0.75}>
+            <TouchableOpacity style={styles.loadMoreBtn} onPress={() => loadMoreForDay(row.date)} activeOpacity={0.75}>
               <Text style={styles.loadMoreText}>Load more</Text>
               <Feather name="chevron-down" size={14} color={Colors.primary} />
             </TouchableOpacity>
           );
         }
-        return null;
+
+        return (
+          <TouchableOpacity style={styles.loadMoreDaysBtn} onPress={loadMoreDays} activeOpacity={0.75}>
+            {loadingMoreDays ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.loadMoreDaysText}>Load more days</Text>}
+          </TouchableOpacity>
+        );
       }}
       ListHeaderComponent={ListHeaderComponent}
-      ListFooterComponent={
-        <>
-          {daysMeta && daysMeta.page < daysMeta.total_pages && (
-            <TouchableOpacity style={styles.loadMoreDaysBtn} onPress={loadMoreDays} activeOpacity={0.75}>
-              {loadingMoreDays ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.loadMoreDaysText}>Load more days</Text>}
-            </TouchableOpacity>
-          )}
-          {ListFooterComponent}
-        </>
-      }
+      ListFooterComponent={ListFooterComponent}
       ListEmptyComponent={ListEmptyComponent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={hardRefresh} colors={[Colors.primary]} />}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.list}
-      stickySectionHeadersEnabled={false}
-      onEndReachedThreshold={0.2}
     />
   );
 }
@@ -364,14 +405,6 @@ const styles = StyleSheet.create({
   },
   itemWrap: {
     marginTop: Spacing.sm,
-  },
-  sectionFooter: {
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   loadMoreBtn: {
     marginTop: Spacing.sm,
