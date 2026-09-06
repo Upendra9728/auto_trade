@@ -358,6 +358,16 @@ class PaginatedNotificationsResponse(BaseModel):
     meta: PaginationMeta
 
 
+class DayBucket(BaseModel):
+    date: str
+    count: int
+
+
+class PaginatedDayBucketsResponse(BaseModel):
+    items: list[DayBucket]
+    meta: PaginationMeta
+
+
 # ---------------------------------------------------------------------------
 # Admin bootstrapping (create first admin via secret)
 # ---------------------------------------------------------------------------

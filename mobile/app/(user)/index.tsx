@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, Modal,
-  TouchableOpacity, RefreshControl, Alert, ActivityIndicator, TextInput,
+  View, Text, StyleSheet, Modal,
+  TouchableOpacity, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -10,10 +10,9 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/the
 import { formatDateTimeIST } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
-import Pagination from '../../components/Pagination';
-import DateRangeFilter from '../../components/DateRangeFilter';
 import CreditsHeader from '../../components/CreditsHeader';
-import type { SignalNotification, PaginationMeta } from '../../types';
+import DayGroupedList from '../../components/DayGroupedList';
+import type { SignalNotification } from '../../types';
 
 const QTY_PRESETS = [5, 15, 20, 25, 30];
 
@@ -24,12 +23,7 @@ function lotsToQty(lots: number, lotSize: number | null): number {
 
 export default function NotificationsScreen() {
   const [items, setItems] = useState<SignalNotification[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
-  const [page, setPage] = useState(1);
-  const [dateFrom, setDateFrom] = useState<string | null>(null);
-  const [dateTo, setDateTo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [actionId, setActionId] = useState<number | null>(null);
 
   // Quantity picker modal state
@@ -37,38 +31,15 @@ export default function NotificationsScreen() {
   const [customQty, setCustomQty] = useState('');
   const [selectedQty, setSelectedQty] = useState<number | null>(null);
 
-  const load = useCallback(async (showError = true) => {
-    try {
-      const data = await userApi.getNotifications({ page, date_from: dateFrom, date_to: dateTo });
-      setItems(data.items);
-      setMeta(data.meta);
-    } catch (err: any) {
-      if (showError) {
-        Alert.alert('Error', err.message);
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [page, dateFrom, dateTo]);
-
-  useEffect(() => { load(); }, [load]);
-
   useFocusEffect(
     useCallback(() => {
-      load(false);
+      setRefreshNonce((value) => value + 1);
       const intervalId = setInterval(() => {
-        load(false);
+        setRefreshNonce((value) => value + 1);
       }, 5000);
       return () => clearInterval(intervalId);
-    }, [load]),
+    }, []),
   );
-
-  const handleDateChange = (from: string | null, to: string | null) => {
-    setDateFrom(from);
-    setDateTo(to);
-    setPage(1);
-  };
 
   const handleConfirm = (n: SignalNotification) => {
     const lotSize = n.signal.lot_size ?? null;
@@ -97,7 +68,7 @@ export default function NotificationsScreen() {
         n.id,
         finalQty !== n.signal.quantity ? finalQty : undefined,
       );
-      setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      setRefreshNonce((value) => value + 1);
       if (updated.status === 'placed') {
         Alert.alert(
           '✅ Order submitted to Dhan',
@@ -118,8 +89,8 @@ export default function NotificationsScreen() {
   const handleReject = async (n: SignalNotification) => {
     setActionId(n.id);
     try {
-      const updated = await userApi.rejectNotification(n.id);
-      setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      await userApi.rejectNotification(n.id);
+      setRefreshNonce((value) => value + 1);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -205,14 +176,6 @@ export default function NotificationsScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <CreditsHeader />
@@ -223,25 +186,19 @@ export default function NotificationsScreen() {
         </Text>
       </View>
 
-      <View style={styles.filterBar}>
-        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
-      </View>
-
-      <FlatList
-        data={items}
-        keyExtractor={(i) => String(i.id)}
+      <DayGroupedList<SignalNotification>
+        refreshNonce={refreshNonce}
+        fetchDays={({ page, pageSize }) => userApi.getNotificationDays({ page, pageSize })}
+        fetchItemsForDay={({ date, page, pageSize }) => userApi.getNotifications({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, !items.length && { flex: 1 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[Colors.primary]} />}
+        keyExtractor={(i) => String(i.id)}
+        onVisibleItemsChange={setItems}
         ListEmptyComponent={<EmptyState icon="bell-off" title="No signals yet" subtitle="When the admin sends a trading signal, it will appear here." />}
-        showsVerticalScrollIndicator={false}
       />
-
-      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
 
       {/* ── Quantity picker modal ───────────────────────────────────────── */}
       <Modal visible={!!qtyModal} transparent animationType="slide" onRequestClose={() => setQtyModal(null)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             {qtyModal && (() => {
               const n = qtyModal.notification;
@@ -328,7 +285,7 @@ export default function NotificationsScreen() {
               );
             })()}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

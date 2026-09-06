@@ -16,6 +16,7 @@ import type {
   OrderActionResult,
   Dashboard,
   Paginated,
+  PaginatedDayBuckets,
   DateRangeFilter,
   AdminUserPnlRow,
   OrderEvent,
@@ -167,6 +168,12 @@ export const userApi = {
       date_from: params.date_from,
       date_to: params.date_to,
     })}`),
+  getNotificationDays: (params: { status?: string; page?: number; pageSize?: number } = {}) =>
+    get<PaginatedDayBuckets>(`/api/users/me/notifications/days${buildQuery({
+      status: params.status,
+      page: params.page,
+      page_size: params.pageSize,
+    })}`),
   confirmNotification: (id: number, quantity?: number) =>
     post<SignalNotification>(`/api/users/me/notifications/${id}/confirm`, quantity != null ? { quantity } : undefined),
   rejectNotification: (id: number) =>
@@ -177,6 +184,11 @@ export const userApi = {
       page_size: params.pageSize,
       date_from: params.date_from,
       date_to: params.date_to,
+    })}`),
+  getOrderDays: (params: { page?: number; pageSize?: number } = {}) =>
+    get<PaginatedDayBuckets>(`/api/users/me/orders/days${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
     })}`),
   getNotificationEvents: (notifId: number) =>
     get<OrderEvent[]>(`/api/users/me/notifications/${notifId}/events`),
@@ -242,6 +254,11 @@ export const adminApi = {
       page_size: params.pageSize,
       date_from: params.date_from,
       date_to: params.date_to,
+    })}`),
+  getSignalDays: (params: { page?: number; pageSize?: number } = {}) =>
+    get<PaginatedDayBuckets>(`/api/admin/signals/days${buildQuery({
+      page: params.page,
+      page_size: params.pageSize,
     })}`),
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
   getSignalNotifications: (id: number, params: { page?: number; pageSize?: number; status?: string } & DateRangeFilter = {}) =>

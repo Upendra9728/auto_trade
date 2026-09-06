@@ -43,7 +43,7 @@ export default function RootLayout() {
         <AuthProvider>
           <StatusBar style="dark" />
           <View style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }} />
             <UpdateBadge />
             <UpdateModal />
             <LegalConsentModal />

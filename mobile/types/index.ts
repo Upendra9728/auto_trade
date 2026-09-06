@@ -274,6 +274,16 @@ export interface Paginated<T> {
   meta: PaginationMeta;
 }
 
+export interface DayBucket {
+  date: string;
+  count: number;
+}
+
+export interface PaginatedDayBuckets {
+  items: DayBucket[];
+  meta: PaginationMeta;
+}
+
 export interface DateRangeFilter {
   // YYYY-MM-DD, IST calendar date, inclusive on both ends
   date_from?: string | null;

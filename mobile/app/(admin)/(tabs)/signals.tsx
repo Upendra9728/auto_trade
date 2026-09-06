@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity,
+  ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,51 +11,26 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/
 import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import EmptyState from '../../../components/EmptyState';
-import Pagination from '../../../components/Pagination';
-import DateRangeFilter from '../../../components/DateRangeFilter';
 import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import { Feather } from '@expo/vector-icons';
-import type { Signal, PaginationMeta } from '../../../types';
+import DayGroupedList from '../../../components/DayGroupedList';
+import type { Signal } from '../../../types';
 
 export default function AdminSignalsScreen() {
   const insets = useSafeAreaInsets();
-  const [signals, setSignals] = useState<Signal[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
-  const [page, setPage] = useState(1);
-  const [dateFrom, setDateFrom] = useState<string | null>(null);
-  const [dateTo, setDateTo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
-  const load = useCallback(async (targetPage: number, from: string | null, to: string | null) => {
-    try {
-      const data = await adminApi.getSignals({ page: targetPage, date_from: from, date_to: to });
-      setSignals(data.items);
-      setMeta(data.meta);
-    } catch {}
-    finally { setLoading(false); setRefreshing(false); }
-  }, []);
-
-  useEffect(() => { load(page, dateFrom, dateTo); }, [load, page, dateFrom, dateTo]);
-
-  // Refresh when navigating back to this screen (e.g. after creating a new signal)
   useFocusEffect(
-    useCallback(() => { load(page, dateFrom, dateTo); }, [load, page, dateFrom, dateTo])
+    useCallback(() => {
+      setRefreshNonce((value: number) => value + 1);
+    }, []),
   );
-
-  const handleDateChange = (from: string | null, to: string | null) => {
-    setDateFrom(from);
-    setDateTo(to);
-    setPage(1);
-  };
-
-  const handleRefresh = () => { setRefreshing(true); load(page, dateFrom, dateTo); };
 
   const handleExportOrders = async () => {
     setExporting(true);
     try {
-      await adminApi.exportOrders({ date_from: dateFrom, date_to: dateTo });
+      await adminApi.exportOrders({});
     } catch (err: any) {
       Alert.alert('Export failed', err.message);
     } finally {
@@ -71,7 +46,7 @@ export default function AdminSignalsScreen() {
         onPress: async () => {
           try {
             await adminApi.cancelSignal(s.id);
-            load(page, dateFrom, dateTo);
+            setRefreshNonce((value: number) => value + 1);
           } catch (err: any) { Alert.alert('Error', err.message); }
         },
       },
@@ -96,7 +71,6 @@ export default function AdminSignalsScreen() {
         <Text style={styles.title}>{s.title}</Text>
         <Text style={styles.meta}>{s.exchange_segment} · Security {s.security_id} · Qty {s.quantity}</Text>
 
-        {/* Notification progress */}
         {s.total_notified !== undefined && (
           <View style={styles.progress}>
             <ProgressPill label="Notified" value={s.total_notified} color={Colors.primary} />
@@ -118,20 +92,11 @@ export default function AdminSignalsScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <AdminScreenHeader title="Signals" />
 
       <View style={styles.filterBar}>
-        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
         <TouchableOpacity style={styles.exportBtn} onPress={handleExportOrders} disabled={exporting}>
           {exporting ? (
             <ActivityIndicator size="small" color={Colors.primary} />
@@ -142,17 +107,14 @@ export default function AdminSignalsScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={signals}
-        keyExtractor={(s) => String(s.id)}
+      <DayGroupedList<Signal>
+        refreshNonce={refreshNonce}
+        fetchDays={({ page, pageSize }) => adminApi.getSignalDays({ page, pageSize })}
+        fetchItemsForDay={({ date, page, pageSize }) => adminApi.getSignals({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, !signals.length && { flex: 1 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[Colors.primary]} />}
+        keyExtractor={(s) => String(s.id)}
         ListEmptyComponent={<EmptyState icon="radio" title="No signals yet" subtitle='Tap the + button below to broadcast a trading signal to all users.' />}
-        showsVerticalScrollIndicator={false}
       />
-
-      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
 
       <TouchableOpacity
         style={[styles.fab, { bottom: 60 + insets.bottom + Spacing.md }]}

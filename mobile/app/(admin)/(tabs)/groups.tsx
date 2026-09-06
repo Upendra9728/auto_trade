@@ -136,35 +136,40 @@ export default function GroupsScreen() {
 
       {/* Create Group Modal */}
       <Modal visible={createVisible} transparent animationType="fade" onRequestClose={() => setCreateVisible(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setCreateVisible(false)} />
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>New Group</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Group name (e.g. VIP)"
-            placeholderTextColor={Colors.textMuted}
-            value={newName}
-            onChangeText={setNewName}
-            autoFocus
-            autoCapitalize="words"
-          />
-          <TextInput
-            style={[styles.input, { marginTop: Spacing.sm }]}
-            placeholder="Description (optional)"
-            placeholderTextColor={Colors.textMuted}
-            value={newDesc}
-            onChangeText={setNewDesc}
-            autoCapitalize="sentences"
-          />
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCreateVisible(false); setNewName(''); setNewDesc(''); }}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.confirmBtn, creating && { opacity: 0.6 }]} onPress={handleCreate} disabled={creating}>
-              {creating ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.confirmText}>Create</Text>}
-            </TouchableOpacity>
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.backdrop} onPress={() => setCreateVisible(false)} />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>New Group</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Group name (e.g. VIP)"
+              placeholderTextColor={Colors.textMuted}
+              value={newName}
+              onChangeText={setNewName}
+              autoFocus
+              autoCapitalize="words"
+            />
+            <TextInput
+              style={[styles.input, { marginTop: Spacing.sm }]}
+              placeholder="Description (optional)"
+              placeholderTextColor={Colors.textMuted}
+              value={newDesc}
+              onChangeText={setNewDesc}
+              autoCapitalize="sentences"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCreateVisible(false); setNewName(''); setNewDesc(''); }}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn, creating && { opacity: 0.6 }]} onPress={handleCreate} disabled={creating}>
+                {creating ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.confirmText}>Create</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -202,6 +207,7 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.textSecondary },
   emptySub: { fontSize: 13, color: Colors.textMuted, textAlign: 'center' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalKeyboardWrap: { flex: 1, justifyContent: 'center' },
   modalCard: {
     position: 'absolute', left: Spacing.lg, right: Spacing.lg,
     top: '35%',

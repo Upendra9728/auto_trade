@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet,
-  RefreshControl, ActivityIndicator, TouchableOpacity, Modal,
+  View, Text, StyleSheet,
+  ActivityIndicator, TouchableOpacity, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -13,19 +13,13 @@ import StatusBadge from '../../components/StatusBadge';
 import LiveStatusBadge from '../../components/LiveStatusBadge';
 import OrderTimeline from '../../components/OrderTimeline';
 import EmptyState from '../../components/EmptyState';
-import Pagination from '../../components/Pagination';
-import DateRangeFilter from '../../components/DateRangeFilter';
 import CreditsHeader from '../../components/CreditsHeader';
-import type { SignalNotification, PaginationMeta, OrderEvent } from '../../types';
+import DayGroupedList from '../../components/DayGroupedList';
+import type { SignalNotification, OrderEvent } from '../../types';
 
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<SignalNotification[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta | null>(null);
-  const [page, setPage] = useState(1);
-  const [dateFrom, setDateFrom] = useState<string | null>(null);
-  const [dateTo, setDateTo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
   // Timeline modal state
   const [selectedNotifId, setSelectedNotifId] = useState<number | null>(null);
@@ -33,32 +27,15 @@ export default function OrdersScreen() {
   const [timelineEvents, setTimelineEvents] = useState<OrderEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const data = await userApi.getOrders({ page, date_from: dateFrom, date_to: dateTo });
-      setOrders(data.items);
-      setMeta(data.meta);
-    } catch {}
-    finally { setLoading(false); setRefreshing(false); }
-  }, [page, dateFrom, dateTo]);
-
-  useEffect(() => { load(); }, [load]);
-
   useFocusEffect(
     useCallback(() => {
-      load();
+      setRefreshNonce((value) => value + 1);
       const intervalId = setInterval(() => {
-        load();
+        setRefreshNonce((value) => value + 1);
       }, 7000);
       return () => clearInterval(intervalId);
-    }, [load]),
+    }, []),
   );
-
-  const handleDateChange = (from: string | null, to: string | null) => {
-    setDateFrom(from);
-    setDateTo(to);
-    setPage(1);
-  };
 
   const openTimeline = async (o: SignalNotification) => {
     setSelectedNotifId(o.id);
@@ -161,37 +138,23 @@ export default function OrdersScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <CreditsHeader />
       <View style={styles.headerBar}>
         <Text style={styles.pageTitle}>Order History</Text>
-        <Text style={styles.count}>{meta?.total ?? orders.length} orders</Text>
+        <Text style={styles.count}>{orders.length} orders</Text>
       </View>
 
-      <View style={styles.filterBar}>
-        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onChange={handleDateChange} />
-      </View>
-
-      <FlatList
-        data={orders}
-        keyExtractor={(o) => String(o.id)}
+      <DayGroupedList<SignalNotification>
+        refreshNonce={refreshNonce}
+        fetchDays={({ page, pageSize }) => userApi.getOrderDays({ page, pageSize })}
+        fetchItemsForDay={({ date, page, pageSize }) => userApi.getOrders({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}
-        contentContainerStyle={[styles.list, !orders.length && { flex: 1 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[Colors.primary]} />}
+        keyExtractor={(o) => String(o.id)}
+        onVisibleItemsChange={setOrders}
         ListEmptyComponent={<EmptyState icon="shopping-bag" title="No orders yet" subtitle="Confirmed orders will appear here." />}
-        showsVerticalScrollIndicator={false}
       />
-
-      <Pagination meta={meta} onPageChange={setPage} loading={loading} />
 
       {/* Timeline Modal */}
       <Modal visible={selectedNotifId != null} animationType="slide" transparent onRequestClose={() => setSelectedNotifId(null)}>

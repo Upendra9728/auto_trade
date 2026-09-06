@@ -20,7 +20,7 @@ from ..token_refresh import renew_and_save_credential_with_reason
 from ..ipv6_pool import assign_next_ipv6
 from ..models import DhanCredential, OrderEvent, PasswordResetOtp, Signal, SignalNotification, User, UserGroup, UserGroupMember, UserPosition, UserSession
 from ..notifications import send_signal_cancelled_notifications, send_signal_notifications
-from ..pagination import paginate_meta, parse_ist_date_range
+from ..pagination import paginate_meta, parse_ist_date_range, list_day_buckets
 from ..scrip_lookup import search as scrip_search_fn
 from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry_fn
 from ..scrip_lookup import list_symbols as scrip_list_symbols_fn
@@ -42,8 +42,10 @@ from ..schemas import (
     OrderActionResult,
     OrderEventResponse,
     PaginatedNotificationsAdminResponse,
+    PaginatedDayBucketsResponse,
     PaginatedSignalsResponse,
     PaginatedUsersResponse,
+    DayBucket,
     SignalCreateRequest,
     SignalOrderModifyRequest,
     SignalResponse,
@@ -139,6 +141,19 @@ def _to_admin_user(u: User, db: Session) -> AdminUserResponse:
         created_at=u.created_at.isoformat(),
         updated_at=u.updated_at.isoformat(),
     )
+
+
+def _sanitize_modify_payload(req: SignalOrderModifyRequest) -> dict[str, float]:
+    payload: dict[str, float] = {}
+    for field in ("price", "target_price", "stop_loss_price", "trailing_jump"):
+        value = getattr(req, field)
+        if value is not None:
+            payload[field] = float(value)
+    return payload
+
+
+def _is_entry_leg_modifiable(live_status: str | None) -> bool:
+    return live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
 
 
 def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True) -> SignalResponse:
@@ -767,6 +782,21 @@ def list_signals(
     )
 
 
+@router.get("/signals/days", response_model=PaginatedDayBucketsResponse)
+def list_signal_days(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=15, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> PaginatedDayBucketsResponse:
+    query = db.query(Signal)
+    days, meta = list_day_buckets(query, Signal.created_at, page=page, page_size=page_size)
+    return PaginatedDayBucketsResponse(
+        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        meta=meta,
+    )
+
+
 @router.get("/signals/{signal_id}", response_model=AdminSignalDetailResponse)
 def get_signal(
     signal_id: int,
@@ -1128,9 +1158,16 @@ async def modify_signal_orders(
                 success=False, reason="No active Dhan credential",
             )
         cred, token = cred_info
+        payload = _sanitize_modify_payload(req)
+        if not payload:
+            return OrderActionResult(
+                notification_id=notif.id, user_id=notif.user_id,
+                user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+                success=False, reason="No valid fields supplied to modify",
+            )
         # entry still open (NULL = never updated by WS) → ENTRY_LEG
         # entry already TRADED → modify exit legs independently per Dhan spec
-        entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
+        entry_pending = _is_entry_leg_modifiable(notif.live_status)
         async with sem:
             try:
                 if entry_pending:
@@ -1141,10 +1178,10 @@ async def modify_signal_orders(
                         access_token=token,
                         source_ipv6=notif.user.assigned_ipv6,
                         leg_name="ENTRY_LEG",
-                        price=req.price,
-                        target_price=req.target_price,
-                        stop_loss_price=req.stop_loss_price,
-                        trailing_jump=req.trailing_jump,
+                        price=payload.get("price"),
+                        target_price=payload.get("target_price"),
+                        stop_loss_price=payload.get("stop_loss_price"),
+                        trailing_jump=payload.get("trailing_jump"),
                     )
                 else:
                     # Per Dhan spec:
@@ -1153,26 +1190,28 @@ async def modify_signal_orders(
                     # IMPORTANT: Dhan cancels trailing stop if trailingJump is omitted or 0.
                     # Always carry the signal's current trailing_jump forward if admin didn't change it.
                     made_call = False
-                    if req.target_price is not None:
+                    if payload.get("target_price") is not None:
                         await DhanClient.modify_super_order(
                             order_id=notif.dhan_order_id,
                             dhan_client_id=cred.dhan_client_id,
                             access_token=token,
                             source_ipv6=notif.user.assigned_ipv6,
                             leg_name="TARGET_LEG",
-                            target_price=req.target_price,
+                            target_price=payload["target_price"],
                         )
                         made_call = True
-                    if req.stop_loss_price is not None or req.trailing_jump is not None:
+                    if payload.get("stop_loss_price") is not None or payload.get("trailing_jump") is not None:
                         # Carry forward signal's trailing_jump if admin only changed stop_loss_price
-                        effective_trailing = req.trailing_jump if req.trailing_jump is not None else signal.trailing_jump
+                        effective_trailing = payload.get("trailing_jump")
+                        if effective_trailing is None:
+                            effective_trailing = signal.trailing_jump
                         await DhanClient.modify_super_order(
                             order_id=notif.dhan_order_id,
                             dhan_client_id=cred.dhan_client_id,
                             access_token=token,
                             source_ipv6=notif.user.assigned_ipv6,
                             leg_name="STOP_LOSS_LEG",
-                            stop_loss_price=req.stop_loss_price,
+                            stop_loss_price=payload.get("stop_loss_price"),
                             trailing_jump=effective_trailing,
                         )
                         made_call = True
@@ -1296,8 +1335,15 @@ async def modify_notification_order(
     if cred_info is None:
         raise HTTPException(status_code=400, detail="No active Dhan credential for this user")
     cred, token = cred_info
+    payload = _sanitize_modify_payload(req)
+    if not payload:
+        return OrderActionResult(
+            notification_id=notif.id, user_id=notif.user_id,
+            user_email=notif.user.email, dhan_order_id=notif.dhan_order_id,
+            success=False, reason="No valid fields supplied to modify",
+        )
     # TRADED means entry filled; exit legs still modifiable.
-    entry_pending = notif.live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
+    entry_pending = _is_entry_leg_modifiable(notif.live_status)
     try:
         if entry_pending:
             await DhanClient.modify_super_order(
@@ -1306,36 +1352,36 @@ async def modify_notification_order(
                 access_token=token,
                 source_ipv6=notif.user.assigned_ipv6,
                 leg_name="ENTRY_LEG",
-                price=req.price,
-                target_price=req.target_price,
-                stop_loss_price=req.stop_loss_price,
-                trailing_jump=req.trailing_jump,
+                price=payload.get("price"),
+                target_price=payload.get("target_price"),
+                stop_loss_price=payload.get("stop_loss_price"),
+                trailing_jump=payload.get("trailing_jump"),
             )
         else:
             # Per Dhan spec: TARGET_LEG → only targetPrice; STOP_LOSS_LEG → stopLossPrice/trailingJump
             # Carry forward signal's trailing_jump to avoid silently cancelling the trailing stop.
             made_call = False
-            if req.target_price is not None:
+            if payload.get("target_price") is not None:
                 await DhanClient.modify_super_order(
                     order_id=notif.dhan_order_id,
                     dhan_client_id=cred.dhan_client_id,
                     access_token=token,
                     source_ipv6=notif.user.assigned_ipv6,
                     leg_name="TARGET_LEG",
-                    target_price=req.target_price,
+                    target_price=payload["target_price"],
                 )
                 made_call = True
-            if req.stop_loss_price is not None or req.trailing_jump is not None:
-                effective_trailing = req.trailing_jump if req.trailing_jump is not None else (
-                    notif.signal.trailing_jump if notif.signal else None
-                )
+            if payload.get("stop_loss_price") is not None or payload.get("trailing_jump") is not None:
+                effective_trailing = payload.get("trailing_jump")
+                if effective_trailing is None:
+                    effective_trailing = notif.signal.trailing_jump if notif.signal else None
                 await DhanClient.modify_super_order(
                     order_id=notif.dhan_order_id,
                     dhan_client_id=cred.dhan_client_id,
                     access_token=token,
                     source_ipv6=notif.user.assigned_ipv6,
                     leg_name="STOP_LOSS_LEG",
-                    stop_loss_price=req.stop_loss_price,
+                    stop_loss_price=payload.get("stop_loss_price"),
                     trailing_jump=effective_trailing,
                 )
                 made_call = True

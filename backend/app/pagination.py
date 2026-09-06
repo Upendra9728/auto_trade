@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import HTTPException
+from sqlalchemy import func
 
 from .schemas import PaginationMeta
 
@@ -33,3 +34,18 @@ def parse_ist_date_range(
 def paginate_meta(*, page: int, page_size: int, total: int) -> PaginationMeta:
     total_pages = (total + page_size - 1) // page_size if total else 0
     return PaginationMeta(page=page, page_size=page_size, total=total, total_pages=total_pages)
+
+
+def list_day_buckets(query, date_column, *, page: int, page_size: int = 15):
+    day_expr = func.date(func.datetime(date_column, "+5 hours", "+30 minutes"))
+    grouped = query.with_entities(day_expr.label("date")).group_by(day_expr)
+    total = query.session.query(func.count()).select_from(grouped.subquery()).scalar() or 0
+    days = (
+        query.with_entities(day_expr.label("date"), func.count().label("count"))
+        .group_by(day_expr)
+        .order_by(day_expr.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return days, paginate_meta(page=page, page_size=page_size, total=total)

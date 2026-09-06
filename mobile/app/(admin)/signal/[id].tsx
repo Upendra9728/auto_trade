@@ -130,13 +130,13 @@ export default function SignalDetailScreen() {
   const openModify = useCallback((notifId: number | null) => {
     setModifyTarget(notifId);
     setModifyForm({
-      price: signal ? String(signal.price) : '',
-      target_price: signal ? String(signal.target_price) : '',
-      stop_loss_price: signal ? String(signal.stop_loss_price) : '',
-      trailing_jump: signal ? String(signal.trailing_jump) : '',
+      price: '',
+      target_price: '',
+      stop_loss_price: '',
+      trailing_jump: '',
     });
     setModifyVisible(true);
-  }, [signal]);
+  }, []);
 
   const handleCancelAll = () => {
     Alert.alert(
@@ -193,10 +193,28 @@ export default function SignalDetailScreen() {
 
   const handleSubmitModify = async () => {
     const payload: SignalOrderModifyPayload = {};
-    if (modifyForm.price) payload.price = parseFloat(modifyForm.price);
-    if (modifyForm.target_price) payload.target_price = parseFloat(modifyForm.target_price);
-    if (modifyForm.stop_loss_price) payload.stop_loss_price = parseFloat(modifyForm.stop_loss_price);
-    if (modifyForm.trailing_jump) payload.trailing_jump = parseFloat(modifyForm.trailing_jump);
+    const entries: Array<[keyof typeof modifyForm, keyof SignalOrderModifyPayload]> = [
+      ['price', 'price'],
+      ['target_price', 'target_price'],
+      ['stop_loss_price', 'stop_loss_price'],
+      ['trailing_jump', 'trailing_jump'],
+    ];
+
+    for (const [formKey, payloadKey] of entries) {
+      const raw = modifyForm[formKey].trim();
+      if (!raw) continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) {
+        Alert.alert('Invalid value', `Please enter a valid number for ${formKey.replace(/_/g, ' ')}.`);
+        return;
+      }
+      payload[payloadKey] = value;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      Alert.alert('No changes', 'Enter at least one field to modify.');
+      return;
+    }
 
     setModifyVisible(false);
     setActionLoading(true);

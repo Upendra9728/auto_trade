@@ -13,14 +13,16 @@ from ..deps import get_current_user, get_db
 from ..dhan_client import DhanApiError, DhanClient
 from ..models import DhanCredential, OrderEvent, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
-from ..pagination import paginate_meta, parse_ist_date_range
+from ..pagination import paginate_meta, parse_ist_date_range, list_day_buckets
 from ..token_refresh import renew_and_save_credential_with_reason
 from ..token_refresh import parse_dhan_expiry
 from ..schemas import (
     DhanCredentialResponse,
     DhanCredentialUpsertRequest,
     ConfirmNotificationRequest,
+    DayBucket,
     OrderEventResponse,
+    PaginatedDayBucketsResponse,
     PaginatedNotificationsResponse,
     SignalNotificationResponse,
     SignalResponse,
@@ -350,6 +352,24 @@ def list_notifications(
     )
 
 
+@router.get("/me/notifications/days", response_model=PaginatedDayBucketsResponse)
+def list_notification_days(
+    status: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=15, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaginatedDayBucketsResponse:
+    query = db.query(SignalNotification).filter(SignalNotification.user_id == current_user.id)
+    if status:
+        query = query.filter(SignalNotification.status == status)
+    days, meta = list_day_buckets(query, SignalNotification.created_at, page=page, page_size=page_size)
+    return PaginatedDayBucketsResponse(
+        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        meta=meta,
+    )
+
+
 @router.post("/me/notifications/{notification_id}/confirm", response_model=SignalNotificationResponse)
 async def confirm_notification(
     notification_id: int,
@@ -447,6 +467,27 @@ def list_orders(
     return PaginatedNotificationsResponse(
         items=[_to_notification_response(n) for n in notifications],
         meta=paginate_meta(page=page, page_size=page_size, total=total),
+    )
+
+
+@router.get("/me/orders/days", response_model=PaginatedDayBucketsResponse)
+def list_order_days(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=15, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaginatedDayBucketsResponse:
+    query = (
+        db.query(SignalNotification)
+        .filter(
+            SignalNotification.user_id == current_user.id,
+            SignalNotification.status.in_(["placed", "failed"]),
+        )
+    )
+    days, meta = list_day_buckets(query, SignalNotification.created_at, page=page, page_size=page_size)
+    return PaginatedDayBucketsResponse(
+        items=[DayBucket(date=row.date, count=row.count) for row in days],
+        meta=meta,
     )
 
 

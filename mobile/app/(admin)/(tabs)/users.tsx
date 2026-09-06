@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   TextInput, RefreshControl, ActivityIndicator, Alert, Modal,
+  KeyboardAvoidingView, Platform, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -191,7 +192,8 @@ export default function AdminUsersScreen() {
         animationType="fade"
         onRequestClose={() => setBulkCreditsModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView style={styles.modalKeyboardWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setBulkCreditsModalVisible(false)} />
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add Credits to All Users</Text>
             <Text style={styles.modalText}>
@@ -227,7 +229,7 @@ export default function AdminUsersScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -294,6 +296,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.lg,
   },
+  modalKeyboardWrap: { flex: 1, justifyContent: 'center' },
   modalContent: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg,

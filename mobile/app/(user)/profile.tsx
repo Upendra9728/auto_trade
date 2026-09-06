@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, Switch,
+  ScrollView, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -26,6 +26,7 @@ export default function ProfileScreen() {
   const [refreshingDhan, setRefreshingDhan] = useState(false);
   const [autoTradeEnabled, setAutoTradeEnabled] = useState(false);
   const [autoTradeQty, setAutoTradeQty] = useState('');
+  const [savedAutoTradeQty, setSavedAutoTradeQty] = useState('');
   const [savingAutoTrade, setSavingAutoTrade] = useState(false);
 
   useEffect(() => {
@@ -35,7 +36,9 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!user) return;
     setAutoTradeEnabled(user.auto_trade_enabled);
-    setAutoTradeQty(user.auto_trade_quantity != null ? String(user.auto_trade_quantity) : '');
+    const qty = user.auto_trade_quantity != null ? String(user.auto_trade_quantity) : '';
+    setAutoTradeQty(qty);
+    setSavedAutoTradeQty(qty);
   }, [user?.auto_trade_enabled, user?.auto_trade_quantity]);
 
   const handleSaveDhan = async () => {
@@ -116,6 +119,7 @@ export default function ProfileScreen() {
     try {
       const qty = autoTradeQty.trim() ? parseInt(autoTradeQty.trim(), 10) : null;
       await userApi.updateAutoTrade({ auto_trade_enabled: value, auto_trade_quantity: qty });
+      setSavedAutoTradeQty(autoTradeQty.trim());
       await refreshUser();
     } catch (err: any) {
       setAutoTradeEnabled(!value);
@@ -135,6 +139,7 @@ export default function ProfileScreen() {
     try {
       const qty = trimmed ? parseInt(trimmed, 10) : null;
       await userApi.updateAutoTrade({ auto_trade_enabled: autoTradeEnabled, auto_trade_quantity: qty });
+      setSavedAutoTradeQty(trimmed);
       await refreshUser();
       Alert.alert('Saved', 'Auto-Trade preset quantity updated.');
     } catch (err: any) {
@@ -162,7 +167,12 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <CreditsHeader />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.pageTitle}>Profile</Text>
 
         {/* User info */}
@@ -188,10 +198,10 @@ export default function ProfileScreen() {
         {/* IPv6 info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Order Placement IP</Text>
-          <View style={styles.infoRow}>
+          <View style={styles.ipField}>
             <Text style={styles.infoLabel}>Assigned IPv6</Text>
             <View style={styles.ipValueRow}>
-              <Text style={styles.monoValue}>
+              <Text style={styles.ipValue} numberOfLines={3}>
                 {user?.assigned_ipv6 ?? 'Not assigned yet — contact admin'}
               </Text>
               {user?.assigned_ipv6 ? (
@@ -273,7 +283,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.dhan_client_id}
-                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, dhan_client_id: v }))}
+                  onChangeText={(v: string) => setDhanForm((f: typeof dhanForm) => ({ ...f, dhan_client_id: v }))}
                   placeholder="Your Dhan client ID"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="none"
@@ -284,7 +294,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.pin}
-                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, pin: v }))}
+                  onChangeText={(v: string) => setDhanForm((f: typeof dhanForm) => ({ ...f, pin: v }))}
                   placeholder="6-digit login PIN"
                   placeholderTextColor={Colors.textMuted}
                   keyboardType="numeric"
@@ -297,7 +307,7 @@ export default function ProfileScreen() {
                 <TextInput
                   style={styles.input}
                   value={dhanForm.totp_secret}
-                  onChangeText={(v: string) => setDhanForm((f) => ({ ...f, totp_secret: v }))}
+                  onChangeText={(v: string) => setDhanForm((f: typeof dhanForm) => ({ ...f, totp_secret: v }))}
                   placeholder="Base32 key from Dhan TOTP setup"
                   placeholderTextColor={Colors.textMuted}
                   autoCapitalize="characters"
@@ -354,7 +364,6 @@ export default function ProfileScreen() {
               style={styles.input}
               value={autoTradeQty}
               onChangeText={setAutoTradeQty}
-              onBlur={handleSaveAutoTradeQty}
               editable={autoTradeEnabled}
               placeholder="Leave blank to use admin's qty"
               placeholderTextColor={Colors.textMuted}
@@ -363,6 +372,17 @@ export default function ProfileScreen() {
             <Text style={styles.hintText}>
               Overrides the admin's quantity for every future signal while Auto-Trade is on.
             </Text>
+            {autoTradeEnabled && autoTradeQty.trim() !== savedAutoTradeQty.trim() && (
+              <TouchableOpacity
+                style={[styles.saveBtn, savingAutoTrade && { opacity: 0.6 }]}
+                onPress={handleSaveAutoTradeQty}
+                disabled={savingAutoTrade}
+              >
+                {savingAutoTrade
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.saveText}>Save</Text>}
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -400,7 +420,8 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -455,7 +476,9 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   infoLabel: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
   monoValue: { fontSize: 13, color: Colors.text, fontWeight: '500', textAlign: 'right' },
-  ipValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.sm, flex: 2 },
+  ipField: { gap: 6 },
+  ipValueRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: Spacing.sm },
+  ipValue: { flex: 1, fontSize: 13, color: Colors.text, fontWeight: '500', flexShrink: 1, lineHeight: 18 },
   copyBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, backgroundColor: Colors.primaryBg },
   copyText: { color: Colors.primary, fontWeight: '600', fontSize: 12 },
   warnBox: { backgroundColor: Colors.warningBg, borderRadius: Radius.sm, padding: Spacing.sm },
