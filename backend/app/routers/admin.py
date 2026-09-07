@@ -27,6 +27,7 @@ from ..scrip_lookup import list_symbols as scrip_list_symbols_fn
 from ..scrip_lookup import list_expiries as scrip_list_expiries_fn
 from ..scrip_lookup import list_strikes as scrip_list_strikes_fn
 from ..scrip_lookup import search_contracts as scrip_search_contracts_fn
+from ..signal_parser import normalize_channel_name
 from ..schemas import (
     AdminAddCreditsRequest,
     AdminSignalDetailResponse,
@@ -1701,6 +1702,20 @@ def list_admin_positions(
 # User Groups
 # ---------------------------------------------------------------------------
 
+def _assert_channel_name_available(db: Session, channel_name: str, exclude_group_id: int | None = None) -> None:
+    """Raises 409 if another group already claims this Telegram channel (normalized, case-insensitive)."""
+    normalized = normalize_channel_name(channel_name)
+    query = db.query(UserGroup).filter(UserGroup.telegram_channel_name.isnot(None))
+    if exclude_group_id is not None:
+        query = query.filter(UserGroup.id != exclude_group_id)
+    for other in query.all():
+        if normalize_channel_name(other.telegram_channel_name) == normalized:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Telegram channel '{channel_name}' is already linked to group '{other.name}'",
+            )
+
+
 def _to_group_response(group: UserGroup, db: Session) -> GroupResponse:
     count = db.query(UserGroupMember).filter(UserGroupMember.group_id == group.id).count()
     return GroupResponse(
@@ -1711,6 +1726,7 @@ def _to_group_response(group: UserGroup, db: Session) -> GroupResponse:
         created_by_id=group.created_by_id,
         created_at=group.created_at.isoformat(),
         updated_at=group.updated_at.isoformat(),
+        telegram_channel_name=group.telegram_channel_name,
     )
 
 
@@ -1734,10 +1750,14 @@ def create_group(
     existing = db.query(UserGroup).filter(UserGroup.name == req.name.strip()).one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail=f"A group named '{req.name}' already exists")
+    channel_name = req.telegram_channel_name.strip() if req.telegram_channel_name else None
+    if channel_name:
+        _assert_channel_name_available(db, channel_name)
     group = UserGroup(
         name=req.name.strip(),
         description=req.description.strip() if req.description else None,
         created_by_id=admin.id,
+        telegram_channel_name=channel_name,
     )
     db.add(group)
     db.commit()
@@ -1770,6 +1790,7 @@ def get_group(
         created_by_id=group.created_by_id,
         created_at=group.created_at.isoformat(),
         updated_at=group.updated_at.isoformat(),
+        telegram_channel_name=group.telegram_channel_name,
     )
 
 
@@ -1780,7 +1801,7 @@ def update_group(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> GroupResponse:
-    """Rename or update the description of a group."""
+    """Rename or update the description/linked Telegram channel of a group."""
     group = db.query(UserGroup).filter(UserGroup.id == group_id).one_or_none()
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -1792,6 +1813,11 @@ def update_group(
         group.name = name
     if req.description is not None:
         group.description = req.description.strip() or None
+    if req.telegram_channel_name is not None:
+        channel_name = req.telegram_channel_name.strip() or None
+        if channel_name:
+            _assert_channel_name_available(db, channel_name, exclude_group_id=group_id)
+        group.telegram_channel_name = channel_name
     group.updated_at = dt.datetime.utcnow()
     db.commit()
     db.refresh(group)

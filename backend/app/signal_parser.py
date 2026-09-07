@@ -55,6 +55,17 @@ def strip_emojis(text: str) -> str:
     return _EMOJI_PATTERN.sub("", text)
 
 
+def _strip_markdown_markers(line: str) -> str:
+    """Strips leading/trailing bold/italic markers (*, _, `) so decorated lines like
+    '**SENSEX' or 'EXPIRY**' still match plain text (symbol lookup, key detection)."""
+    return line.strip("*_`").strip()
+
+
+def normalize_channel_name(name: str | None) -> str:
+    """Shared normalization for matching a Telegram channel/group name against configured values."""
+    return (name or "").strip().lower().lstrip("@")
+
+
 def _pick_value(lines: list[str], key: str) -> str:
     for line in lines:
         upper = line.upper()
@@ -138,7 +149,8 @@ def parse_signal_message(raw_text: str) -> ParsedSignal | None:
         EXPIRY: 2026-07-21
     """
     cleaned = strip_emojis(raw_text)
-    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+    lines = [_strip_markdown_markers(ln) for ln in cleaned.splitlines() if ln.strip()]
+    lines = [ln for ln in lines if ln]
     if len(lines) < 2:
         return None
 

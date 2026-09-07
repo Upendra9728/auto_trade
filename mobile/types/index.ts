@@ -302,6 +302,7 @@ export interface UserGroup {
   created_by_id: number;
   created_at: string;
   updated_at: string;
+  telegram_channel_name: string | null;
 }
 
 export interface UserGroupDetail {
@@ -312,5 +313,6 @@ export interface UserGroupDetail {
   created_by_id: number;
   created_at: string;
   updated_at: string;
+  telegram_channel_name: string | null;
 }
 }

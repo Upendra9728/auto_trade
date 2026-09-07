@@ -1,18 +1,48 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Alert,
+  ScrollView, Alert, TextInput, Switch, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '../../../contexts/AuthContext';
+import { userApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 
 export default function AdminProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
+  const [telegramAutomationEnabled, setTelegramAutomationEnabled] = useState(false);
+  const [telegramChannelName, setTelegramChannelName] = useState('');
+  const [savingTelegramSettings, setSavingTelegramSettings] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setTelegramAutomationEnabled(Boolean(user.telegram_automation_enabled));
+    setTelegramChannelName(user.telegram_channel_name ?? '');
+  }, [user?.telegram_automation_enabled, user?.telegram_channel_name]);
+
+  const handleSaveTelegramSettings = async (
+    nextEnabled: boolean = telegramAutomationEnabled,
+    nextChannel: string = telegramChannelName,
+  ) => {
+    setSavingTelegramSettings(true);
+    try {
+      await userApi.updateProfile({
+        telegram_automation_enabled: nextEnabled,
+        telegram_channel_name: nextChannel.trim() || null,
+      });
+      await refreshUser();
+      setTelegramAutomationEnabled(nextEnabled);
+      setTelegramChannelName(nextChannel.trim());
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to update Telegram settings.');
+    } finally {
+      setSavingTelegramSettings(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -89,6 +119,44 @@ export default function AdminProfileScreen() {
           </View>
         </View>
 
+        {/* Telegram automation */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Telegram Automation</Text>
+            <Switch
+              value={telegramAutomationEnabled}
+              onValueChange={async (value: boolean) => {
+                setTelegramAutomationEnabled(value);
+                await handleSaveTelegramSettings(value);
+              }}
+              disabled={savingTelegramSettings}
+              trackColor={{ false: Colors.border, true: Colors.primary }}
+            />
+          </View>
+
+          <Text style={styles.helperText}>
+            Enable this to accept signal messages from the configured Telegram channel.
+            When it is off, incoming messages are ignored.
+          </Text>
+
+          <View style={[styles.field, !telegramAutomationEnabled && { opacity: 0.5 }]}> 
+            <Text style={styles.label}>Configured channel</Text>
+            <TextInput
+              style={styles.input}
+              value={telegramChannelName || 'Any channel allowed'}
+              editable={false}
+              placeholder="@signals or signals"
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.hintText}>
+              This value is read from the admin profile and is used by the backend to filter incoming Telegram signals.
+              {telegramChannelName ? ' The bot only accepts messages from this channel.' : ' No specific channel is configured, so any channel is accepted while automation is enabled.'}
+            </Text>
+          </View>
+        </View>
+
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
           <Feather name="log-out" size={20} color={Colors.error} />
@@ -152,10 +220,43 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     ...Shadow.card,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
   cardTitle: {
     ...Typography.h3,
     color: Colors.text,
+  },
+  helperText: {
+    ...Typography.bodySmall,
+    color: Colors.textSecondary,
     marginBottom: Spacing.md,
+    lineHeight: 19,
+  },
+  field: {
+    gap: Spacing.xs,
+  },
+  label: {
+    ...Typography.label,
+    color: Colors.text,
+  },
+  input: {
+    backgroundColor: Colors.background,
+    borderColor: Colors.border,
+    borderWidth: 1.5,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    color: Colors.text,
+    fontSize: 14,
+  },
+  hintText: {
+    ...Typography.caption,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
   },
   infoRow: {
     flexDirection: 'row',

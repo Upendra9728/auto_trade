@@ -8,10 +8,11 @@ Run separately from the FastAPI backend:
     python bot.py
 
 Env vars (see .env.example):
-    TELEGRAM_BOT_TOKEN       - bot token from @BotFather
-    TELEGRAM_ALLOWED_CHAT_ID - the group's chat id (only messages from this chat are processed)
-    BACKEND_BASE_URL         - e.g. http://localhost:8000
-    BACKEND_INTERNAL_SECRET  - must match the backend's INTERNAL_SECRET env var
+    TELEGRAM_BOT_TOKEN        - bot token from @BotFather
+    TELEGRAM_ALLOWED_CHAT_IDS - comma-separated chat ids to forward messages from (preferred)
+    TELEGRAM_ALLOWED_CHAT_ID  - single chat id (legacy, still supported if the plural var isn't set)
+    BACKEND_BASE_URL          - e.g. http://localhost:8000
+    BACKEND_INTERNAL_SECRET   - must match the backend's INTERNAL_SECRET env var
 """
 
 from __future__ import annotations
@@ -28,7 +29,13 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_ALLOWED_CHAT_ID = int(os.environ["TELEGRAM_ALLOWED_CHAT_ID"])
+
+_allowed_ids_raw = os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS")
+if _allowed_ids_raw:
+    TELEGRAM_ALLOWED_CHAT_IDS = [int(cid.strip()) for cid in _allowed_ids_raw.split(",") if cid.strip()]
+else:
+    TELEGRAM_ALLOWED_CHAT_IDS = [int(os.environ["TELEGRAM_ALLOWED_CHAT_ID"])]
+
 BACKEND_BASE_URL = os.environ["BACKEND_BASE_URL"].rstrip("/")
 BACKEND_INTERNAL_SECRET = os.environ["BACKEND_INTERNAL_SECRET"]
 
@@ -53,6 +60,16 @@ _EMOJI_PATTERN = re.compile(
 
 def _strip_emojis(text: str) -> str:
     return _EMOJI_PATTERN.sub("", text)
+
+
+async def log_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Always-on discovery aid: logs chat id/title/username for every message the bot sees,
+    so a newly-added Telegram group's chat_id can be read from the logs and added to
+    TELEGRAM_ALLOWED_CHAT_IDS — regardless of whether it's currently allow-listed."""
+    chat = update.effective_chat
+    if chat is None:
+        return
+    logger.info("Message seen in chat_id=%s title=%r username=%r", chat.id, chat.title, chat.username)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -84,10 +101,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 def main() -> None:
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # Discovery handler runs for every message the bot receives (group_id=0), regardless of allow-list.
+    app.add_handler(MessageHandler(filters.TEXT, log_chat_id), group=0)
     app.add_handler(
-        MessageHandler(filters.Chat(chat_id=TELEGRAM_ALLOWED_CHAT_ID) & filters.TEXT, handle_message)
+        MessageHandler(filters.Chat(chat_id=TELEGRAM_ALLOWED_CHAT_IDS) & filters.TEXT, handle_message),
+        group=1,
     )
-    logger.info("Telegram bot starting (polling), listening to chat %s", TELEGRAM_ALLOWED_CHAT_ID)
+    logger.info("Telegram bot starting (polling), listening to chats %s", TELEGRAM_ALLOWED_CHAT_IDS)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

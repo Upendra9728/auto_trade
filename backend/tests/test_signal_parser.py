@@ -50,3 +50,55 @@ STOPLOSS 160
     assert parsed.stop_loss_price == 160.0
     assert parsed.target_price == 200.0
     assert parsed.expiry == "2026-09-10"
+
+
+def test_markdown_bold_wrapped_sensex_message_parses():
+    text = """**SENSEX
+
+📈📉 78000PE
+
+📊 PRICE @ 320-330
+
+STOPLOSS 315
+
+🎯 TARGETS 370/550/800
+
+16TH  APRIL EXPIRY**"""
+
+    parsed = parse_signal_message(text)
+
+    assert parsed is not None
+    assert parsed.symbol == "SENSEX"
+    assert parsed.strike == 78000.0
+    assert parsed.option_type == "PE"
+    assert parsed.price == 325.0
+    assert parsed.stop_loss_price == 315.0
+    assert parsed.target_price == 370.0
+    assert parsed.expiry == "2026-04-16"
+
+
+def test_markdown_bold_wrapped_nifty_message_with_colon_dash_labels_parses():
+    text = """**Trading Floor :-
+
+NIFTY 
+
+ 24000PE
+
+PRICE :-  28-30
+
+STOPLOSS :- 27
+
+TARGET :-  44/59/110
+
+1st SEPTEMBER EXPIRY**"""
+
+    parsed = parse_signal_message(text)
+
+    assert parsed is not None
+    assert parsed.symbol == "NIFTY"
+    assert parsed.strike == 24000.0
+    assert parsed.option_type == "PE"
+    assert parsed.price == 29.0
+    assert parsed.stop_loss_price == 27.0
+    assert parsed.target_price == 44.0
+    assert parsed.expiry == "2026-09-01"

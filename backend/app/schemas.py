@@ -397,11 +397,13 @@ class HealthResponse(BaseModel):
 class GroupCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     description: str | None = Field(default=None, max_length=512)
+    telegram_channel_name: str | None = Field(default=None, max_length=128)
 
 
 class GroupUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = None
+    telegram_channel_name: str | None = Field(default=None, max_length=128)
 
 
 class GroupResponse(BaseModel):
@@ -412,6 +414,7 @@ class GroupResponse(BaseModel):
     created_by_id: int
     created_at: str
     updated_at: str
+    telegram_channel_name: str | None = None
 
 
 class GroupDetailResponse(BaseModel):
@@ -422,6 +425,7 @@ class GroupDetailResponse(BaseModel):
     created_by_id: int
     created_at: str
     updated_at: str
+    telegram_channel_name: str | None = None
 
 
 class GroupAddMembersRequest(BaseModel):

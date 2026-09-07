@@ -29,11 +29,16 @@ export default function GroupDetailScreen() {
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
+  // Telegram automation
+  const [telegramChannelName, setTelegramChannelName] = useState('');
+  const [savingChannel, setSavingChannel] = useState(false);
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
       const data = await adminApi.getGroup(Number(id));
       setGroup(data);
+      setTelegramChannelName(data.telegram_channel_name ?? '');
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to load group');
     } finally {
@@ -42,6 +47,18 @@ export default function GroupDetailScreen() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleSaveTelegramChannel = async () => {
+    setSavingChannel(true);
+    try {
+      await adminApi.updateGroup(Number(id), { telegram_channel_name: telegramChannelName.trim() || null });
+      await load();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to update Telegram channel');
+    } finally {
+      setSavingChannel(false);
+    }
+  };
 
   const handleRemoveMember = (user: AdminUser) => {
     Alert.alert(
@@ -170,19 +187,54 @@ export default function GroupDetailScreen() {
         data={group.members}
         keyExtractor={(u) => String(u.id)}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.list, !group.members.length && { flex: 1 }]}
         ListHeaderComponent={
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{group.members.length} Member{group.members.length !== 1 ? 's' : ''}</Text>
-            <TouchableOpacity
-              style={[styles.addBtn, actionLoading && { opacity: 0.5 }]}
-              onPress={openAddModal}
-              disabled={actionLoading}
-            >
-              <Feather name="user-plus" size={14} color="#fff" />
-              <Text style={styles.addBtnText}>Add Members</Text>
-            </TouchableOpacity>
-          </View>
+          <>
+            <View style={styles.telegramCard}>
+              <View style={styles.telegramCardHeader}>
+                <Feather name="send" size={16} color={Colors.primary} />
+                <Text style={styles.telegramCardTitle}>Telegram Automation</Text>
+              </View>
+              <Text style={styles.telegramCardDesc}>
+                Messages posted in this Telegram group will only be sent to members of "{group.name}".
+              </Text>
+              <TextInput
+                style={styles.telegramChannelInput}
+                value={telegramChannelName}
+                onChangeText={setTelegramChannelName}
+                placeholder="e.g. MS-SPL-RECOVERY GROUP"
+                placeholderTextColor={Colors.textMuted}
+                editable={!savingChannel}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {telegramChannelName.trim() !== (group.telegram_channel_name ?? '').trim() && (
+                <TouchableOpacity
+                  style={[styles.telegramSaveBtn, savingChannel && { opacity: 0.6 }]}
+                  onPress={handleSaveTelegramChannel}
+                  disabled={savingChannel}
+                >
+                  {savingChannel ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.telegramSaveBtnText}>Save Channel</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{group.members.length} Member{group.members.length !== 1 ? 's' : ''}</Text>
+              <TouchableOpacity
+                style={[styles.addBtn, actionLoading && { opacity: 0.5 }]}
+                onPress={openAddModal}
+                disabled={actionLoading}
+              >
+                <Feather name="user-plus" size={14} color="#fff" />
+                <Text style={styles.addBtnText}>Add Members</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         }
         renderItem={({ item: u }) => (
           <View style={styles.memberRow}>
@@ -328,6 +380,22 @@ const styles = StyleSheet.create({
   descBar: { backgroundColor: Colors.surface, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
   descText: { fontSize: 13, color: Colors.textSecondary },
   list: { padding: Spacing.md, gap: Spacing.sm },
+  telegramCard: {
+    backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md,
+    ...Shadow.card, marginBottom: Spacing.md, gap: Spacing.sm,
+  },
+  telegramCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  telegramCardTitle: { ...Typography.h3, fontSize: 15 },
+  telegramCardDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 17 },
+  telegramChannelInput: {
+    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, fontSize: 14, color: Colors.text,
+  },
+  telegramSaveBtn: {
+    backgroundColor: Colors.primary, borderRadius: Radius.sm,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  telegramSaveBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   sectionTitle: { ...Typography.label, textTransform: 'uppercase', letterSpacing: 0.5 },
   addBtn: {

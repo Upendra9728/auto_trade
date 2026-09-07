@@ -80,6 +80,14 @@ def _apply_migrations() -> None:
                 conn.commit()
             logger.info("Migration: added TOTP columns to dhan_credentials: %s", list(missing_totp))
 
+    if "user_groups" in table_names:
+        existing = {c["name"] for c in inspector.get_columns("user_groups")}
+        if "telegram_channel_name" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE user_groups ADD COLUMN telegram_channel_name VARCHAR(128)"))
+                conn.commit()
+            logger.info("Migration: added telegram_channel_name column to user_groups")
+
     if "signal_notifications" in table_names:
         existing = {c["name"] for c in inspector.get_columns("signal_notifications")}
         live_status_columns = {

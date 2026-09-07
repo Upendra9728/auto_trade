@@ -260,6 +260,9 @@ class UserGroup(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
+    # Telegram source group whose messages are routed only to this group's members (at most one group per channel).
+    telegram_channel_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
     members: Mapped[list["UserGroupMember"]] = relationship(
         back_populates="group", cascade="all, delete-orphan"

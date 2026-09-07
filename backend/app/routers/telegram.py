@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..deps import get_db
-from ..models import User
+from ..models import User, UserGroup
 from ..schemas import SignalCreateRequest, TelegramIngestRequest
 from ..scrip_lookup import search as scrip_search
 from ..scrip_lookup import search_nearest_expiry as scrip_search_nearest_expiry
-from ..signal_parser import parse_signal_message
+from ..signal_parser import normalize_channel_name, parse_signal_message
 from .admin import _create_and_broadcast_signal
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
@@ -25,10 +25,6 @@ def _verify_internal_secret(x_internal_secret: str | None = Header(default=None)
 
 def _format_strike(strike: float) -> str:
     return str(int(strike)) if strike.is_integer() else str(strike)
-
-
-def _normalize_channel_name(name: str | None) -> str:
-    return (name or "").strip().lower().lstrip("@")
 
 
 @router.post("/ingest")
@@ -60,13 +56,27 @@ def ingest_telegram_message(
     if not admin_user.telegram_automation_enabled:
         return {"created": False, "reason": "Telegram automation is disabled in the admin profile"}
 
-    configured_channel = _normalize_channel_name(admin_user.telegram_channel_name)
-    incoming_channel = _normalize_channel_name(req.channel_name)
-    if configured_channel:
-        if not incoming_channel:
-            return {"created": False, "reason": "Telegram channel name was not sent by the bot"}
-        if configured_channel != incoming_channel:
-            return {"created": False, "reason": "Message came from a different Telegram channel"}
+    incoming_channel = normalize_channel_name(req.channel_name)
+
+    # A Telegram group linked to a specific app group only notifies that group's members.
+    matched_group: UserGroup | None = None
+    if incoming_channel:
+        for group in db.query(UserGroup).filter(UserGroup.telegram_channel_name.isnot(None)).all():
+            if normalize_channel_name(group.telegram_channel_name) == incoming_channel:
+                matched_group = group
+                break
+
+    group_ids: list[int] | None = None
+    if matched_group is not None:
+        group_ids = [matched_group.id]
+    else:
+        # Fall back to the existing global/default channel gate (broadcast to all eligible users).
+        configured_channel = normalize_channel_name(admin_user.telegram_channel_name)
+        if configured_channel:
+            if not incoming_channel:
+                return {"created": False, "reason": "Telegram channel name was not sent by the bot"}
+            if configured_channel != incoming_channel:
+                return {"created": False, "reason": "Message came from a different Telegram channel"}
 
     parsed = parse_signal_message(req.raw_text)
     if parsed is None:
@@ -102,7 +112,11 @@ def ingest_telegram_message(
         target_price=parsed.target_price,
         stop_loss_price=parsed.stop_loss_price,
         trailing_jump=0,
+        group_ids=group_ids,
     )
     signal = _create_and_broadcast_signal(db, background_tasks, created_by_id=admin_user.id, req=create_req)
-    logger.info("Telegram ingest created signal %s (%s)", signal.id, title)
+    logger.info(
+        "Telegram ingest created signal %s (%s)%s", signal.id, title,
+        f" for group {matched_group.name}" if matched_group is not None else "",
+    )
     return {"created": True, "signal_id": signal.id, "title": title}

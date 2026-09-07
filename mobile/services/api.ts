@@ -333,9 +333,9 @@ export const adminApi = {
   // ── Groups ───────────────────────────────────────────────────────────────────────
   getGroups: () => get<UserGroup[]>('/api/admin/groups'),
   getGroup: (id: number) => get<UserGroupDetail>(`/api/admin/groups/${id}`),
-  createGroup: (data: { name: string; description?: string | null }) =>
+  createGroup: (data: { name: string; description?: string | null; telegram_channel_name?: string | null }) =>
     post<UserGroup>('/api/admin/groups', data),
-  updateGroup: (id: number, data: { name?: string; description?: string | null }) =>
+  updateGroup: (id: number, data: { name?: string; description?: string | null; telegram_channel_name?: string | null }) =>
     put<UserGroup>(`/api/admin/groups/${id}`, data),
   deleteGroup: (id: number) => del<{ status: string }>(`/api/admin/groups/${id}`),
   addGroupMembers: (groupId: number, userIds: number[]) =>
