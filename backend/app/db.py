@@ -55,6 +55,15 @@ def _apply_migrations() -> None:
                 conn.commit()
             logger.info("Migration: added auto-trade columns to users: %s", list(missing_auto_trade))
 
+        telegram_columns = {"telegram_automation_enabled": "BOOLEAN DEFAULT FALSE", "telegram_channel_name": "VARCHAR(128)"}
+        missing_telegram = {col: ddl for col, ddl in telegram_columns.items() if col not in existing}
+        if missing_telegram:
+            with engine.connect() as conn:
+                for col, ddl in missing_telegram.items():
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {ddl}"))
+                conn.commit()
+            logger.info("Migration: added Telegram automation columns to users: %s", list(missing_telegram))
+
     if "dhan_credentials" in table_names:
         existing = {c["name"] for c in inspector.get_columns("dhan_credentials")}
         if "token_expires_at" not in existing:

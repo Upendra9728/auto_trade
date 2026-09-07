@@ -61,11 +61,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     cleaned = _strip_emojis(message.text)
+    chat = update.effective_chat
+    channel_name = (chat.username or chat.title or "") if chat else ""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"{BACKEND_BASE_URL}/api/telegram/ingest",
-                json={"raw_text": cleaned},
+                json={"raw_text": cleaned, "channel_name": channel_name},
                 headers={"X-Internal-Secret": BACKEND_INTERNAL_SECRET},
             )
         data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}

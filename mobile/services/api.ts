@@ -139,7 +139,7 @@ export const authApi = {
 export const userApi = {
   getProfile: () => get<User>('/api/users/me'),
   acceptTerms: () => post<User>('/api/users/accept-terms'),
-  updateProfile: (data: { name?: string; phone_number?: string }) =>
+  updateProfile: (data: { name?: string; phone_number?: string; telegram_automation_enabled?: boolean; telegram_channel_name?: string | null }) =>
     put<User>('/api/users/me', data),
   updateFcmToken: (fcm_token: string) =>
     put<{ status: string }>('/api/users/me/fcm-token', { fcm_token }),

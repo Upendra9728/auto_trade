@@ -33,6 +33,9 @@ class User(Base):
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Preset quantity that overrides the admin's signal quantity for every auto-trade order; None = use admin's qty
     auto_trade_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Telegram automation: when enabled, incoming messages from the configured channel are ingested.
+    telegram_automation_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    telegram_channel_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 

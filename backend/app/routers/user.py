@@ -44,13 +44,15 @@ def _to_profile(user: User) -> UserProfileResponse:
         phone_number=user.phone_number,
         role=user.role,
         assigned_ipv6=user.assigned_ipv6,
-        is_active=user.is_active,
-        email_verified=user.email_verified,
-        terms_accepted=user.terms_accepted,
+        is_active=bool(user.is_active),
+        email_verified=bool(user.email_verified),
+        terms_accepted=bool(user.terms_accepted),
         terms_accepted_at=user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
-        credits=user.credits,
-        auto_trade_enabled=user.auto_trade_enabled,
+        credits=int(user.credits or 0),
+        auto_trade_enabled=bool(user.auto_trade_enabled),
         auto_trade_quantity=user.auto_trade_quantity,
+        telegram_automation_enabled=bool(user.telegram_automation_enabled),
+        telegram_channel_name=user.telegram_channel_name,
     )
 
 
@@ -133,6 +135,10 @@ def update_profile(
         current_user.name = req.name.strip()
     if req.phone_number is not None:
         current_user.phone_number = req.phone_number.strip()
+    if req.telegram_automation_enabled is not None:
+        current_user.telegram_automation_enabled = req.telegram_automation_enabled
+    if req.telegram_channel_name is not None:
+        current_user.telegram_channel_name = req.telegram_channel_name.strip() or None
     current_user.updated_at = dt.datetime.utcnow()
     db.commit()
     db.refresh(current_user)

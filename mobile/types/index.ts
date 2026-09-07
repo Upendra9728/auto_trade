@@ -14,6 +14,8 @@ export interface User {
   credits: number;
   auto_trade_enabled: boolean;
   auto_trade_quantity: number | null;
+  telegram_automation_enabled: boolean;
+  telegram_channel_name: string | null;
 }
 
 export interface AuthResponse {

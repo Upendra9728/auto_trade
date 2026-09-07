@@ -28,6 +28,9 @@ export default function ProfileScreen() {
   const [autoTradeQty, setAutoTradeQty] = useState('');
   const [savedAutoTradeQty, setSavedAutoTradeQty] = useState('');
   const [savingAutoTrade, setSavingAutoTrade] = useState(false);
+  const [telegramAutomationEnabled, setTelegramAutomationEnabled] = useState(false);
+  const [telegramChannelName, setTelegramChannelName] = useState('');
+  const [savingTelegramSettings, setSavingTelegramSettings] = useState(false);
 
   useEffect(() => {
     userApi.getDhanCredential().then(setDhan).catch(() => {});
@@ -39,7 +42,9 @@ export default function ProfileScreen() {
     const qty = user.auto_trade_quantity != null ? String(user.auto_trade_quantity) : '';
     setAutoTradeQty(qty);
     setSavedAutoTradeQty(qty);
-  }, [user?.auto_trade_enabled, user?.auto_trade_quantity]);
+    setTelegramAutomationEnabled(Boolean(user.telegram_automation_enabled));
+    setTelegramChannelName(user.telegram_channel_name ?? '');
+  }, [user?.auto_trade_enabled, user?.auto_trade_quantity, user?.telegram_automation_enabled, user?.telegram_channel_name]);
 
   const handleSaveDhan = async () => {
     if (!dhanForm.dhan_client_id.trim() || !dhanForm.pin.trim() || !dhanForm.totp_secret.trim()) {
@@ -146,6 +151,26 @@ export default function ProfileScreen() {
       Alert.alert('Error', err.message ?? 'Failed to update Auto-Trade.');
     } finally {
       setSavingAutoTrade(false);
+    }
+  };
+
+  const handleSaveTelegramSettings = async (
+    nextEnabled: boolean = telegramAutomationEnabled,
+    nextChannel: string = telegramChannelName,
+  ) => {
+    setSavingTelegramSettings(true);
+    try {
+      await userApi.updateProfile({
+        telegram_automation_enabled: nextEnabled,
+        telegram_channel_name: nextChannel.trim() || null,
+      });
+      await refreshUser();
+      setTelegramAutomationEnabled(nextEnabled);
+      setTelegramChannelName(nextChannel.trim());
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to update Telegram settings.');
+    } finally {
+      setSavingTelegramSettings(false);
     }
   };
 
@@ -335,6 +360,46 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
+        </View>
+
+        {/* Telegram automation */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Telegram Automation</Text>
+            <Switch
+              value={telegramAutomationEnabled}
+              onValueChange={async (value: boolean) => {
+                setTelegramAutomationEnabled(value);
+                await handleSaveTelegramSettings(value);
+              }}
+              disabled={savingTelegramSettings}
+              trackColor={{ false: Colors.border, true: Colors.primary }}
+            />
+          </View>
+          <Text style={styles.autoTradeDesc}>
+            Enable this to accept trading signal messages from the configured Telegram channel.
+            When it is off, incoming messages are ignored.
+          </Text>
+          <View style={[styles.field, !telegramAutomationEnabled && { opacity: 0.5 }]}>
+            <Text style={styles.label}>Channel name</Text>
+            <TextInput
+              style={styles.input}
+              value={telegramChannelName}
+              editable={telegramAutomationEnabled && !savingTelegramSettings}
+              onChangeText={setTelegramChannelName}
+              onBlur={async () => {
+                if (!telegramAutomationEnabled) return;
+                await handleSaveTelegramSettings(telegramAutomationEnabled, telegramChannelName);
+              }}
+              placeholder="@signals or signals"
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.hintText}>
+              Use the exact channel name the bot listens to. Leave blank if you want to allow any channel while enabled.
+            </Text>
+          </View>
         </View>
 
         {/* Auto-Trade (premium) */}

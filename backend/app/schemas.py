@@ -36,6 +36,8 @@ class UserProfileResponse(BaseModel):
     credits: int = 0
     auto_trade_enabled: bool = False
     auto_trade_quantity: int | None = None
+    telegram_automation_enabled: bool = False
+    telegram_channel_name: str | None = None
 
 
 class UserAuthResponse(BaseModel):
@@ -71,6 +73,8 @@ class EmailVerificationConfirmRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=128)
     phone_number: str | None = Field(default=None, min_length=7, max_length=32)
+    telegram_automation_enabled: bool | None = None
+    telegram_channel_name: str | None = Field(default=None, max_length=128)
 
 
 class UpdateFcmTokenRequest(BaseModel):
@@ -216,6 +220,7 @@ class ConfirmNotificationRequest(BaseModel):
 class TelegramIngestRequest(BaseModel):
     """Body posted by the standalone Telegram bot process for every group message."""
     raw_text: str = Field(min_length=1, max_length=4096)
+    channel_name: str | None = Field(default=None, max_length=128)
 
 
 # ---------------------------------------------------------------------------

@@ -192,41 +192,56 @@ export default function AdminUsersScreen() {
         animationType="fade"
         onRequestClose={() => setBulkCreditsModalVisible(false)}
       >
-        <KeyboardAvoidingView style={styles.modalKeyboardWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setBulkCreditsModalVisible(false)} />
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add Credits to All Users</Text>
-            <Text style={styles.modalText}>
-              This will add the specified number of credits to all active users.
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              value={bulkCreditsInput}
-              onChangeText={setBulkCreditsInput}
-              placeholder="Number of credits (e.g. 5)"
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="number-pad"
-              editable={!addingBulkCredits}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setBulkCreditsModalVisible(false)}
-                disabled={addingBulkCredits}
-              >
-                <Text style={styles.modalCancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalConfirmBtn, addingBulkCredits && { opacity: 0.6 }]}
-                onPress={handleBulkAddCredits}
-                disabled={addingBulkCredits}
-              >
-                {addingBulkCredits ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.modalConfirmBtnText}>Add Credits</Text>
-                )}
-              </TouchableOpacity>
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalShell}>
+            <Pressable style={styles.modalBackdrop} onPress={() => setBulkCreditsModalVisible(false)} />
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalIconWrap}>
+                  <Feather name="plus-circle" size={18} color={Colors.primary} />
+                </View>
+                <Text style={styles.modalTitle}>Add Credits to All</Text>
+              </View>
+
+              <Text style={styles.modalText}>
+                This will add the specified number of credits to all active users.
+              </Text>
+
+              <Text style={styles.label}>Credits amount</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={bulkCreditsInput}
+                onChangeText={setBulkCreditsInput}
+                placeholder="e.g. 5"
+                placeholderTextColor={Colors.textMuted}
+                keyboardType="number-pad"
+                editable={!addingBulkCredits}
+                autoFocus
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setBulkCreditsModalVisible(false)}
+                  disabled={addingBulkCredits}
+                >
+                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalConfirmBtn, addingBulkCredits && { opacity: 0.6 }]}
+                  onPress={handleBulkAddCredits}
+                  disabled={addingBulkCredits}
+                >
+                  {addingBulkCredits ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.modalConfirmBtnText}>Add Credits</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -292,27 +307,91 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, borderRadius: Radius.sm, paddingVertical: 10,
   },
   bulkActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  modalKeyboardWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalShell: {
+    width: '100%',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
   modalBackdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: Spacing.lg,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
-  modalKeyboardWrap: { flex: 1, justifyContent: 'center' },
   modalContent: {
-    backgroundColor: Colors.surface, borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.lg,
-    width: '100%', maxWidth: 320,
-    ...Shadow.card, elevation: 10,
+    position: 'relative',
+    zIndex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    width: '100%',
+    maxWidth: 320,
+    ...Shadow.card,
+    elevation: 10,
   },
-  modalTitle: { ...Typography.h3, marginBottom: Spacing.sm, textAlign: 'center' },
-  modalText: { ...Typography.bodySmall, marginBottom: Spacing.md, textAlign: 'center', color: Colors.textSecondary, lineHeight: 19 },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  modalIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: { ...Typography.h3, textAlign: 'center' },
+  modalText: {
+    ...Typography.bodySmall,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+    color: Colors.textSecondary,
+    lineHeight: 19,
+  },
+  label: {
+    ...Typography.label,
+    marginBottom: Spacing.xs,
+    color: Colors.text,
+  },
   modalInput: {
-    borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.md, paddingVertical: 12, fontSize: 14, color: Colors.text,
-    marginBottom: Spacing.lg, keyboardType: 'number-pad',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: Colors.text,
+    backgroundColor: Colors.background,
+    marginBottom: Spacing.lg,
   },
   modalActions: { flexDirection: 'row', gap: Spacing.sm },
-  modalCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: Radius.sm, borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center' },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: Radius.sm,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+  },
   modalCancelBtnText: { color: Colors.text, fontSize: 14, fontWeight: '700' },
-  modalConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: Radius.sm, backgroundColor: Colors.primary, alignItems: 'center' },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalConfirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });
