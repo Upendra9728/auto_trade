@@ -60,8 +60,12 @@ export default function SignalCreateScreen() {
   const [draftGroupIds, setDraftGroupIds] = useState<Set<number>>(new Set());
   const [sendToTelegram, setSendToTelegram] = useState(false);
 
+  // Valid index symbols, used by the paste-parser to skip intro lines like "Trading Floor :-".
+  const [validSymbols, setValidSymbols] = useState<string[]>([]);
+
   useEffect(() => {
     adminApi.getGroups().then(setGroups).catch(() => {});
+    adminApi.scripSymbols().then((s) => setValidSymbols(s.map((x) => x.toUpperCase()))).catch(() => {});
   }, []);
 
   const handleContractQueryChange = (q: string) => {
@@ -172,8 +176,56 @@ export default function SignalCreateScreen() {
   const set = (key: keyof typeof form) => (val: string) =>
     setForm((f) => ({ ...f, [key]: val }));
 
+  // Strips emoji pictographs/dingbats/arrows so admins can paste decorated group messages as-is.
+  const stripEmojis = (text: string) =>
+    text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]+/gu, '');
+
+  const MONTH_MAP: Record<string, number> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5,
+    jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+  };
+
+  // Digits only (no sign) — a hyphenated range like "165-170" must yield [165, 170], not [165, -170].
+  const extractNumbers = (raw: string): number[] =>
+    (raw.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+
+  const parsePriceValue = (raw: string): string => {
+    const nums = extractNumbers(raw);
+    if (nums.length === 0) return '';
+    if (nums.length >= 2) return String((nums[0] + nums[1]) / 2);
+    return String(nums[0]);
+  };
+
+  // Always the first value in a slash-separated list, e.g. "200/240/350" -> "200".
+  const parseTargetValue = (raw: string): string => {
+    if (!raw) return '';
+    const first = raw.includes('/') ? raw.split('/', 1)[0] : raw;
+    const nums = extractNumbers(first);
+    return nums.length > 0 ? String(nums[0]) : '';
+  };
+
+  const parseExpiryValue = (raw: string): string => {
+    if (!raw) return '';
+    const isoMatch = raw.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (isoMatch) {
+      const [, y, m, d] = isoMatch;
+      return `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    const dayMonthMatch = raw.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)/i);
+    if (dayMonthMatch) {
+      const day = dayMonthMatch[1].padStart(2, '0');
+      const monthKey = dayMonthMatch[2].toLowerCase();
+      const month = MONTH_MAP[monthKey.slice(0, 3)] ?? MONTH_MAP[monthKey];
+      if (!month) return '';
+      const year = new Date().getFullYear();
+      return `${year}-${String(month).padStart(2, '0')}-${day}`;
+    }
+    return '';
+  };
+
   const parseAndPrefill = async () => {
-    const lines = rawSignal
+    const lines = stripEmojis(rawSignal)
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
@@ -183,28 +235,61 @@ export default function SignalCreateScreen() {
       return;
     }
 
-    const first = lines[0].toUpperCase();
-    const second = lines[1].toUpperCase();
+    // Skip intro text like "Trading Floor :-" and locate the actual index symbol line.
+    const symbolIndex = lines.findIndex((line) => validSymbols.includes(line.toUpperCase()));
+    if (symbolIndex === -1) {
+      Alert.alert('Invalid format', 'Could not find a known symbol (e.g. NIFTY, SENSEX) in the pasted text.');
+      return;
+    }
+    const first = lines[symbolIndex].toUpperCase();
 
-    const pickValue = (key: string): string => {
-      const row = lines.find((line) => line.toUpperCase().startsWith(`${key}:`));
-      if (!row) return '';
-      return row.split(':').slice(1).join(':').trim();
-    };
+    // Find strike + CE/PE anywhere after the symbol line, e.g. "📈📉 76800CE".
+    let parsedStrike = '';
+    let parsedOptionType = '';
+    let second = '';
+    for (const line of lines.slice(symbolIndex + 1)) {
+      const match = line.toUpperCase().match(/(\d+(?:\.\d+)?)\s*(PE|CE)/);
+      if (match) {
+        parsedStrike = match[1];
+        parsedOptionType = match[2];
+        second = `${match[1]}${match[2]}`;
+        break;
+      }
+    }
+    if (!parsedStrike || !parsedOptionType) {
+      Alert.alert('Invalid format', 'Could not find a strike + CE/PE line (e.g. 76800CE).');
+      return;
+    }
 
-    const parsedPrice = pickValue('PRICE');
-    const parsedStop = pickValue('STOPLOSS') || pickValue('STOP_LOSS');
-    const parsedTarget = pickValue('TARGETS') || pickValue('TARGET');
-    const parsedQty = pickValue('QTY') || pickValue('QUANTITY');
-    const parsedExpiry = pickValue('EXPIRY'); // optional override — expiry is normally auto-fetched
+    // Read fields from either "KEY: value" or free-form "KEY value"/"KEY @ value" lines.
+    let priceLine = '';
+    let stopLine = '';
+    let targetLine = '';
+    let qtyLine = '';
+    let expiryLine = '';
+    for (const line of lines) {
+      const upper = line.toUpperCase();
+      if (upper.includes('PRICE') && !priceLine) priceLine = line;
+      else if ((upper.includes('STOPLOSS') || upper.includes('STOP_LOSS')) && !stopLine) stopLine = line;
+      else if (upper.includes('TARGET') && !targetLine) targetLine = line;
+      else if ((upper.includes('QTY') || upper.includes('QUANTITY')) && !qtyLine) qtyLine = line;
+      else if (upper.includes('EXPIRY') && !expiryLine) expiryLine = line;
+    }
+
+    const parsedPrice = parsePriceValue(priceLine);
+    const parsedStop = parsePriceValue(stopLine);
+    const parsedTarget = parseTargetValue(targetLine);
+    const parsedQtyNums = extractNumbers(qtyLine);
+    const parsedQty = parsedQtyNums.length > 0 ? String(parsedQtyNums[0]) : '';
+    const parsedExpiry = parseExpiryValue(expiryLine); // optional override — expiry is normally auto-fetched
+
+    if (!parsedPrice || !parsedStop || !parsedTarget) {
+      Alert.alert('Invalid format', 'Could not find PRICE, STOPLOSS and TARGET values in the pasted text.');
+      return;
+    }
 
     const parsedSegment = first.includes('SENSEX') || first.includes('BANKEX') ? 'BSE_FNO' : 'NSE_FNO';
     const parsedDirection = second.endsWith('PE') || second.endsWith('CE') ? 'BUY' : form.transaction_type;
-
-    // Extract strike + option type from e.g. "23800PE" → strike=23800, optionType="PE"
-    const optionMatch = second.match(/^(\d+(?:\.\d+)?)(PE|CE)$/);
-    const parsedStrike = optionMatch ? optionMatch[1] : '';
-    const parsedOptionType = optionMatch ? optionMatch[2] : '';
 
     // Pre-fill what we already know — security_id starts blank until scrip lookup resolves it
     setForm((prev) => ({
