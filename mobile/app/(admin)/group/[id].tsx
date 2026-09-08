@@ -24,6 +24,23 @@ export default function GroupDetailScreen() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set());
 
+  const loadUsers = useCallback(async (searchTerm?: string) => {
+    setUsersLoading(true);
+    try {
+      const res: Paginated<AdminUser> = await adminApi.getUsers({
+        page: 1,
+        pageSize: 100,
+        search: searchTerm?.trim() || undefined,
+      });
+      setAllUsers(res.items);
+    } catch (err: any) {
+      Alert.alert('Error', 'Failed to load users: ' + (err.message ?? 'Unknown error'));
+      setAllUsers([]);
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
   // Rename modal
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -88,18 +105,18 @@ export default function GroupDetailScreen() {
     setSelectedUserIds(new Set());
     setUserSearch('');
     setAddVisible(true);
-    setUsersLoading(true);
-    try {
-      // Fetch all users (no isActive filter) so admin can add any user
-      const res: Paginated<AdminUser> = await adminApi.getUsers({ pageSize: 100 });
-      setAllUsers(res.items);
-    } catch (err: any) {
-      Alert.alert('Error', 'Failed to load users: ' + (err.message ?? 'Unknown error'));
-      setAddVisible(false);
-    } finally {
-      setUsersLoading(false);
-    }
+    await loadUsers();
   };
+
+  useEffect(() => {
+    if (!addVisible) return;
+
+    const timer = setTimeout(() => {
+      void loadUsers(userSearch);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [addVisible, userSearch, loadUsers]);
 
   const handleAddMembers = async () => {
     if (selectedUserIds.size === 0) {
@@ -133,14 +150,10 @@ export default function GroupDetailScreen() {
     }
   };
 
-  // Filter users in add-modal: exclude already-members
+  // Filter users in add-modal: exclude already-members. Search is performed server-side,
+  // so the list always reflects the backend match results instead of only a stale first page.
   const memberIds = new Set(group?.members.map((m) => m.id) ?? []);
-  const filteredUsers = allUsers.filter((u) => {
-    if (memberIds.has(u.id)) return false;
-    if (!userSearch.trim()) return true;
-    const q = userSearch.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
+  const filteredUsers = allUsers.filter((u) => !memberIds.has(u.id));
 
   const toggleUser = (uid: number) => {
     setSelectedUserIds((prev) => {
