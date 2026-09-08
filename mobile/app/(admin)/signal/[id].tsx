@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, ActivityIndicator,
   Modal, Pressable, ScrollView, Animated, Easing, TextInput, Alert, Dimensions,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -34,6 +34,7 @@ export default function SignalDetailScreen() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [signalError, setSignalError] = useState<string | null>(null);
 
@@ -84,6 +85,19 @@ export default function SignalDetailScreen() {
     setPage(1);
     loadSignal().finally(() => setLoading(false));
   }, [id, loadSignal]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!id) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        loadSignal(),
+        loadNotifications(page, statusFilter),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [id, loadSignal, loadNotifications, page, statusFilter]);
 
   useEffect(() => {
     loadNotifications(page, statusFilter);
@@ -328,6 +342,14 @@ export default function SignalDetailScreen() {
         keyExtractor={(n: AdminSignalNotificationRow) => String(n.notification_id)}
         renderItem={renderRow}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[Colors.primary]}
+            tintColor={Colors.primary}
+          />
+        }
         ListHeaderComponent={() => (
           <View style={styles.header}>
             {/* Signal card */}
