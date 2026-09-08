@@ -62,8 +62,19 @@ def _strip_markdown_markers(line: str) -> str:
 
 
 def normalize_channel_name(name: str | None) -> str:
-    """Shared normalization for matching a Telegram channel/group name against configured values."""
-    return (name or "").strip().lower().lstrip("@")
+    """Shared normalization for matching a Telegram channel/group name against configured values.
+
+    Telegram titles often include emoji, punctuation, and spacing differences (for example
+    "MS-SPL-RECOVERY GROUP" vs "MS-SPL-RECOVERY-GROUP" or a title with emoji suffixes).
+    We normalize aggressively so group-specific routing remains stable.
+    """
+    if not name:
+        return ""
+    cleaned = name.strip().lower().lstrip("@")
+    cleaned = _EMOJI_PATTERN.sub("", cleaned)
+    cleaned = re.sub(r"[_\-\s]+", " ", cleaned)
+    cleaned = re.sub(r"[^a-z0-9\s]", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _pick_value(lines: list[str], key: str) -> str:
