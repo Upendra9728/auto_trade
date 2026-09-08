@@ -104,12 +104,7 @@ export default function AdminDashboard() {
           <StatCard label="Active Signals" value={stats?.signals.active ?? 0} color={Colors.primary} />
           <StatCard label="Live Confirmed" value={stats?.orders.placed ?? 0} color={Colors.success} />
           <StatCard label="Pending Approvals" value={pendingApprovals} color={Colors.warning} />
-          <StatCard
-            label="Realized P&L"
-            value={stats?.orders.total_realized_pnl ?? 0}
-            color={(stats?.orders.total_realized_pnl ?? 0) >= 0 ? Colors.success : Colors.error}
-            isCurrency
-          />
+          <StatCard label="Total Users" value={stats?.users.total ?? 0} color={Colors.info} />
         </View>
         <Text style={styles.helperText}>
           "Live Confirmed" counts only orders confirmed by Dhan's exchange feed (TRANSIT/PENDING/TRADED) —
