@@ -15,7 +15,14 @@ class Base(DeclarativeBase):
 
 
 connect_args: dict = {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+engine = create_engine(
+    settings.database_url,
+    connect_args=connect_args,
+    pool_size=20,
+    max_overflow=20,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -156,6 +163,17 @@ def _apply_migrations() -> None:
             conn.commit()
         logger.info("Migration: created user_groups table")
 
+    with engine.connect() as conn:
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_signal_notifications_dhan_order_id ON signal_notifications (dhan_order_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_signal_notifications_status ON signal_notifications (status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_signal_notifications_placed_at ON signal_notifications (placed_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_dhan_credentials_is_active ON dhan_credentials (is_active)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_dhan_credentials_token_expires_at ON dhan_credentials (token_expires_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_positions_user_security_exchange_product ON user_positions (user_id, security_id, exchange_segment, product_type)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_group_id ON user_group_members (group_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_user_id ON user_group_members (user_id)"))
+        conn.commit()
+
     if "user_group_members" not in table_names:
         with engine.connect() as conn:
             conn.execute(text("""
@@ -167,8 +185,6 @@ def _apply_migrations() -> None:
                     UNIQUE (group_id, user_id)
                 )
             """))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_group_id ON user_group_members (group_id)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_group_members_user_id ON user_group_members (user_id)"))
             conn.commit()
         logger.info("Migration: created user_group_members table")
 

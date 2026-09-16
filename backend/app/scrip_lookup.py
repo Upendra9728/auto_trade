@@ -165,6 +165,7 @@ async def ensure_scrip_master_fresh() -> None:
     else:
         logger.info("Scrip master is fresh (last modified: %s UTC)",
                     dt.datetime.utcfromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"))
+        await asyncio.to_thread(_load)
 
 
 async def scrip_master_refresh_loop() -> None:

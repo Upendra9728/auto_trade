@@ -688,20 +688,28 @@ def create_signal(
 
 async def _auto_place_signal_notifications(notification_ids: list[int]) -> None:
     """Runs after the HTTP response is sent — places Dhan orders for Auto-Trade users."""
-    db = SessionLocal()
-    try:
-        notifs = (
-            db.query(SignalNotification)
-            .options(joinedload(SignalNotification.signal), joinedload(SignalNotification.user))
-            .filter(SignalNotification.id.in_(notification_ids))
-            .all()
-        )
-        for notif in notifs:
-            await place_order_for_notification(
-                notification=notif, db=db, quantity_override=notif.user.auto_trade_quantity,
-            )
-    finally:
-        db.close()
+    sem = asyncio.Semaphore(10)
+
+    async def _place_one(notif_id: int) -> None:
+        async with sem:
+            db_worker = SessionLocal()
+            try:
+                notif = (
+                    db_worker.query(SignalNotification)
+                    .options(joinedload(SignalNotification.signal), joinedload(SignalNotification.user))
+                    .filter(SignalNotification.id == notif_id)
+                    .one_or_none()
+                )
+                if notif and notif.user:
+                    await place_order_for_notification(
+                        notification=notif,
+                        db=db_worker,
+                        quantity_override=notif.user.auto_trade_quantity,
+                    )
+            finally:
+                db_worker.close()
+
+    await asyncio.gather(*[_place_one(nid) for nid in notification_ids], return_exceptions=True)
 
 
 async def _send_signal_to_telegram(signal_id: int) -> None:
@@ -1410,14 +1418,12 @@ async def modify_notification_order(
 # Reports
 # ---------------------------------------------------------------------------
 
-@router.get("/orders/export")
-def export_orders(
-    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
-    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
-    db: Session = Depends(get_db),
-    _: User = Depends(get_current_admin),
+def _export_order_query(
+    db: Session,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ):
-    """Downloads all per-user order notifications (across all signals) in the given date range as an .xlsx file."""
     start_utc, end_utc = parse_ist_date_range(date_from, date_to)
     query = (
         db.query(SignalNotification)
@@ -1427,7 +1433,18 @@ def export_orders(
         query = query.filter(SignalNotification.created_at >= start_utc)
     if end_utc is not None:
         query = query.filter(SignalNotification.created_at < end_utc)
-    notifications = query.order_by(SignalNotification.signal_id.asc(), SignalNotification.created_at.desc()).all()
+    return query.order_by(SignalNotification.created_at.desc())
+
+
+@router.get("/orders/export")
+def export_orders(
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD (IST), inclusive"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+):
+    """Downloads all per-user order notifications (across all signals) in the given date range as an .xlsx file."""
+    notifications = _export_order_query(db, date_from=date_from, date_to=date_to).all()
 
     headers = [
         "Notif ID", "Signal ID", "Signal Title", "Security ID", "Exchange",

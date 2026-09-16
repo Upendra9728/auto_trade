@@ -10,6 +10,7 @@ import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
+import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
 import type { Dashboard } from '../../../types';
 
 export default function AdminDashboard() {
@@ -18,6 +19,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -29,10 +31,21 @@ export default function AdminDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleExportAll = async () => {
+  const handleExportAll = () => {
+    setExportModalVisible(true);
+  };
+
+  const handleExportConfirm = async (dateFrom: string | null, dateTo: string | null) => {
+    if (!dateFrom || !dateTo) {
+      return;
+    }
+    if (dateFrom > dateTo) {
+      return;
+    }
+    setExportModalVisible(false);
     setExporting(true);
     try {
-      await adminApi.exportOrders({});
+      await adminApi.exportOrders({ date_from: dateFrom, date_to: dateTo });
     } catch {}
     finally { setExporting(false); }
   };
@@ -55,6 +68,12 @@ export default function AdminDashboard() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} colors={[Colors.primary]} />}
       >
+        <ExportDateRangeModal
+          visible={exportModalVisible}
+          onClose={() => setExportModalVisible(false)}
+          onSubmit={handleExportConfirm}
+        />
+
         {/* Header */}
         <View style={styles.headerBar}>
           <View>

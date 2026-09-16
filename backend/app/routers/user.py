@@ -14,7 +14,7 @@ from ..dhan_client import DhanApiError, DhanClient
 from ..models import DhanCredential, OrderEvent, Signal, SignalNotification, User
 from ..order_service import place_order_for_notification
 from ..pagination import paginate_meta, parse_ist_date_range, list_day_buckets
-from ..token_refresh import renew_and_save_credential_with_reason
+from ..token_refresh import renew_and_save_credential_with_reason, sanitize_totp_secret
 from ..token_refresh import parse_dhan_expiry
 from ..schemas import (
     DhanCredentialResponse,
@@ -253,13 +253,15 @@ async def upsert_dhan_credential(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DhanCredentialResponse:
+    sanitized_totp = sanitize_totp_secret(req.totp_secret)
     # Validate credentials and obtain the first token in one call.
     # generateAccessToken works regardless of whether an existing token is active.
     try:
         token_result = await DhanClient.generate_access_token(
             dhan_client_id=req.dhan_client_id.strip(),
             pin=req.pin,
-            totp_secret=req.totp_secret,
+            totp_secret=sanitized_totp,
+            source_ipv6=current_user.assigned_ipv6,
         )
     except DhanApiError as exc:
         raise HTTPException(status_code=400, detail=f"Dhan rejected these credentials: {exc}")
@@ -283,7 +285,7 @@ async def upsert_dhan_credential(
             dhan_client_id=req.dhan_client_id.strip(),
             access_token_encrypted=encrypt_token(new_token),
             pin_encrypted=encrypt_token(req.pin),
-            totp_secret_encrypted=encrypt_token(req.totp_secret),
+            totp_secret_encrypted=encrypt_token(sanitized_totp),
             is_active=True,
             token_expires_at=token_expires_at,
         )
@@ -292,7 +294,7 @@ async def upsert_dhan_credential(
         cred.dhan_client_id = req.dhan_client_id.strip()
         cred.access_token_encrypted = encrypt_token(new_token)
         cred.pin_encrypted = encrypt_token(req.pin)
-        cred.totp_secret_encrypted = encrypt_token(req.totp_secret)
+        cred.totp_secret_encrypted = encrypt_token(sanitized_totp)
         cred.is_active = True
         cred.token_expires_at = token_expires_at
         cred.updated_at = dt.datetime.utcnow()

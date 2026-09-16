@@ -63,8 +63,19 @@ ALL_TERMINAL_STATUSES = {"CLOSED", "EXPIRED", "CANCELLED", "REJECTED"}
 LEG_NO_TO_NAME = {1: "ENTRY_LEG", 2: "STOP_LOSS_LEG", 3: "TARGET_LEG"}
 
 # WebSocket manager settings
-_RECONCILE_INTERVAL_SECONDS = 10   # how often to start WS tasks for newly eligible users
+_RECONCILE_INTERVAL_SECONDS = 30  # how often to start WS tasks for newly eligible users
 _RECONNECT_BACKOFF_SECONDS = 5     # wait between reconnect attempts after WS drop
+
+
+def is_indian_market_hours() -> bool:
+    """Return True when Indian equities/futures markets are open for normal trading."""
+    now_ist = dt.datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
+    weekday = now_ist.weekday()
+    if weekday >= 5:
+        return False
+    start = now_ist.replace(hour=9, minute=0, second=0, microsecond=0)
+    end = now_ist.replace(hour=15, minute=45, second=0, microsecond=0)
+    return start <= now_ist <= end
 
 
 def _coerce_leg_no(value: object) -> int | None:
@@ -406,7 +417,7 @@ async def dhan_order_update_loop() -> None:
 # (e.g. the per-user connection silently dropped for a while).
 # ---------------------------------------------------------------------------
 
-_POLL_INTERVAL_SECONDS = 5
+_POLL_INTERVAL_SECONDS = 10
 _STALE_THRESHOLD = dt.timedelta(seconds=30)
 _MIN_AGE_BEFORE_POLL = dt.timedelta(seconds=5)  # give the WS a head start
 _MAX_AGE_TO_POLL = dt.timedelta(hours=24)  # Dhan's order-status API only knows about the current trading day
@@ -421,7 +432,8 @@ async def dhan_order_status_poll_loop() -> None:
     """Entry point to run as a background asyncio task from main.py."""
     logger.info("Dhan order status poll fallback started (interval=%ds)", _POLL_INTERVAL_SECONDS)
     while True:
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        sleep_seconds = 60 if not is_indian_market_hours() else _POLL_INTERVAL_SECONDS
+        await asyncio.sleep(sleep_seconds)
         try:
             await _poll_stale_orders()
         except Exception:
@@ -536,7 +548,8 @@ async def dhan_positions_poll_loop() -> None:
     """Entry point to run as a background asyncio task from main.py."""
     logger.info("Dhan positions poll loop started (interval=%ds)", _POSITIONS_POLL_INTERVAL_SECONDS)
     while True:
-        await asyncio.sleep(_POSITIONS_POLL_INTERVAL_SECONDS)
+        sleep_seconds = 300 if not is_indian_market_hours() else _POSITIONS_POLL_INTERVAL_SECONDS
+        await asyncio.sleep(sleep_seconds)
         try:
             await _poll_all_user_positions()
         except Exception:

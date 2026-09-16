@@ -27,6 +27,22 @@ jobs:
           script: |
             set -euo pipefail
 
+            echo "==> Ensuring SSH is healthy before deployment..."
+            sudo mkdir -p /var/run/sshd
+            sudo chmod 755 /var/run/sshd
+
+            if [ ! -f /etc/ssh/ssh_host_ed25519_key ] || [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+              echo "Generating missing SSH host keys..."
+              sudo ssh-keygen -A
+            fi
+
+            if ! sudo pgrep -x sshd >/dev/null 2>&1; then
+              echo "Starting sshd..."
+              sudo /usr/sbin/sshd
+            fi
+
+            sudo ss -lntp | grep :22 || true
+
             APP_DIR="/var/www/auto_trade"
 
             echo "==> Moving to application directory..."

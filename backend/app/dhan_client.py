@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import socket
+import time
 import uuid
 from typing import Any
 
@@ -58,21 +59,32 @@ def _verify_ipv6_bindable(ipv6: str) -> None:
 
 class DhanClient:
     @staticmethod
-    async def generate_access_token(*, dhan_client_id: str, pin: str, totp_secret: str) -> dict[str, Any]:
+    async def generate_access_token(
+        *,
+        dhan_client_id: str,
+        pin: str,
+        totp_secret: str,
+        source_ipv6: str | None = None,
+    ) -> dict[str, Any]:
         """
         Generate a fresh Dhan access token using TOTP — works even when the existing token is expired.
         Requires the user to have TOTP enabled on their Dhan account.
         Returns the response dict containing 'accessToken' and 'expiryTime'.
         """
+        remaining = 30 - (int(time.time()) % 30)
+        if remaining < 3:
+            await asyncio.sleep(remaining + 1)
+
         for attempt in range(2):
             if attempt > 0:
-                # Retry once after a short wait to get a fresh TOTP code at a new window boundary
-                await asyncio.sleep(2)
+                remaining = 30 - (int(time.time()) % 30)
+                await asyncio.sleep(remaining + 1)
             totp_code = pyotp.TOTP(totp_secret).now()
             params = {"dhanClientId": dhan_client_id, "pin": pin, "totp": totp_code}
             logger.info("Dhan generateAccessToken for client %s (attempt %d)", dhan_client_id, attempt + 1)
+            transport = httpx.AsyncHTTPTransport(local_address=source_ipv6) if source_ipv6 else httpx.AsyncHTTPTransport()
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(transport=transport, timeout=30) as client:
                     resp = await client.post(DHAN_GENERATE_TOKEN_URL, params=params)
             except Exception as exc:
                 raise DhanApiError(f"Network error calling generateAccessToken: {exc}") from exc
@@ -90,8 +102,6 @@ class DhanClient:
                 return data
 
             dhan_msg: str = data.get("message", "") if isinstance(data, dict) else str(data)
-
-            # Rate limit is a hard stop — retrying in 2s won't help
             if "2 minute" in dhan_msg or "rate" in dhan_msg.lower():
                 raise DhanApiError(f"Dhan rate limit: {dhan_msg} (wait 2 minutes before retrying)")
 

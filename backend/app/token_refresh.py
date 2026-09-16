@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import re
 
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -33,6 +34,26 @@ logger = logging.getLogger(__name__)
 
 # Dhan expiryTime strings are in IST (UTC+5:30)
 _IST_OFFSET = dt.timedelta(hours=5, minutes=30)
+_client_locks: dict[str, asyncio.Lock] = {}
+_refresh_failure_cooldown: dict[str, dt.datetime] = {}
+
+
+def sanitize_totp_secret(secret: str) -> str:
+    """Normalize a Dhan TOTP secret copied from Dhan Web or an otpauth URI."""
+    if not secret:
+        return ""
+    value = secret.strip()
+    if value.startswith("otpauth://"):
+        try:
+            parsed = value.split("?", 1)[1]
+            for part in parsed.split("&"):
+                if part.startswith("secret="):
+                    value = part.split("=", 1)[1]
+                    break
+        except Exception:
+            value = ""
+    value = re.sub(r"[^A-Za-z2-7]", "", value).upper()
+    return value
 
 
 def parse_dhan_expiry(expiry_str: str) -> dt.datetime:
@@ -75,11 +96,12 @@ async def renew_and_save_credential(cred: DhanCredential, db: Session) -> bool:
         return False
     try:
         pin = decrypt_token(cred.pin_encrypted)
-        totp_secret = decrypt_token(cred.totp_secret_encrypted)
+        totp_secret = sanitize_totp_secret(decrypt_token(cred.totp_secret_encrypted))
         result = await DhanClient.generate_access_token(
             dhan_client_id=cred.dhan_client_id,
             pin=pin,
             totp_secret=totp_secret,
+            source_ipv6=getattr(cred.user, "assigned_ipv6", None),
         )
         return _apply_token_result(cred, db, result)
     except DhanApiError as exc:
@@ -109,11 +131,12 @@ async def renew_and_save_credential_with_reason(cred: DhanCredential, db: Sessio
 
     try:
         pin = decrypt_token(cred.pin_encrypted)
-        totp_secret = decrypt_token(cred.totp_secret_encrypted)
+        totp_secret = sanitize_totp_secret(decrypt_token(cred.totp_secret_encrypted))
         result = await DhanClient.generate_access_token(
             dhan_client_id=cred.dhan_client_id,
             pin=pin,
             totp_secret=totp_secret,
+            source_ipv6=getattr(cred.user, "assigned_ipv6", None),
         )
         ok = _apply_token_result(cred, db, result)
         if ok:
@@ -159,11 +182,10 @@ async def token_refresh_loop() -> None:
         interval,
         threshold,
     )
+
     while True:
-        await asyncio.sleep(interval)
         now = dt.datetime.utcnow()
         expiry_threshold = now + threshold
-        # Safety net for old records that have no token_expires_at set
         age_cutoff = now - dt.timedelta(hours=22)
 
         db: Session = SessionLocal()
@@ -173,13 +195,10 @@ async def token_refresh_loop() -> None:
                 .filter(
                     DhanCredential.is_active.is_(True),
                     or_(
-                        # Known expiry: renew if expiring within threshold
                         and_(
                             DhanCredential.token_expires_at.isnot(None),
                             DhanCredential.token_expires_at <= expiry_threshold,
                         ),
-                        # Unknown expiry (user pasted token manually): renew if
-                        # credential hasn't been updated in >=22 h
                         and_(
                             DhanCredential.token_expires_at.is_(None),
                             DhanCredential.updated_at <= age_cutoff,
@@ -188,13 +207,29 @@ async def token_refresh_loop() -> None:
                 )
                 .all()
             )
-            if expiring:
-                logger.info("Token refresh: renewing %d credential(s)", len(expiring))
-                for cred in expiring:
-                    await renew_and_save_credential(cred, db)
+
+            eligible = []
+            for cred in expiring:
+                key = cred.dhan_client_id
+                cooldown_until = _refresh_failure_cooldown.get(key)
+                if cooldown_until and cooldown_until > now:
+                    logger.info("Skipping Dhan token refresh for %s until %s due to cooldown", key, cooldown_until.isoformat())
+                    continue
+                eligible.append(cred)
+
+            if eligible:
+                logger.info("Token refresh: renewing %d credential(s)", len(eligible))
+                for cred in eligible:
+                    if cred.dhan_client_id not in _client_locks:
+                        _client_locks[cred.dhan_client_id] = asyncio.Lock()
+                    async with _client_locks[cred.dhan_client_id]:
+                        ok = await renew_and_save_credential(cred, db)
+                        if not ok:
+                            _refresh_failure_cooldown[cred.dhan_client_id] = now + dt.timedelta(minutes=15)
             else:
                 logger.debug("Token refresh: no credentials need renewal")
         except Exception as exc:
             logger.exception("Token refresh loop iteration error: %s", exc)
         finally:
             db.close()
+        await asyncio.sleep(interval)

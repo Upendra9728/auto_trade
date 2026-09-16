@@ -52,10 +52,11 @@ export default function ProfileScreen() {
     }
     setSavingDhan(true);
     try {
+      const sanitizedTotp = dhanForm.totp_secret.replace(/[^A-Za-z2-7]/g, '').toUpperCase();
       const saved = await userApi.saveDhanCredential({
         dhan_client_id: dhanForm.dhan_client_id.trim(),
         pin: dhanForm.pin.trim(),
-        totp_secret: dhanForm.totp_secret.trim(),
+        totp_secret: sanitizedTotp,
       });
       setDhan(saved);
       setShowDhanForm(false);

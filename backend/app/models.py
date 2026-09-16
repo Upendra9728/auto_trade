@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import Table, Column
 
@@ -63,9 +63,9 @@ class DhanCredential(Base):
     pin_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Encrypted base32 TOTP secret from authenticator app setup
     totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     # UTC datetime when the Dhan access token expires (None if unknown)
-    token_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    token_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
 
     user: Mapped[User] = relationship(back_populates="dhan_credential")
@@ -124,13 +124,13 @@ class SignalNotification(Base):
     # 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed'
     # NOTE: 'placed' only means Dhan's HTTP API accepted the request. It does NOT
     # mean the exchange executed/confirmed it — see live_status below for that.
-    status: Mapped[str] = mapped_column(String(16), default="pending")
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    dhan_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dhan_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     # Actual quantity submitted to Dhan (user may override the signal's default quantity)
     ordered_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     # Optimistic locking version to prevent concurrent WS + polling overwrites
     version: Mapped[int] = mapped_column(Integer, default=1, index=True)
@@ -182,7 +182,7 @@ class UserPosition(Base):
     """Latest open position snapshot cached per user from Dhan's GET /v2/positions."""
 
     __tablename__ = "user_positions"
-    __table_args__ = (UniqueConstraint("user_id", "security_id", "exchange_segment", "product_type", name="uq_user_pos"),)
+    __table_args__ = (UniqueConstraint("user_id", "security_id", "exchange_segment", "product_type", name="uq_user_pos"), Index("ix_user_pos_user_security_exchange_product", "user_id", "security_id", "exchange_segment", "product_type"))
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)

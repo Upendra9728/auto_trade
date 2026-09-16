@@ -14,11 +14,13 @@ import EmptyState from '../../../components/EmptyState';
 import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import { Feather } from '@expo/vector-icons';
 import DayGroupedList from '../../../components/DayGroupedList';
+import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
 import type { Signal } from '../../../types';
 
 export default function AdminSignalsScreen() {
   const insets = useSafeAreaInsets();
   const [exporting, setExporting] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
 
   useFocusEffect(
@@ -27,10 +29,23 @@ export default function AdminSignalsScreen() {
     }, []),
   );
 
-  const handleExportOrders = async () => {
+  const handleExportOrders = () => {
+    setExportModalVisible(true);
+  };
+
+  const handleExportConfirm = async (dateFrom: string | null, dateTo: string | null) => {
+    if (!dateFrom || !dateTo) {
+      Alert.alert('Select both dates', 'Choose a start and end date before exporting.');
+      return;
+    }
+    if (dateFrom > dateTo) {
+      Alert.alert('Invalid range', 'From date must be earlier than or equal to To date.');
+      return;
+    }
+    setExportModalVisible(false);
     setExporting(true);
     try {
-      await adminApi.exportOrders({});
+      await adminApi.exportOrders({ date_from: dateFrom, date_to: dateTo });
     } catch (err: any) {
       Alert.alert('Export failed', err.message);
     } finally {
@@ -94,6 +109,12 @@ export default function AdminSignalsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ExportDateRangeModal
+        visible={exportModalVisible}
+        onClose={() => setExportModalVisible(false)}
+        onSubmit={handleExportConfirm}
+      />
+
       <AdminScreenHeader title="Signals" />
 
       <View style={styles.filterBar}>
