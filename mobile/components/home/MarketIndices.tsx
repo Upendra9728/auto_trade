@@ -61,32 +61,38 @@ export default function MarketIndices({ isFocused = true }: Props) {
 
   const fetchData = useCallback(async () => {
     try {
-      // Use Yahoo Finance to get reliable indices data without needing Dhan credentials
-      const symbols = '%5EBSESN,%5ENSEI,%5ENSEBANK';
-      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      
-      const results = json.quoteResponse?.result || [];
-      
-      const parsedData: Record<string, IndexData> = {};
-      results.forEach((item: any) => {
-        const data: IndexData = {
-          name: item.shortName || item.symbol,
-          price: item.regularMarketPrice,
-          change: item.regularMarketChange,
-          change_pct: item.regularMarketChangePercent,
-          open: item.regularMarketOpen,
-          high: item.regularMarketDayHigh,
-          low: item.regularMarketDayLow,
-          prev_close: item.regularMarketPreviousClose,
-        };
-        parsedData[item.symbol] = data;
-      });
+      // Use Yahoo Finance chart endpoint which is public and doesn't require auth/crumb
+      const fetchSymbol = async (symbol: string, name: string) => {
+        try {
+          const res = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
+          const json = await res.json();
+          const meta = json.chart?.result?.[0]?.meta;
+          if (!meta) return undefined;
+          
+          return {
+            name,
+            price: meta.regularMarketPrice,
+            change: meta.regularMarketPrice - meta.chartPreviousClose,
+            change_pct: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose) * 100,
+            open: meta.regularMarketPrice,
+            high: meta.regularMarketPrice,
+            low: meta.regularMarketPrice,
+            prev_close: meta.chartPreviousClose,
+          } as IndexData;
+        } catch {
+          return undefined;
+        }
+      };
 
-      if (parsedData['^BSESN']) setSensex({ ...parsedData['^BSESN'], name: 'SENSEX' });
-      if (parsedData['^NSEI']) setNifty50({ ...parsedData['^NSEI'], name: 'NIFTY 50' });
-      if (parsedData['^NSEBANK']) setBankNifty({ ...parsedData['^NSEBANK'], name: 'BANK NIFTY' });
+      const [sData, nData, bnData] = await Promise.all([
+        fetchSymbol('%5EBSESN', 'SENSEX'),
+        fetchSymbol('%5ENSEI', 'NIFTY 50'),
+        fetchSymbol('%5ENSEBANK', 'BANK NIFTY'),
+      ]);
+
+      if (sData) setSensex(sData);
+      if (nData) setNifty50(nData);
+      if (bnData) setBankNifty(bnData);
       
       const now = new Date();
       setLastUpdated(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);

@@ -25,14 +25,14 @@ export default function UserTabsLayout() {
         }}
       >
       <Tabs.Screen
-        name="home"
+        name="index"
         options={{
           title: 'Home',
           tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="index"
+        name="signals"
         options={{
           title: 'Signals',
           tabBarIcon: ({ color, size }) => <Ionicons name="notifications-outline" size={size} color={color} />,

@@ -26,22 +26,21 @@ export default function DhanStatusCard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const isConnected = cred != null && cred.is_active;
+  const isConnected = cred != null && cred.is_active && cred.totp_configured;
   const daysLeft = getDaysUntilExpiry(cred?.token_expires_at);
-  const isExpired = daysLeft !== null && daysLeft <= 0;
+  // If daysLeft is null, token is considered expired / invalid for full connection
+  const isExpired = daysLeft === null || daysLeft <= 0;
   const isGood = isConnected && !isExpired;
 
   let statusLabel = 'Not Connected';
-  let statusSub = 'Tap Profile to configure';
+  let statusSub = 'Tap to configure';
 
   if (loading) {
     statusLabel = 'Checking...';
     statusSub = '';
-  } else if (isConnected && !isExpired) {
+  } else if (isGood) {
     statusLabel = 'Dhan Connected';
-    statusSub = daysLeft !== null
-      ? `Expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
-      : 'Broker Connected';
+    statusSub = `Expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`;
   } else {
     // Both not connected or expired count as "Not Connected" with a red dot.
     statusLabel = 'Not Connected';
