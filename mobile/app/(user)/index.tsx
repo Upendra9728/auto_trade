@@ -31,7 +31,7 @@ export default function HomeScreen() {
 
       {/* ── Sticky Header ── */}
       <HomeHeader
-        onNotificationPress={() => {/* could navigate to notifications */}}
+        onNotificationPress={() => router.push('/(user)/signals')}
         onProfilePress={() => router.push('/(user)/profile')}
       />
 

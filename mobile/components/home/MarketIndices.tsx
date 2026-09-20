@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   indexPrice: {
-    fontSize: moderateScale(17),
+    fontSize: moderateScale(13.5),
     fontWeight: '800',
     color: Colors.text,
     letterSpacing: -0.3,
@@ -166,11 +166,12 @@ const styles = StyleSheet.create({
   changeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 2,
   },
   changeText: {
-    fontSize: moderateScale(11),
-    fontWeight: '600',
+    fontSize: moderateScale(9),
+    fontWeight: '700',
   },
   refreshBadge: {
     position: 'absolute',

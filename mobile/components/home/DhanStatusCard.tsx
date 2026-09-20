@@ -56,11 +56,11 @@ export default function DhanStatusCard() {
 
       <View style={styles.textGroup}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={1}>{statusLabel}</Text>
+          <Text style={styles.title}>{statusLabel}</Text>
           <View style={[styles.dot, { backgroundColor: isGood ? '#22C55E' : Colors.error }]} />
         </View>
         {statusSub ? (
-          <Text style={styles.sub} numberOfLines={1}>{statusSub}</Text>
+          <Text style={styles.sub}>{statusSub}</Text>
         ) : null}
       </View>
 
@@ -85,28 +85,28 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   dhanLogo: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dhanLogoText: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(16),
     fontWeight: '800',
     color: '#fff',
   },
   textGroup: {
     flex: 1,
-    gap: 2,
+    gap: 0,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   title: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(11.5),
     fontWeight: '700',
     color: Colors.text,
     flexShrink: 1,
