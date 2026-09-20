@@ -207,6 +207,29 @@ export const systemApi = {
     ),
 };
 
+// ── Market Data ───────────────────────────────────────────────────────────────
+
+export interface IndexData {
+  name: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  open: number;
+  high: number;
+  low: number;
+  prev_close: number;
+}
+
+export interface MarketIndicesResponse {
+  sensex?: IndexData;
+  nifty_50?: IndexData;
+  bank_nifty?: IndexData;
+}
+
+export const marketApi = {
+  getIndices: () => get<MarketIndicesResponse>('/api/market/indices'),
+};
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const adminApi = {

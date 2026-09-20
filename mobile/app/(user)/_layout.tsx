@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CreditsBanner from '../../components/CreditsBanner';
@@ -25,17 +25,24 @@ export default function UserTabsLayout() {
         }}
       >
       <Tabs.Screen
+        name="home"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
           title: 'Signals',
-          tabBarIcon: ({ color, size }) => <Feather name="bell" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="notifications-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          title: 'Orders',
-          tabBarIcon: ({ color, size }) => <Feather name="list" size={size} color={color} />,
+          title: 'Trades',
+          tabBarIcon: ({ color, size }) => <Feather name="briefcase" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -49,3 +56,4 @@ export default function UserTabsLayout() {
     </View>
   );
 }
+
