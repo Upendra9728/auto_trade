@@ -40,15 +40,18 @@ export default function DhanStatusCard() {
     statusSub = daysLeft !== null
       ? `Expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
       : 'Broker Connected';
-  } else if (isConnected && isExpired) {
-    statusLabel = 'Token Expired';
-    statusSub = 'Refresh in Profile';
+  } else {
+    // Both not connected or expired count as "Not Connected" with a red dot.
+    statusLabel = 'Not Connected';
+    statusSub = 'Tap to configure';
   }
 
+  const router = require('expo-router').useRouter();
+
   return (
-    <View style={styles.card}>
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push('/(user)/profile')}>
       {/* Dhan logo "घ" */}
-      <View style={[styles.dhanLogo, { backgroundColor: isGood ? '#16A34A' : isExpired ? Colors.error : Colors.textMuted }]}>
+      <View style={[styles.dhanLogo, { backgroundColor: isGood ? '#16A34A' : Colors.error }]}>
         <Text style={styles.dhanLogoText}>घ</Text>
       </View>
 
@@ -62,10 +65,10 @@ export default function DhanStatusCard() {
         ) : null}
       </View>
 
-      {isExpired && (
-        <MaterialIcons name="warning" size={16} color={Colors.warning} />
+      {!isGood && (
+        <MaterialIcons name="chevron-right" size={16} color={Colors.textMuted} />
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -107,6 +110,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     fontWeight: '700',
     color: Colors.text,
+    flexShrink: 1,
   },
   dot: {
     width: 7,

@@ -78,6 +78,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexShrink: 1,
   },
   dot: {
     width: 10,
@@ -86,10 +87,12 @@ const styles = StyleSheet.create({
   },
   textGroup: {
     gap: 2,
+    flexShrink: 1,
   },
   title: {
     fontSize: moderateScale(13),
     fontWeight: '700',
+    flexShrink: 1,
   },
   sub: {
     fontSize: moderateScale(10),

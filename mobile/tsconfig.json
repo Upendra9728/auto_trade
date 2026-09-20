@@ -11,13 +11,14 @@
       "./node_modules/@types"
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    "expo-env.d.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "**/node_modules",
@@ -26,4 +27,3 @@
     "ios"
   ]
 }
-

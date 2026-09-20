@@ -61,14 +61,37 @@ export default function MarketIndices({ isFocused = true }: Props) {
 
   const fetchData = useCallback(async () => {
     try {
-      const data = await marketApi.getIndices();
-      setSensex(data.sensex);
-      setNifty50(data.nifty_50);
-      setBankNifty(data.bank_nifty);
+      // Use Yahoo Finance to get reliable indices data without needing Dhan credentials
+      const symbols = '%5EBSESN,%5ENSEI,%5ENSEBANK';
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      
+      const results = json.quoteResponse?.result || [];
+      
+      const parsedData: Record<string, IndexData> = {};
+      results.forEach((item: any) => {
+        const data: IndexData = {
+          name: item.shortName || item.symbol,
+          price: item.regularMarketPrice,
+          change: item.regularMarketChange,
+          change_pct: item.regularMarketChangePercent,
+          open: item.regularMarketOpen,
+          high: item.regularMarketDayHigh,
+          low: item.regularMarketDayLow,
+          prev_close: item.regularMarketPreviousClose,
+        };
+        parsedData[item.symbol] = data;
+      });
+
+      if (parsedData['^BSESN']) setSensex({ ...parsedData['^BSESN'], name: 'SENSEX' });
+      if (parsedData['^NSEI']) setNifty50({ ...parsedData['^NSEI'], name: 'NIFTY 50' });
+      if (parsedData['^NSEBANK']) setBankNifty({ ...parsedData['^NSEBANK'], name: 'BANK NIFTY' });
+      
       const now = new Date();
       setLastUpdated(`${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`);
-    } catch {
-      // Silently fail — keep showing previous data or dashes
+    } catch (e) {
+      // Silently fail
     } finally {
       setLoading(false);
     }

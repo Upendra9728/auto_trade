@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { Colors, Spacing, moderateScale } from '../../constants/theme';
 
@@ -13,15 +13,11 @@ export default function HomeHeader({ onNotificationPress, onProfilePress }: Prop
     <View style={styles.container}>
       {/* Logo + Brand */}
       <View style={styles.brandRow}>
-        <View style={styles.logoIcon}>
-          {/* Stylized bar-chart bars using views */}
-          <View style={styles.bars}>
-            <View style={[styles.bar, { height: 10, backgroundColor: '#3B82F6' }]} />
-            <View style={[styles.bar, { height: 16, backgroundColor: '#1E40AF' }]} />
-            <View style={[styles.bar, { height: 12, backgroundColor: '#3B82F6' }]} />
-            <View style={[styles.bar, { height: 20, backgroundColor: '#1E40AF' }]} />
-          </View>
-        </View>
+        <Image 
+          source={require('../../assets/logo.jpeg')} 
+          style={styles.logoImage} 
+          resizeMode="contain" 
+        />
         <View style={styles.textGroup}>
           <Text style={styles.brandName}>Trading Floor</Text>
           <Text style={styles.brandCaption}>TRADE SMARTER TOGETHER</Text>
@@ -57,22 +53,12 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
-  logoIcon: {
-    width: 36,
-    height: 36,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  bars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-  },
-  bar: {
-    width: 6,
-    borderRadius: 2,
+  logoImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
   },
   textGroup: {
     gap: 1,

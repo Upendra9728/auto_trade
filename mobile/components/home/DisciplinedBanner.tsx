@@ -46,8 +46,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     overflow: 'hidden',
     paddingHorizontal: 20,
-    paddingVertical: 22,
-    // Deep blue gradient via layered backgrounds (React Native doesn't support CSS gradients)
+    paddingVertical: 16,
+    // Deep blue gradient via layered backgrounds
     backgroundColor: '#1E3A8A',
     ...Shadow.card,
   },
@@ -57,25 +57,23 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   headline: {
-    fontSize: moderateScale(22),
+    fontSize: moderateScale(17),
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -0.3,
-    lineHeight: 28,
   },
   headlineSub: {
-    fontSize: moderateScale(22),
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-    lineHeight: 28,
-    marginTop: -4,
+    fontSize: moderateScale(16),
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: -0.2,
+    marginTop: -2,
   },
   body: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(10.5),
     color: 'rgba(255,255,255,0.7)',
-    marginTop: 6,
-    lineHeight: 16,
+    marginTop: 4,
+    lineHeight: 14,
   },
   right: {
     alignItems: 'flex-end',
@@ -95,18 +93,18 @@ const styles = StyleSheet.create({
     right: -4,
   },
   miniBar: {
-    width: 7,
+    width: 6,
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.4)',
   },
   vertLabels: {
     alignItems: 'flex-end',
-    gap: 2,
+    gap: 1,
   },
   vertLabel: {
-    fontSize: moderateScale(9),
+    fontSize: moderateScale(8.5),
     fontWeight: '800',
     color: 'rgba(255,255,255,0.6)',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
   },
 });

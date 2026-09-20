@@ -611,5 +611,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.md,
+    minHeight: 300,
   },
 });
