@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Colors, Spacing, Radius, moderateScale, Shadow } from '../../constants/theme';
 import { userApi } from '../../services/api';
 import type { DhanCredential } from '../../types';
@@ -14,6 +15,7 @@ function getDaysUntilExpiry(expiresAt: string | null | undefined): number | null
 }
 
 export default function DhanStatusCard() {
+  const router = useRouter();
   const [cred, setCred] = useState<DhanCredential | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,8 +47,6 @@ export default function DhanStatusCard() {
     statusLabel = 'Not Connected';
     statusSub = 'Tap to configure';
   }
-
-  const router = require('expo-router').useRouter();
 
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push('/(user)/profile')}>
