@@ -64,10 +64,13 @@ export default function BuyCreditsScreen() {
 
     if (!url) return;
 
-    // Pre-fill email and phone number using URL parameters
-    const emailParam = user?.email ? `?email=${encodeURIComponent(user.email)}` : '?';
-    const phoneParam = user?.phone_number ? `&contact=${encodeURIComponent(user.phone_number)}` : '';
-    const finalUrl = `${url}${emailParam}${phoneParam}`;
+    // Properly format the query parameters for Razorpay
+    const params = new URLSearchParams();
+    if (user?.email) params.append('email', user.email);
+    if (user?.phone_number) params.append('phone', user.phone_number);
+    
+    const queryString = params.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
 
     Alert.alert(
       'Proceed to Payment',
