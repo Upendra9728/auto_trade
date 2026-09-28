@@ -11,6 +11,7 @@ import MarketStatusCard from '../../components/home/MarketStatusCard';
 import MarketIndices from '../../components/home/MarketIndices';
 import DisciplinedBanner from '../../components/home/DisciplinedBanner';
 import HomeTabsSection from '../../components/home/HomeTabsSection';
+import PlansBanner from '../../components/home/PlansBanner';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -60,6 +61,9 @@ export default function HomeScreen() {
 
         {/* ── Disciplined Banner ── */}
         <DisciplinedBanner />
+
+        {/* ── Plans Promotion ── */}
+        <PlansBanner />
 
         {/* ── Tabs Section ── */}
         <HomeTabsSection key={`tabs-${refreshKey}`} />

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import auth, admin, user, telegram, market
+from .routers import auth, admin, user, telegram, market, payment
 from .token_refresh import token_refresh_loop
 from .dhan_order_update import dhan_order_update_loop, dhan_order_status_poll_loop, dhan_positions_poll_loop
 from .scrip_lookup import ensure_scrip_master_fresh, scrip_master_refresh_loop
@@ -42,6 +42,7 @@ app.include_router(user.router)
 app.include_router(admin.router)
 app.include_router(telegram.router)
 app.include_router(market.router)
+app.include_router(payment.router)
 
 
 @app.on_event("startup")

@@ -23,6 +23,10 @@ import type {
   UserPosition,
   UserGroup,
   UserGroupDetail,
+  CreditPlan,
+  RazorpayOrder,
+  PaymentVerifyPayload,
+  CreditPurchaseResult,
 } from '../types';
 
 const BASE_URL: string =
@@ -365,4 +369,19 @@ export const adminApi = {
     post<UserGroup>(`/api/admin/groups/${groupId}/members`, { user_ids: userIds }),
   removeGroupMember: (groupId: number, userId: number) =>
     del<{ status: string }>(`/api/admin/groups/${groupId}/members/${userId}`),
+};
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+
+export const paymentsApi = {
+  /** Fetch all 3 credit plans (no auth needed). */
+  getPlans: () => get<CreditPlan[]>('/api/payments/plans'),
+
+  /** Create a Razorpay Order for the given plan; returns Checkout params. */
+  createOrder: (plan_id: string) =>
+    post<RazorpayOrder>('/api/payments/orders', { plan_id }),
+
+  /** Verify the payment signature and credit the user after successful checkout. */
+  verifyPayment: (payload: PaymentVerifyPayload) =>
+    post<CreditPurchaseResult>('/api/payments/verify', payload),
 };

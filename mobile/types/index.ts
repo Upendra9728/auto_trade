@@ -315,4 +315,42 @@ export interface UserGroupDetail {
   updated_at: string;
   telegram_channel_name: string | null;
 }
+
+// ── Payments / Razorpay ───────────────────────────────────────────────────────
+
+export interface CreditPlan {
+  id: 'basic' | 'intermediate' | 'pro';
+  name: string;
+  paid_credits: number;
+  bonus_credits: number;
+  total_credits: number;
+  amount_rs: number;
+  amount_paise: number;
+  badge: string | null;
+  description: string | null;
 }
+
+export interface RazorpayOrder {
+  razorpay_order_id: string;
+  amount_paise: number;
+  currency: string;
+  key_id: string;
+  plan: CreditPlan;
+}
+
+export interface PaymentVerifyPayload {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+export interface CreditPurchaseResult {
+  purchase_id: number;
+  plan_id: string;
+  total_credits_added: number;
+  new_credit_balance: number;
+  amount_rs: number;
+  razorpay_payment_id: string;
+  paid_at: string;
+}
+

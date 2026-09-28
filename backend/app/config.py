@@ -74,5 +74,15 @@ class Settings(BaseSettings):
     # Email of the admin User that Telegram-originated signals are attributed to (created_by_id).
     telegram_signal_admin_email: str | None = None
 
+    # ---- Razorpay payment gateway ----------------------------------------
+    # API key pair from Razorpay Dashboard → Settings → API Keys.
+    # Use rzp_test_* for development and rzp_live_* for production.
+    razorpay_key_id: str | None = None
+    razorpay_key_secret: str | None = None
+    razorpay_webhook_secret: str | None = None
+    # Price (in INR) for 1 credit.  Used to compute order amounts for each plan.
+    # Change this value in .env without touching code.  Example: CREDIT_VALUE_RS=150
+    credit_value_rs: int = 100
+
 
 settings = Settings()

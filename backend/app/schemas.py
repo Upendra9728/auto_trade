@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import datetime as dt
 from typing import Any, Literal
@@ -430,3 +430,53 @@ class GroupDetailResponse(BaseModel):
 
 class GroupAddMembersRequest(BaseModel):
     user_ids: list[int] = Field(min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Payments / Razorpay
+# ---------------------------------------------------------------------------
+
+class CreditPlanResponse(BaseModel):
+    """Describes a purchasable credit plan returned by GET /api/payments/plans."""
+    id: str                     # 'basic' | 'intermediate' | 'pro'
+    name: str                   # Display name, e.g. "Basic"
+    paid_credits: int           # Credits purchased
+    bonus_credits: int          # Bonus credits gifted free
+    total_credits: int          # paid_credits + bonus_credits
+    amount_rs: int              # Price in INR (rupees)
+    amount_paise: int           # Price in paise (INR × 100) — used by Razorpay
+    badge: str | None = None    # Optional badge label, e.g. "Most Popular"
+    description: str | None = None
+
+
+class CreateOrderRequest(BaseModel):
+    """Body for POST /api/payments/orders."""
+    plan_id: str = Field(min_length=1, max_length=32)
+
+
+class CreateOrderResponse(BaseModel):
+    """Returned after a Razorpay Order is created — passed directly to the mobile SDK."""
+    razorpay_order_id: str
+    amount_paise: int
+    currency: str
+    key_id: str          # Public key — safe to send to the client
+    plan: CreditPlanResponse
+
+
+class VerifyPaymentRequest(BaseModel):
+    """Body for POST /api/payments/verify — sent by mobile after successful Razorpay Checkout."""
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+class CreditPurchaseResponse(BaseModel):
+    """Summary returned after a purchase is verified."""
+    purchase_id: int
+    plan_id: str
+    total_credits_added: int
+    new_credit_balance: int
+    amount_rs: int
+    razorpay_payment_id: str
+    paid_at: str
+

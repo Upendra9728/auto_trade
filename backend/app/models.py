@@ -282,3 +282,36 @@ class UserGroupMember(Base):
 
     group: Mapped[UserGroup] = relationship(back_populates="members")
     user: Mapped[User] = relationship(back_populates="group_memberships")
+
+
+# ---------------------------------------------------------------------------
+# Razorpay Credit Purchases
+# ---------------------------------------------------------------------------
+
+class CreditPurchase(Base):
+    """Audit trail for every Razorpay credit-purchase transaction."""
+
+    __tablename__ = "credit_purchases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # Plan identifier: 'basic' | 'intermediate' | 'pro'
+    plan_id: Mapped[str] = mapped_column(String(32))
+    # Credits paid for (not including bonus)
+    paid_credits: Mapped[int] = mapped_column(Integer)
+    # Bonus credits given free
+    bonus_credits: Mapped[int] = mapped_column(Integer, default=0)
+    # Total credits actually added to the user
+    total_credits: Mapped[int] = mapped_column(Integer)
+    # Amount charged in paise (INR × 100)
+    amount_paise: Mapped[int] = mapped_column(Integer)
+    # 'created' | 'paid' | 'failed'
+    status: Mapped[str] = mapped_column(String(16), default="created", index=True)
+    # Razorpay identifiers
+    razorpay_order_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    razorpay_payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    razorpay_signature: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped[User] = relationship()

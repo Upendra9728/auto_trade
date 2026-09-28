@@ -52,6 +52,14 @@ export default function UserTabsLayout() {
           tabBarIcon: ({ color, size }) => <Feather name="user" size={size} color={color} />,
         }}
       />
+      {/* buy-credits is a full-screen modal — hide it from the tab bar */}
+      <Tabs.Screen
+        name="buy-credits"
+        options={{
+          href: null,          // removes it from the tab bar entirely
+          headerShown: false,
+        }}
+      />
     </Tabs>
     </View>
   );

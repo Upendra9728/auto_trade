@@ -10,10 +10,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Colors, Radius, Shadow, Spacing, moderateScale } from '../constants/theme';
 
 export default function CreditsBanner() {
+  const router = useRouter();
   const { user, refreshUser } = useAuth();
   const [isDismissed, setIsDismissed] = useState(false);
   const appState = useRef(AppState.currentState);
@@ -81,6 +83,14 @@ export default function CreditsBanner() {
         </View>
 
         <TouchableOpacity
+          style={styles.buyBtn}
+          onPress={() => router.push('/(user)/buy-credits' as any)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.buyBtnText}>Buy</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.closeBtn}
           onPress={() => setIsDismissed(true)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -140,6 +150,18 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(11),
     color: Colors.textSecondary,
     marginTop: 1,
+  },
+  buyBtn: {
+    backgroundColor: '#FF6B6B',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    marginLeft: 8,
+  },
+  buyBtnText: {
+    color: '#fff',
+    fontSize: moderateScale(11),
+    fontWeight: '700',
   },
   closeBtn: {
     padding: 4,
