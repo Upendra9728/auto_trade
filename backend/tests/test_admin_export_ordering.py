@@ -7,13 +7,44 @@ os.environ.setdefault('DATABASE_URL', 'sqlite:///./test_export_ordering.db')
 
 from app.db import Base, SessionLocal, engine
 from app.models import Signal, SignalNotification, User
-from app.routers.admin import _export_order_query
+from app.routers.admin import _export_order_query, add_credits_to_all_users
 from app.schemas import AdminAddCreditsRequest
 
 
-def test_admin_add_credits_allows_zero_amount():
-    payload = AdminAddCreditsRequest(amount=0)
-    assert payload.amount == 0
+def test_admin_add_credits_allows_zero_amount_and_zeroes_every_user():
+    Base.metadata.create_all(bind=engine)
+    session = SessionLocal()
+    try:
+        session.query(User).delete()
+
+        user_a = User(
+            name='Alpha',
+            email='alpha@example.com',
+            phone_number='99999',
+            password_hash='x',
+            credits=5,
+            created_at=dt.datetime.utcnow(),
+            updated_at=dt.datetime.utcnow(),
+        )
+        user_b = User(
+            name='Beta',
+            email='beta@example.com',
+            phone_number='88888',
+            password_hash='y',
+            credits=12,
+            created_at=dt.datetime.utcnow(),
+            updated_at=dt.datetime.utcnow(),
+        )
+        session.add_all([user_a, user_b])
+        session.commit()
+
+        add_credits_to_all_users(AdminAddCreditsRequest(amount=0), db=session, _=user_a)
+
+        assert session.query(User).filter(User.email == 'alpha@example.com').one().credits == 0
+        assert session.query(User).filter(User.email == 'beta@example.com').one().credits == 0
+    finally:
+        session.query(User).delete()
+        session.close()
 
 
 def test_export_order_query_orders_newest_first():

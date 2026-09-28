@@ -391,7 +391,7 @@ def add_user_credits(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.credits += req.amount
+    user.credits = 0 if req.amount == 0 else user.credits + req.amount
     user.updated_at = dt.datetime.utcnow()
     db.commit()
     db.refresh(user)
@@ -405,10 +405,16 @@ def add_credits_to_all_users(
     _: User = Depends(get_current_admin),
 ) -> dict[str, int]:
     """Add trading signal credits to all users, regardless of active status."""
-    count = db.query(User).update(
-        {User.credits: User.credits + req.amount, User.updated_at: dt.datetime.utcnow()},
-        synchronize_session=False,
-    )
+    if req.amount == 0:
+        count = db.query(User).update(
+            {User.credits: 0, User.updated_at: dt.datetime.utcnow()},
+            synchronize_session=False,
+        )
+    else:
+        count = db.query(User).update(
+            {User.credits: User.credits + req.amount, User.updated_at: dt.datetime.utcnow()},
+            synchronize_session=False,
+        )
     db.commit()
     return {"updated": count}
 
