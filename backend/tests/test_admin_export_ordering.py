@@ -8,6 +8,12 @@ os.environ.setdefault('DATABASE_URL', 'sqlite:///./test_export_ordering.db')
 from app.db import Base, SessionLocal, engine
 from app.models import Signal, SignalNotification, User
 from app.routers.admin import _export_order_query
+from app.schemas import AdminAddCreditsRequest
+
+
+def test_admin_add_credits_allows_zero_amount():
+    payload = AdminAddCreditsRequest(amount=0)
+    assert payload.amount == 0
 
 
 def test_export_order_query_orders_newest_first():

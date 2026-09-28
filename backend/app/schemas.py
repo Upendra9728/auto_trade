@@ -248,7 +248,7 @@ class AdminUpdateUserRequest(BaseModel):
 
 
 class AdminAddCreditsRequest(BaseModel):
-    amount: int = Field(ge=1, description="Number of credits to add to the user(s)")
+    amount: int = Field(ge=0, description="Number of credits to add to the user(s)")
 
 
 class AdminSignalDetailResponse(BaseModel):

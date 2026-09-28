@@ -95,8 +95,8 @@ export default function UserDetailScreen() {
 
   const handleAddCredits = async () => {
     const amount = parseInt(creditsInput, 10);
-    if (!amount || amount < 1) {
-      Alert.alert('Invalid amount', 'Please enter a positive number.');
+    if (Number.isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid amount', 'Please enter a non-negative number.');
       return;
     }
     setAddingCredits(true);

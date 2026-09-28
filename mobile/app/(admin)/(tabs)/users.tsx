@@ -70,8 +70,8 @@ export default function AdminUsersScreen() {
 
   const handleBulkAddCredits = async () => {
     const amount = parseInt(bulkCreditsInput, 10);
-    if (!amount || amount < 1) {
-      Alert.alert('Invalid amount', 'Please enter a positive number.');
+    if (Number.isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid amount', 'Please enter a non-negative number.');
       return;
     }
     setAddingBulkCredits(true);
