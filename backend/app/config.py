@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     app_latest_version: str = "1.6.0"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
-    app_release_notes: str = "UI Improvements"
+    app_release_notes: str = "Integrated payment"
 
     # Telegram <-> app signal integration
     # Bot token from @BotFather; used both by the standalone bot/ process (inbound) and by this
