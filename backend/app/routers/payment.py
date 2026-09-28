@@ -38,8 +38,8 @@ def _build_plans() -> list[CreditPlanResponse]:
             paid_credits=5,
             bonus_credits=0,
             total_credits=5,
-            amount_rs=5 * rs,
-            amount_paise=5 * rs * 100,
+            amount_rs=1,  # TEMPORARY TEST PRICE: ₹1
+            amount_paise=100,  # 100 paise = ₹1
             badge=None,
             description="Great for getting started with trading signals.",
         ),
