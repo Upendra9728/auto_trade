@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -69,26 +71,53 @@ function MiniPlanCard({ plan, onPress }: { plan: CreditPlan; onPress: () => void
 export default function PlansBanner() {
   const router = useRouter();
   const [plans, setPlans] = useState<CreditPlan[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const currentIndex = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const slideAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     paymentsApi.getPlans().then(setPlans).catch(() => {});
   }, []);
 
-  // Auto-scroll every 3 seconds
-  useEffect(() => {
-    if (plans.length === 0) return;
-    const timer = setInterval(() => {
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const startAutoScroll = useCallback(() => {
+    clearTimer();
+    if (plans.length <= 1) return;
+    timerRef.current = setInterval(() => {
       currentIndex.current = (currentIndex.current + 1) % plans.length;
+      setActiveIndex(currentIndex.current);
       scrollRef.current?.scrollTo({
         x: currentIndex.current * (CARD_W + CARD_GAP),
         animated: true,
       });
     }, 3000);
-    return () => clearInterval(timer);
-  }, [plans]);
+  }, [clearTimer, plans.length]);
+
+  useEffect(() => {
+    startAutoScroll();
+    return () => clearTimer();
+  }, [startAutoScroll, clearTimer]);
+
+  const handleScrollBeginDrag = () => {
+    clearTimer();
+  };
+
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const newIndex = Math.round(offsetX / (CARD_W + CARD_GAP));
+    const clamped = Math.max(0, Math.min(newIndex, plans.length - 1));
+    currentIndex.current = clamped;
+    setActiveIndex(clamped);
+    startAutoScroll();
+  };
 
   if (plans.length === 0) return null;
 
@@ -124,6 +153,12 @@ export default function PlansBanner() {
         snapToInterval={CARD_W + CARD_GAP}
         decelerationRate="fast"
         contentContainerStyle={styles.scrollContent}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onMomentumScrollEnd={handleScrollEnd}
+        onScrollEndDrag={(e) => {
+          // Fallback if there is no momentum scroll
+          handleScrollEnd(e);
+        }}
       >
         {plans.map((plan) => (
           <MiniPlanCard key={plan.id} plan={plan} onPress={handleCardPress} />
@@ -137,7 +172,7 @@ export default function PlansBanner() {
             key={p.id}
             style={[
               styles.dot,
-              i === 0 ? styles.dotActive : styles.dotInactive,
+              i === activeIndex ? styles.dotActive : styles.dotInactive,
             ]}
           />
         ))}

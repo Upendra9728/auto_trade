@@ -71,7 +71,7 @@ const tabStyles = StyleSheet.create({
   },
   tab: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
     marginRight: 4,
@@ -80,7 +80,7 @@ const tabStyles = StyleSheet.create({
     borderBottomColor: Colors.primary,
   },
   label: {
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(12),
     fontWeight: '600',
     color: Colors.textSecondary,
   },
