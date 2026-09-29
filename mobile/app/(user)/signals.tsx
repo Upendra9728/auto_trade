@@ -8,7 +8,7 @@ import { useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
-import { formatDateTimeIST } from '../../utils/time';
+import { formatDateTimeIST, toUTCDate } from '../../utils/time';
 import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import CreditsHeader from '../../components/CreditsHeader';
@@ -169,6 +169,13 @@ export default function NotificationsScreen() {
             <Text style={styles.resultMuted}>⚠️ Cancelled by admin before you acted on it</Text>
           </View>
         )}
+        {isTimedOut && (
+          <View style={styles.resultRow}>
+            <Text style={styles.resultMuted}>
+              {`⏱ ${getTimedOutWindowSeconds(n) ?? '—'}s Timed Out — confirm window expired`}
+            </Text>
+          </View>
+        )}
 
         {/* Action buttons */}
         {isPending && (
@@ -322,9 +329,18 @@ function PriceCell({ label, value, color, isInt }: { label: string; value: numbe
   );
 }
 
+function getTimedOutWindowSeconds(notification: SignalNotification): number | null {
+  if (!notification.created_at || !notification.confirm_deadline) return null;
+  const startMs = toUTCDate(notification.created_at).getTime();
+  const endMs = toUTCDate(notification.confirm_deadline).getTime();
+  const diffMs = endMs - startMs;
+  if (!Number.isFinite(diffMs)) return null;
+  return Math.max(0, Math.round(diffMs / 1000));
+}
+
 /** Live mm:ss countdown to `deadline`; calls onExpire() once when it reaches 0. */
 function PendingCountdown({ deadline, onExpire }: { deadline: string; onExpire: () => void }) {
-  const deadlineMs = new Date(deadline).getTime();
+  const deadlineMs = toUTCDate(deadline).getTime();
   const [remaining, setRemaining] = useState(() => Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000)));
   const firedRef = useRef(false);
 

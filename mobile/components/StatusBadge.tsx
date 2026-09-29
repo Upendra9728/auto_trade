@@ -12,8 +12,8 @@ const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> =
   rejected:  { label: 'Rejected',   bg: '#F3F4F6',         color: '#6B7280' },
   active:    { label: 'Active',     bg: Colors.primaryBg,  color: Colors.primary },
   cancelled: { label: 'Cancelled',  bg: '#F3F4F6',         color: '#6B7280' },
-  expired:   { label: 'Expired Unfilled', bg: Colors.warningBg, color: Colors.warning },
-  timed_out: { label: 'Timed Out',   bg: Colors.warningBg,  color: Colors.warning },
+  expired:   { label: '⏱ Expired Unfilled', bg: Colors.warningBg, color: Colors.warning },
+  timed_out: { label: '⏱ Timed Out',   bg: Colors.warningBg,  color: Colors.warning },
 };
 
 interface Props {

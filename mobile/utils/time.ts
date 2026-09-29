@@ -12,7 +12,7 @@ const IST_ZONE = 'Asia/Kolkata';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-function toUTCDate(isoStr: string): Date {
+export function toUTCDate(isoStr: string): Date {
   // Append 'Z' only when the string has no timezone indicator at all.
   const normalised =
     isoStr.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(isoStr)
