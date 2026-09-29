@@ -104,19 +104,6 @@ export default function BuyCreditsScreen() {
         </View>
       </View>
 
-      {/* ── Subtitle ── */}
-      <View style={[styles.subtitleRow, { flexDirection: 'column', alignItems: 'center' }]}>
-        <Text style={styles.subtitle}>
-          1 credit = 1 order placed via trading signal
-        </Text>
-        <Text style={[styles.subtitle, { color: Colors.primary, fontWeight: '600', marginTop: 4 }]}>
-          Special Auto Trade = 3 credits / trade
-        </Text>
-        <Text style={[styles.subtitle, { color: Colors.textSecondary, fontStyle: 'italic', marginTop: 8, fontSize: 11 }]}>
-          * All plan prices below are exclusive of 18% GST
-        </Text>
-      </View>
-
       {/* ── Content ── */}
       {loadingPlans ? (
         <View style={styles.center}>
@@ -129,6 +116,36 @@ export default function BuyCreditsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Credit Usage Info Card */}
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconWrap}>
+                <Feather name="zap" size={14} color={Colors.primary} />
+              </View>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>1 credit</Text> = 1 order placed via trading signal
+              </Text>
+            </View>
+
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIconWrap, { backgroundColor: Colors.warningBg }]}>
+                <Feather name="cpu" size={14} color={Colors.warning} />
+              </View>
+              <Text style={styles.infoText}>
+                <Text style={[styles.infoBold, { color: Colors.warning }]}>Special Auto Trade</Text> = 3 credits / trade
+              </Text>
+            </View>
+
+            <View style={styles.infoDivider} />
+
+            <View style={styles.infoGstRow}>
+              <Feather name="info" size={12} color={Colors.textMuted} />
+              <Text style={styles.infoGstText}>
+                All plan prices are exclusive of 18% GST
+              </Text>
+            </View>
+          </View>
+
           {/* Feature highlights */}
           <View style={styles.highlights}>
             {[
@@ -212,17 +229,53 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
   },
-  subtitleRow: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    backgroundColor: Colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+  infoCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+    ...Shadow.card,
   },
-  subtitle: {
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  infoIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoText: {
     fontSize: moderateScale(12),
-    color: Colors.textSecondary,
-    fontStyle: 'italic',
+    color: Colors.text,
+    flex: 1,
+  },
+  infoBold: {
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 2,
+  },
+  infoGstRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  infoGstText: {
+    fontSize: moderateScale(11),
+    color: Colors.textMuted,
+    flex: 1,
   },
   center: {
     flex: 1,
