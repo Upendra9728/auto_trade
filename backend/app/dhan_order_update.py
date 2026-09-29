@@ -109,6 +109,7 @@ def apply_live_status(
     status = (status or "").upper()
     old_version = notif.version
     new_version = old_version + 1
+    previous_exit_leg = notif.exit_leg
     
     # Prepare the update dict
     update_dict = {
@@ -235,14 +236,13 @@ def apply_live_status(
     if status in SUCCESS_TERMINAL_STATUSES:
         logger.info("Order %s CLOSED (full exit complete, exit leg tracked separately)", notif.dhan_order_id)
 
-    # Refund one credit if the order failed
-    if workflow_status_update == "failed":
-        db.execute(
-            update(User)
-            .where(User.id == notif.user_id)
-            .values({User.credits: User.credits + 1})
-        )
-        logger.info("Credit refunded to user %s for failed order (notification %s)", notif.user_id, notif.id)
+    # Debit credits only the first time this order's target leg is confirmed traded —
+    # stop-loss hits, cancellations, and rejections never debit.
+    if exit_leg == "TARGET_LEG" and previous_exit_leg != "TARGET_LEG":
+        credit_cost = 3 if notif.is_auto_placed else 1
+        user = db.query(User).filter(User.id == notif.user_id).one()
+        user.credits = max(0, user.credits - credit_cost)
+        logger.info("Debited %s credit(s) from user %s for target hit (notification %s)", credit_cost, notif.user_id, notif.id)
 
     db.commit()
     return True

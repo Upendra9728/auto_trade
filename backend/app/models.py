@@ -27,7 +27,7 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     terms_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     terms_accepted_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    # Trading signal order placement credits (1 credit = 1 successful order placed)
+    # Trading signal order placement credits (1 credit = 1 order that hits its target)
     credits: Mapped[int] = mapped_column(Integer, default=0)
     # Premium feature: auto-confirm every incoming signal and place the order immediately (costs 3 credits/order)
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -314,4 +314,4 @@ class CreditPurchase(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
-    user: Mapped[User] = relationship()
+    user: Mapped[User] = relationship()

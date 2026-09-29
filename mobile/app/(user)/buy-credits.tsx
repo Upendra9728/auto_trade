@@ -118,12 +118,20 @@ export default function BuyCreditsScreen() {
         >
           {/* Credit Usage Info Card */}
           <View style={styles.infoCard}>
+            {/* Prominent callout: credits are only debited on target hit */}
+            <View style={styles.calloutBanner}>
+              <Feather name="check-circle" size={16} color={Colors.success} />
+              <Text style={styles.calloutText}>
+                Credits are debited only when your order hits its target — no charge for stop-loss exits, cancellations, or rejections.
+              </Text>
+            </View>
+
             <View style={styles.infoRow}>
               <View style={styles.infoIconWrap}>
                 <Feather name="zap" size={14} color={Colors.primary} />
               </View>
               <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>1 credit</Text> = 1 order placed via trading signal
+                <Text style={styles.infoBold}>1 credit</Text> = 1 order that hits its target
               </Text>
             </View>
 
@@ -132,7 +140,7 @@ export default function BuyCreditsScreen() {
                 <Feather name="cpu" size={14} color={Colors.warning} />
               </View>
               <Text style={styles.infoText}>
-                <Text style={[styles.infoBold, { color: Colors.warning }]}>Special Auto Trade</Text> = 3 credits / trade
+                <Text style={[styles.infoBold, { color: Colors.warning }]}>Special Auto Trade</Text> = 3 credits when it hits target
               </Text>
             </View>
 
@@ -238,6 +246,22 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     gap: 8,
     ...Shadow.card,
+  },
+  calloutBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.successBg,
+    borderRadius: Radius.sm,
+    padding: Spacing.sm,
+    marginBottom: 4,
+  },
+  calloutText: {
+    flex: 1,
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: Colors.success,
+    lineHeight: 17,
   },
   infoRow: {
     flexDirection: 'row',
