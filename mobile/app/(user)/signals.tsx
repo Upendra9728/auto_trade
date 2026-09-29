@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, Modal,
   TouchableOpacity, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { userApi } from '../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../constants/theme';
 import { formatDateTimeIST } from '../../utils/time';
@@ -12,6 +13,7 @@ import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import CreditsHeader from '../../components/CreditsHeader';
 import DayGroupedList from '../../components/DayGroupedList';
+import GlowBorder from '../../components/GlowBorder';
 import type { SignalNotification } from '../../types';
 
 const QTY_PRESETS = [5, 15, 20, 25, 30];
@@ -25,6 +27,8 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<SignalNotification[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [actionId, setActionId] = useState<number | null>(null);
+  // Notifications whose countdown hit 0 client-side, ahead of the server's own timeout sweep.
+  const [locallyTimedOutIds, setLocallyTimedOutIds] = useState<Set<number>>(new Set());
 
   // Quantity picker modal state
   const [qtyModal, setQtyModal] = useState<{ notification: SignalNotification } | null>(null);
@@ -100,14 +104,21 @@ export default function NotificationsScreen() {
 
   const renderItem = ({ item: n }: { item: SignalNotification }) => {
     const isBusy = actionId === n.id;
-    const isPending = n.status === 'pending';
+    // Only trust the local expiry flag while the server still thinks it's pending —
+    // avoids overriding a status that changed via a race right at the deadline.
+    const isLocallyTimedOut = n.status === 'pending' && locallyTimedOutIds.has(n.id);
+    const isPending = n.status === 'pending' && !isLocallyTimedOut;
     const isBuy = n.signal.transaction_type === 'BUY';
     const isAdminCancelled = n.status === 'rejected' && n.signal.status === 'cancelled';
     const isExpiredUnfilled = n.status === 'failed' && n.live_status === 'CANCELLED'
       && (!n.reason_description || n.reason_description.toUpperCase() === 'CONFIRMED');
+    const isTimedOut = n.status === 'timed_out' || isLocallyTimedOut;
+    const glowColor = isTimedOut ? Colors.warning : (n.status === 'confirmed' || n.status === 'placed') ? Colors.success : null;
 
     return (
-      <View style={styles.card}>
+      <View style={styles.cardWrap}>
+        {glowColor && <GlowBorder color={glowColor} borderRadius={Radius.md} />}
+        <View style={styles.card}>
         {/* Header row */}
         <View style={styles.cardHeader}>
           <View style={[styles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
@@ -115,7 +126,15 @@ export default function NotificationsScreen() {
               {n.signal.transaction_type}
             </Text>
           </View>
-          <StatusBadge status={isAdminCancelled ? 'cancelled' : isExpiredUnfilled ? 'expired' : n.status} size="sm" />
+          <View style={styles.headerRight}>
+            {isPending && n.confirm_deadline && (
+              <PendingCountdown
+                deadline={n.confirm_deadline}
+                onExpire={() => setLocallyTimedOutIds((prev) => new Set(prev).add(n.id))}
+              />
+            )}
+            <StatusBadge status={isAdminCancelled ? 'cancelled' : isExpiredUnfilled ? 'expired' : isTimedOut ? 'timed_out' : n.status} size="sm" />
+          </View>
         </View>
 
         {/* Title */}
@@ -172,6 +191,7 @@ export default function NotificationsScreen() {
         )}
 
         <Text style={styles.time}>{formatDateTimeIST(n.created_at)}</Text>
+        </View>
       </View>
     );
   };
@@ -302,6 +322,48 @@ function PriceCell({ label, value, color, isInt }: { label: string; value: numbe
   );
 }
 
+/** Live mm:ss countdown to `deadline`; calls onExpire() once when it reaches 0. */
+function PendingCountdown({ deadline, onExpire }: { deadline: string; onExpire: () => void }) {
+  const deadlineMs = new Date(deadline).getTime();
+  const [remaining, setRemaining] = useState(() => Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000)));
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    firedRef.current = false;
+    const tick = () => {
+      const secs = Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+      setRemaining(secs);
+      if (secs <= 0 && !firedRef.current) {
+        firedRef.current = true;
+        onExpire();
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [deadlineMs, onExpire]);
+
+  if (remaining <= 0) return null;
+
+  const mm = Math.floor(remaining / 60);
+  const ss = remaining % 60;
+  const isLow = remaining <= 10;
+
+  return (
+    <View style={countdownStyles.row}>
+      <Feather name="clock" size={12} color={isLow ? Colors.error : Colors.warning} />
+      <Text style={[countdownStyles.text, isLow && { color: Colors.error }]}>
+        {mm}:{String(ss).padStart(2, '0')}
+      </Text>
+    </View>
+  );
+}
+
+const countdownStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  text: { fontSize: 12, fontWeight: '700', color: Colors.warning },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -322,6 +384,7 @@ const styles = StyleSheet.create({
   pageTitle: { ...Typography.h3 },
   pendingCount: { fontSize: 13, color: Colors.warning, fontWeight: '700' },
   list: { padding: Spacing.md, gap: Spacing.md },
+  cardWrap: { position: 'relative' },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
@@ -330,6 +393,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   txBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
   txText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   signalTitle: { ...Typography.h3 },

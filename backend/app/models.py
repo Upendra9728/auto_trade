@@ -112,6 +112,7 @@ class SignalNotification(Base):
     Per-user status for a given signal.
     Lifecycle: pending → confirmed → placed
                        → rejected
+                       → timed_out (user didn't act before confirm_deadline)
                        → failed (placement error)
     """
 
@@ -121,7 +122,7 @@ class SignalNotification(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     signal_id: Mapped[int] = mapped_column(ForeignKey("signals.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    # 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed'
+    # 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'timed_out'
     # NOTE: 'placed' only means Dhan's HTTP API accepted the request. It does NOT
     # mean the exchange executed/confirmed it — see live_status below for that.
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
@@ -132,6 +133,8 @@ class SignalNotification(Base):
     confirmed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    # Deadline to confirm/reject before this notification auto-times-out (see notification_timeout.py)
+    confirm_deadline: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     # Optimistic locking version to prevent concurrent WS + polling overwrites
     version: Mapped[int] = mapped_column(Integer, default=1, index=True)
     # True if this order was auto-confirmed/placed via the user's Auto-Trade setting (costs 3 credits, not 1)

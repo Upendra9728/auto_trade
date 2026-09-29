@@ -642,6 +642,7 @@ def _create_and_broadcast_signal(
     notifs: list[SignalNotification] = []
     for user in eligible_users:
         notif = SignalNotification(signal_id=signal.id, user_id=user.id, status="pending")
+        notif.confirm_deadline = dt.datetime.utcnow() + dt.timedelta(seconds=settings.notification_confirm_timeout_seconds)
         if user.auto_trade_enabled:
             notif.status = "confirmed"
             notif.confirmed_at = dt.datetime.utcnow()

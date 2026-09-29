@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Radius, moderateScale } from '../constants/theme';
 
-type StatusType = 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'active' | 'cancelled' | 'expired';
+type StatusType = 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'active' | 'cancelled' | 'expired' | 'timed_out';
 
 const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> = {
   pending:   { label: 'Pending',    bg: Colors.warningBg,  color: Colors.warning },
@@ -13,6 +13,7 @@ const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> =
   active:    { label: 'Active',     bg: Colors.primaryBg,  color: Colors.primary },
   cancelled: { label: 'Cancelled',  bg: '#F3F4F6',         color: '#6B7280' },
   expired:   { label: 'Expired Unfilled', bg: Colors.warningBg, color: Colors.warning },
+  timed_out: { label: 'Timed Out',   bg: Colors.warningBg,  color: Colors.warning },
 };
 
 interface Props {

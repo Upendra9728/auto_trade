@@ -89,6 +89,7 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
         confirmed_at=notif.confirmed_at.isoformat() if notif.confirmed_at else None,
         placed_at=notif.placed_at.isoformat() if notif.placed_at else None,
         created_at=notif.created_at.isoformat(),
+        confirm_deadline=notif.confirm_deadline.isoformat() if notif.confirm_deadline else None,
         live_status=notif.live_status,
         exchange_order_no=notif.exchange_order_no,
         traded_qty=notif.traded_qty,
@@ -397,6 +398,10 @@ async def confirm_notification(
     )
     if notif is None:
         raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.confirm_deadline and dt.datetime.utcnow() > notif.confirm_deadline and notif.status == "pending":
+        notif.status = "timed_out"
+        db.commit()
+        raise HTTPException(status_code=409, detail="Confirmation window has expired")
     if notif.status != "pending":
         raise HTTPException(
             status_code=409,

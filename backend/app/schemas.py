@@ -183,6 +183,8 @@ class SignalNotificationResponse(BaseModel):
     confirmed_at: str | None = None
     placed_at: str | None = None
     created_at: str
+    # Deadline to confirm/reject before this notification auto-times-out (None = no timeout applies, e.g. auto-trade)
+    confirm_deadline: str | None = None
     # Real-time exchange status from Dhan's Live Order Update feed.
     # live_status: TRANSIT | PENDING | REJECTED | CANCELLED | TRADED | EXPIRED (None = no update yet)
     live_status: str | None = None

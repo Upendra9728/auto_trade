@@ -58,9 +58,13 @@ class Settings(BaseSettings):
     token_refresh_interval_seconds: int = 300
     token_renew_threshold_hours: int = 1
 
+    # Seconds a user has to confirm/reject a signal notification before it auto-times-out.
+    # Change this value in .env without touching code. Example: NOTIFICATION_CONFIRM_TIMEOUT_SECONDS=120
+    notification_confirm_timeout_seconds: int = 120
+
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.6.3"
+    app_latest_version: str = "1.6.2"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
     app_release_notes: str = "UI Improvements\nadded credit rules"

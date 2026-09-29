@@ -74,13 +74,15 @@ export interface Signal {
 export interface SignalNotification {
   id: number;
   signal_id: number;
-  status: 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed';
+  status: 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'timed_out';
   signal: Signal;
   error_message: string | null;
   dhan_order_id: string | null;
   confirmed_at: string | null;
   placed_at: string | null;
   created_at: string;
+  // Deadline to confirm/reject before this notification auto-times-out (null = no timeout applies).
+  confirm_deadline: string | null;
   // Real-time exchange status from Dhan's Live Order Update feed.
   // null = no live update received yet.
   live_status: LiveOrderStatus | null;

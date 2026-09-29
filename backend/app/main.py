@@ -11,6 +11,7 @@ from .db import init_db
 from .routers import auth, admin, user, telegram, market, payment
 from .token_refresh import token_refresh_loop
 from .dhan_order_update import dhan_order_update_loop, dhan_order_status_poll_loop, dhan_positions_poll_loop
+from .notification_timeout import notification_timeout_sweep_loop
 from .scrip_lookup import ensure_scrip_master_fresh, scrip_master_refresh_loop
 
 logging.basicConfig(
@@ -56,6 +57,8 @@ async def _startup() -> None:
     asyncio.create_task(dhan_order_status_poll_loop())
     # Periodic positions poll for realized/unrealized P&L
     asyncio.create_task(dhan_positions_poll_loop())
+    # Auto-times-out notifications the user never confirmed/rejected in time
+    asyncio.create_task(notification_timeout_sweep_loop())
     # Run scrip master download in the background so it never blocks startup
     # within systemd's TimeoutStartSec. The daily refresh loop starts after
     # the initial download finishes.

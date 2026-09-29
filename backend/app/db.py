@@ -138,6 +138,11 @@ def _apply_migrations() -> None:
                 conn.execute(text("ALTER TABLE signal_notifications ADD COLUMN is_auto_placed BOOLEAN DEFAULT FALSE"))
                 conn.commit()
             logger.info("Migration: added is_auto_placed column to signal_notifications")
+        if "confirm_deadline" not in existing:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE signal_notifications ADD COLUMN confirm_deadline TIMESTAMP"))
+                conn.commit()
+            logger.info("Migration: added confirm_deadline column to signal_notifications")
 
     if "signals" in table_names:
         existing = {c["name"] for c in inspector.get_columns("signals")}
