@@ -288,5 +288,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
   },
+  gstNote: {
+    textAlign: 'center',
+    fontSize: moderateScale(10),
+    color: Colors.textMuted,
+    marginTop: -8,
+    marginBottom: Spacing.md,
+    fontStyle: 'italic',
+  }
 });
 

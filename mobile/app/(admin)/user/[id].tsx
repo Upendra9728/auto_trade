@@ -211,7 +211,7 @@ export default function UserDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trading Credits</Text>
           <Text style={styles.helperText}>
-            Each successful order placement costs 1 credit. Failed orders refund the credit.
+            Each successful order placement costs 1 credit. Special Auto Trade costs 3 credits. Failed orders refund the credits.
           </Text>
           <View style={{ flexDirection: 'row', gap: Spacing.sm, alignItems: 'flex-end' }}>
             <View style={{ flex: 1 }}>

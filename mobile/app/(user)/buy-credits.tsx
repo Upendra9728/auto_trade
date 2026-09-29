@@ -105,9 +105,15 @@ export default function BuyCreditsScreen() {
       </View>
 
       {/* ── Subtitle ── */}
-      <View style={styles.subtitleRow}>
+      <View style={[styles.subtitleRow, { flexDirection: 'column', alignItems: 'center' }]}>
         <Text style={styles.subtitle}>
           1 credit = 1 order placed via trading signal
+        </Text>
+        <Text style={[styles.subtitle, { color: Colors.primary, fontWeight: '600', marginTop: 4 }]}>
+          Special Auto Trade = 3 credits / trade
+        </Text>
+        <Text style={[styles.subtitle, { color: Colors.textSecondary, fontStyle: 'italic', marginTop: 8, fontSize: 11 }]}>
+          * All plan prices below are exclusive of 18% GST
         </Text>
       </View>
 

@@ -291,7 +291,8 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     rs = settings.credit_value_rs
     plan = None
     for p in _build_plans():
-        if p.amount_paise == amount_paise:
+        expected_with_gst = int(p.amount_paise * 1.18)
+        if amount_paise == p.amount_paise or amount_paise == expected_with_gst:
             plan = p
             break
 
