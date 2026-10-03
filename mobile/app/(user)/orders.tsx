@@ -148,6 +148,7 @@ export default function OrdersScreen() {
 
       <DayGroupedList<SignalNotification>
         refreshNonce={refreshNonce}
+        itemTypeLabel="order"
         fetchDays={({ page, pageSize }) => userApi.getOrderDays({ page, pageSize })}
         fetchItemsForDay={({ date, page, pageSize }) => userApi.getOrders({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}

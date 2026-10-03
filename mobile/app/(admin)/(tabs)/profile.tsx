@@ -10,6 +10,7 @@ import Constants from 'expo-constants';
 import { useAuth } from '../../../contexts/AuthContext';
 import { userApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
+import TelegramAutomationToggle from '../../../components/TelegramAutomationToggle';
 
 export default function AdminProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
@@ -64,6 +65,7 @@ export default function AdminProfileScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Admin Profile</Text>
+          <TelegramAutomationToggle />
         </View>
 
         {/* Avatar & Name */}
@@ -177,6 +179,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.lg,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: Spacing.xl,
   },
   title: {

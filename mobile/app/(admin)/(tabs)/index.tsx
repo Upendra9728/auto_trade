@@ -11,6 +11,7 @@ import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/
 import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
+import TelegramAutomationToggle from '../../../components/TelegramAutomationToggle';
 import type { Dashboard } from '../../../types';
 
 export default function AdminDashboard() {
@@ -76,11 +77,14 @@ export default function AdminDashboard() {
 
         {/* Header */}
         <View style={styles.headerBar}>
-          <View>
-            <Text style={styles.greeting}>Welcome, {user?.name}</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.greeting} numberOfLines={1}>Welcome, {user?.name}</Text>
             <Text style={styles.roleText}>Admin Dashboard</Text>
           </View>
-          <View style={styles.adminPill}><Text style={styles.adminPillText}>ADMIN</Text></View>
+          <View style={styles.headerRight}>
+            <TelegramAutomationToggle />
+            <View style={styles.adminPill}><Text style={styles.adminPillText}>ADMIN</Text></View>
+          </View>
         </View>
 
         {/* Needs Attention */}
@@ -200,6 +204,12 @@ const styles = StyleSheet.create({
   },
   greeting: { ...Typography.h3 },
   roleText: { ...Typography.bodySmall, marginTop: 2 },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+  },
   adminPill: {
     backgroundColor: Colors.primaryBg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: Radius.full,
   },

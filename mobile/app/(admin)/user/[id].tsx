@@ -8,6 +8,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow } from '../../../constants/theme';
 import { formatDateIST } from '../../../utils/time';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import type { AdminUser } from '../../../types';
 
 export default function UserDetailScreen() {
@@ -130,13 +131,7 @@ export default function UserDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageTitle} numberOfLines={1}>Edit User</Text>
-        <View style={{ width: 60 }} />
-      </View>
+      <AdminScreenHeader title="Edit User" onBack={() => router.back()} />
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">

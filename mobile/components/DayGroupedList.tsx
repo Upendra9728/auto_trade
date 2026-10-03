@@ -30,14 +30,6 @@ type DaySection<T> = {
   isToday: boolean;
 };
 
-type Row<T> =
-  | { type: 'header'; date: string }
-  | { type: 'item'; date: string; item: T; index: number }
-  | { type: 'loading'; date: string }
-  | { type: 'empty'; date: string }
-  | { type: 'day-load-more'; date: string }
-  | { type: 'days-load-more' };
-
 interface Props<T> {
   fetchDays: (params: { page?: number; pageSize?: number }) => Promise<Paginated<DayBucket>>;
   fetchItemsForDay: (params: { date: string; page?: number; pageSize?: number }) => Promise<Paginated<T>>;
@@ -50,18 +42,39 @@ interface Props<T> {
   refreshNonce?: number;
   dayPageSize?: number;
   itemPageSize?: number;
+  itemTypeLabel?: string;
 }
 
 const DEFAULT_DAY_PAGE_SIZE = 15;
 const DEFAULT_ITEM_PAGE_SIZE = 20;
 
-function formatDayLabel(dateKey: string): string {
+function formatDayTitle(dateKey: string): string {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(year, month - 1, day).toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   });
+}
+
+function formatDaySubtitle(dateKey: string, isToday: boolean): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  const weekday = d.toLocaleDateString('en-IN', { weekday: 'long' });
+  if (isToday) {
+    const formatted = d.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    return `${weekday} · ${formatted}`;
+  }
+  return weekday;
+}
+
+function formatCount(count: number, label: string = 'item'): string {
+  const plural = count === 1 ? label : `${label}s`;
+  return `${count} ${plural}`;
 }
 
 export default function DayGroupedList<T>({
@@ -76,6 +89,7 @@ export default function DayGroupedList<T>({
   refreshNonce,
   dayPageSize = DEFAULT_DAY_PAGE_SIZE,
   itemPageSize = DEFAULT_ITEM_PAGE_SIZE,
+  itemTypeLabel = 'item',
 }: Props<T>) {
   const today = useMemo(() => getISTDateKey(), []);
   const [days, setDays] = useState<DayBucket[]>([]);
@@ -250,34 +264,13 @@ export default function DayGroupedList<T>({
     onVisibleItemsChangeRef.current(sections.flatMap((section) => (section.expanded ? section.items : [])));
   }, [sections]);
 
-  const rows = useMemo<Row<T>[]>(() => {
-    const nextRows: Row<T>[] = [];
+  const isAllEmpty =
+    !initialLoading &&
+    days.length === 0 &&
+    (dayState[today]?.loaded ?? false) &&
+    (dayState[today]?.items.length ?? 0) === 0;
 
-    for (const section of sections) {
-      nextRows.push({ type: 'header', date: section.date });
-      if (!section.expanded) continue;
-      section.items.forEach((item, index) => {
-        nextRows.push({ type: 'item', date: section.date, item, index });
-      });
-      if (section.loading) {
-        nextRows.push({ type: 'loading', date: section.date });
-      } else if (!section.items.length) {
-        nextRows.push({ type: 'empty', date: section.date });
-      } else if (section.meta && section.meta.page < section.meta.total_pages) {
-        nextRows.push({ type: 'day-load-more', date: section.date });
-      }
-    }
-
-    if (daysMeta && daysMeta.page < daysMeta.total_pages) {
-      nextRows.push({ type: 'days-load-more' });
-    }
-
-    return nextRows;
-  }, [daysMeta, sections]);
-
-  const isListEmpty = initialLoading && days.length === 0 && (dayState[today]?.items.length ?? 0) === 0;
-
-  if (isListEmpty) {
+  if (initialLoading && days.length === 0 && (dayState[today]?.items.length ?? 0) === 0) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -287,72 +280,123 @@ export default function DayGroupedList<T>({
 
   return (
     <FlatList
-      data={rows}
-      keyExtractor={(row, index) => {
-        if (row.type === 'header') return `header-${row.date}`;
-        if (row.type === 'item') return `item-${row.date}-${keyExtractor(row.item, row.index)}`;
-        if (row.type === 'day-load-more') return `day-load-more-${row.date}`;
-        return `days-load-more-${index}`;
-      }}
-      renderItem={({ item: row }) => {
-        if (row.type === 'header') {
-          const section = sections.find((entry) => entry.date === row.date);
-          if (!section) return null;
-          return (
-            <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleDay(section.date)} activeOpacity={0.8}>
-              <View style={styles.sectionHeaderLeft}>
-                <View style={styles.badgeIcon}>
-                  <Feather name="calendar" size={14} color={Colors.primary} />
+      data={isAllEmpty ? [] : sections}
+      keyExtractor={(section) => `day-${section.date}`}
+      renderItem={({ item: section }) => {
+        const isExpanded = section.expanded;
+        return (
+          <View style={styles.dayCard}>
+            <TouchableOpacity
+              style={[
+                styles.dayHeader,
+                isExpanded && styles.dayHeaderExpanded,
+                section.isToday && styles.dayHeaderToday,
+              ]}
+              onPress={() => toggleDay(section.date)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.dayHeaderLeft}>
+                <View style={[styles.badgeIcon, section.isToday && styles.badgeIconToday]}>
+                  <Feather
+                    name="calendar"
+                    size={14}
+                    color={section.isToday ? Colors.primary : Colors.textSecondary}
+                  />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sectionTitle}>{section.isToday ? 'Today' : formatDayLabel(section.date)}</Text>
-                  <Text style={styles.sectionSubtitle}>{section.count} item{section.count === 1 ? '' : 's'}</Text>
+                <View style={styles.titleCol}>
+                  <View style={styles.titleRow}>
+                    <Text style={styles.dayTitle}>
+                      {section.isToday ? 'Today' : formatDayTitle(section.date)}
+                    </Text>
+                    {section.isToday && (
+                      <View style={styles.todayTag}>
+                        <Text style={styles.todayTagText}>Active</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.daySubtitle}>
+                    {formatDaySubtitle(section.date, section.isToday)}
+                  </Text>
                 </View>
               </View>
-              <Feather name={section.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textMuted} />
+
+              <View style={styles.dayHeaderRight}>
+                <View style={[styles.countBadge, isExpanded && styles.countBadgeExpanded]}>
+                  <Text style={[styles.countText, isExpanded && styles.countTextExpanded]}>
+                    {formatCount(section.count, itemTypeLabel)}
+                  </Text>
+                </View>
+                <View style={[styles.chevronWrap, isExpanded && styles.chevronWrapExpanded]}>
+                  <Feather
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={isExpanded ? Colors.primary : Colors.textMuted}
+                  />
+                </View>
+              </View>
             </TouchableOpacity>
-          );
-        }
 
-        if (row.type === 'item') {
-          const section = sections.find((entry) => entry.date === row.date);
-          if (!section || !section.expanded) return null;
-          return <View style={styles.itemWrap}>{renderItem({ item: row.item })}</View>;
-        }
+            {isExpanded && (
+              <View style={styles.dayContent}>
+                {section.loading && section.items.length === 0 ? (
+                  <View style={styles.sectionLoading}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <Text style={styles.sectionLoadingText}>Loading {itemTypeLabel}s...</Text>
+                  </View>
+                ) : section.items.length === 0 ? (
+                  <View style={styles.sectionEmpty}>
+                    <Feather name="inbox" size={20} color={Colors.textMuted} />
+                    <Text style={styles.emptyText}>No {itemTypeLabel}s for this day</Text>
+                  </View>
+                ) : (
+                  <View style={styles.itemsWrapper}>
+                    {section.items.map((item, index) => (
+                      <View key={keyExtractor(item, index)} style={styles.itemContainer}>
+                        {renderItem({ item })}
+                      </View>
+                    ))}
+                  </View>
+                )}
 
-        if (row.type === 'loading') {
-          return (
-            <View style={styles.sectionFooter}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-            </View>
-          );
-        }
+                {section.loading && section.items.length > 0 && (
+                  <View style={styles.sectionLoadingMore}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  </View>
+                )}
 
-        if (row.type === 'empty') {
-          return (
-            <View style={styles.sectionFooter}>
-              <Text style={styles.emptyText}>No items for this day.</Text>
-            </View>
-          );
-        }
-
-        if (row.type === 'day-load-more') {
-          return (
-            <TouchableOpacity style={styles.loadMoreBtn} onPress={() => loadMoreForDay(row.date)} activeOpacity={0.75}>
-              <Text style={styles.loadMoreText}>Load more</Text>
-              <Feather name="chevron-down" size={14} color={Colors.primary} />
-            </TouchableOpacity>
-          );
-        }
-
-        return (
-          <TouchableOpacity style={styles.loadMoreDaysBtn} onPress={loadMoreDays} activeOpacity={0.75}>
-            {loadingMoreDays ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.loadMoreDaysText}>Load more days</Text>}
-          </TouchableOpacity>
+                {section.meta && section.meta.page < section.meta.total_pages && !section.loading && (
+                  <TouchableOpacity
+                    style={styles.loadMoreBtn}
+                    onPress={() => loadMoreForDay(section.date)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.loadMoreText}>Load more {itemTypeLabel}s</Text>
+                    <Feather name="chevron-down" size={13} color={Colors.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
         );
       }}
       ListHeaderComponent={ListHeaderComponent}
-      ListFooterComponent={ListFooterComponent}
+      ListFooterComponent={
+        <View>
+          {daysMeta && daysMeta.page < daysMeta.total_pages && (
+            <TouchableOpacity style={styles.loadMoreDaysBtn} onPress={loadMoreDays} activeOpacity={0.75}>
+              {loadingMoreDays ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <View style={styles.loadMoreDaysRow}>
+                  <Feather name="calendar" size={13} color={Colors.primary} />
+                  <Text style={styles.loadMoreDaysText}>Load older days</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+          {ListFooterComponent}
+        </View>
+      }
       ListEmptyComponent={ListEmptyComponent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={hardRefresh} colors={[Colors.primary]} />}
       showsVerticalScrollIndicator={false}
@@ -364,85 +408,188 @@ export default function DayGroupedList<T>({
 const styles = StyleSheet.create({
   list: {
     padding: Spacing.md,
-    gap: Spacing.md,
+    paddingBottom: Spacing.xl,
   },
   loadingWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionHeader: {
+  dayCard: {
     backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+    overflow: 'hidden',
     ...Shadow.card,
+  },
+  dayHeader: {
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  sectionHeaderLeft: {
+  dayHeaderToday: {
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+  },
+  dayHeaderExpanded: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: '#FAFAFB',
+  },
+  dayHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     flex: 1,
   },
-  badgeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.primaryBg,
+  dayHeaderRight: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
-  sectionTitle: {
+  titleCol: {
+    flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dayTitle: {
     ...Typography.body,
     fontWeight: '800',
     color: Colors.text,
   },
-  sectionSubtitle: {
-    fontSize: 12,
+  todayTag: {
+    backgroundColor: Colors.primaryBg,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+    marginLeft: 6,
+  },
+  todayTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  daySubtitle: {
+    fontSize: 11,
     color: Colors.textMuted,
     marginTop: 1,
   },
-  itemWrap: {
-    marginTop: Spacing.sm,
+  badgeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionFooter: {
+  badgeIconToday: {
+    backgroundColor: Colors.primaryBg,
+  },
+  countBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  countBadgeExpanded: {
+    backgroundColor: Colors.primaryBg,
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  countTextExpanded: {
+    color: Colors.primary,
+  },
+  chevronWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  chevronWrapExpanded: {
+    backgroundColor: Colors.primaryBg,
+  },
+  dayContent: {
+    padding: Spacing.sm,
+    backgroundColor: '#F9FAFB',
+    gap: Spacing.sm,
+  },
+  itemsWrapper: {
+    gap: Spacing.sm,
+  },
+  itemContainer: {
+    // Nested cleanly inside the day content
+  },
+  sectionLoading: {
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  sectionLoadingText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  sectionLoadingMore: {
     paddingVertical: Spacing.sm,
     alignItems: 'center',
+  },
+  sectionEmpty: {
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   emptyText: {
     fontSize: 12,
     color: Colors.textMuted,
+    fontWeight: '500',
   },
   loadMoreBtn: {
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primaryBg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   loadMoreText: {
     color: Colors.primary,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
   },
   loadMoreDaysBtn: {
     alignSelf: 'center',
     marginTop: Spacing.xs,
-    marginBottom: Spacing.sm,
-    paddingHorizontal: 14,
+    marginBottom: Spacing.md,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: Radius.full,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     ...Shadow.card,
+  },
+  loadMoreDaysRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   loadMoreDaysText: {
     color: Colors.primary,

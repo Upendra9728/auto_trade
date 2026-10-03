@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { Colors, Spacing, Radius, moderateScale, Shadow } from '../../constants/theme';
 import { userApi } from '../../services/api';
 import type { SignalNotification } from '../../types';
-import { formatDateTimeIST } from '../../utils/time';
+import { formatDateTimeIST, toUTCDate } from '../../utils/time';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -16,22 +17,16 @@ import { formatDateTimeIST } from '../../utils/time';
 const TABS = ['Live Signals', 'My Trades', 'Performance', 'Learning'] as const;
 type Tab = typeof TABS[number];
 
-const LIVE_SIGNAL_TTL_SECONDS = 60; // 1 minute
+const LIVE_SIGNAL_TTL_SECONDS = 60; // 60 seconds
 const SIGNAL_POLL_INTERVAL = 5000;  // 5 seconds
 
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
-function getSignalAge(createdAt: string): number {
-  const created = new Date(createdAt).getTime();
-  const now = Date.now();
-  return Math.floor((now - created) / 1000);
-}
-
-function formatCountdown(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+function formatCountdown(remainingSeconds: number): string {
+  const m = Math.floor(remainingSeconds / 60);
+  const s = Math.max(0, remainingSeconds % 60);
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 
@@ -54,7 +49,6 @@ function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void 
           </TouchableOpacity>
         ))}
       </ScrollView>
-      {/* Active underline */}
     </View>
   );
 }
@@ -71,7 +65,7 @@ const tabStyles = StyleSheet.create({
   },
   tab: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
     marginRight: 4,
@@ -92,40 +86,66 @@ const tabStyles = StyleSheet.create({
 
 // ── Live Signal Card ──────────────────────────────────────────
 
-function LiveSignalCard({ notification, countdown }: { notification: SignalNotification; countdown: number }) {
+function LiveSignalCard({
+  notification,
+  remainingSeconds,
+}: {
+  notification: SignalNotification;
+  remainingSeconds: number;
+}) {
   const sig = notification.signal;
   const isBuy = sig.transaction_type === 'BUY';
+  const isUrgent = remainingSeconds <= 15;
 
   const expiryDate = sig.expires_at
     ? new Date(sig.expires_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
 
   return (
-    <View style={lsStyles.card}>
+    <TouchableOpacity
+      style={lsStyles.card}
+      onPress={() => router.push('/(user)/signals')}
+      activeOpacity={0.88}
+    >
       {/* Header */}
       <View style={lsStyles.cardHeader}>
-        <View style={lsStyles.newSignalRow}>
-          <Ionicons name="megaphone" size={16} color={Colors.primary} />
-          <Text style={lsStyles.newSignalText}>New Signal</Text>
+        <View style={lsStyles.liveBadge}>
+          <View style={lsStyles.liveDot} />
+          <Text style={lsStyles.liveText}>LIVE SIGNAL</Text>
         </View>
-        <View style={lsStyles.timerRow}>
-          <Ionicons name="time-outline" size={14} color={Colors.warning} />
-          <Text style={lsStyles.timerText}>
-            Valid for {formatCountdown(Math.max(0, LIVE_SIGNAL_TTL_SECONDS - countdown))}
+        <View style={[lsStyles.timerBadge, isUrgent && lsStyles.timerBadgeUrgent]}>
+          <Ionicons
+            name="time-outline"
+            size={13}
+            color={isUrgent ? Colors.error : Colors.warning}
+          />
+          <Text style={[lsStyles.timerText, isUrgent && lsStyles.timerTextUrgent]}>
+            Valid for {formatCountdown(remainingSeconds)}
           </Text>
         </View>
       </View>
 
       {/* Title + badges */}
-      <Text style={lsStyles.signalTitle}>{sig.title}</Text>
+      <Text style={lsStyles.signalTitle} numberOfLines={2}>
+        {sig.title}
+      </Text>
       <View style={lsStyles.badgeRow}>
         <View style={[lsStyles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
           <Text style={[lsStyles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>
             {sig.transaction_type}
           </Text>
         </View>
-        <View style={lsStyles.tagBadge}><Text style={lsStyles.tagText}>{sig.product_type}</Text></View>
-        <View style={lsStyles.tagBadge}><Text style={lsStyles.tagText}>{sig.exchange_segment.replace('_', ' ')}</Text></View>
+        <View style={lsStyles.tagBadge}>
+          <Text style={lsStyles.tagText}>{sig.product_type}</Text>
+        </View>
+        <View style={lsStyles.tagBadge}>
+          <Text style={lsStyles.tagText}>{sig.exchange_segment.replace('_', ' ')}</Text>
+        </View>
+        {sig.lot_size ? (
+          <View style={lsStyles.tagBadge}>
+            <Text style={lsStyles.tagText}>Lot: {sig.lot_size}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Price grid */}
@@ -134,44 +154,44 @@ function LiveSignalCard({ notification, countdown }: { notification: SignalNotif
           <Text style={lsStyles.priceCellLabel}>Entry Zone</Text>
           <Text style={lsStyles.priceCellValue}>₹{sig.price}</Text>
         </View>
-        <View style={[lsStyles.priceCell, lsStyles.priceCellHighlight]}>
+        <View style={lsStyles.priceCell}>
           <Text style={[lsStyles.priceCellLabel, { color: Colors.error }]}>Stop Loss</Text>
-          <Text style={[lsStyles.priceCellValue, { color: Colors.error, fontSize: moderateScale(18) }]}>
+          <Text style={[lsStyles.priceCellValue, { color: Colors.error }]}>
             ₹{sig.stop_loss_price}
           </Text>
         </View>
         <View style={lsStyles.priceCell}>
           <Text style={[lsStyles.priceCellLabel, { color: Colors.success }]}>Target 1</Text>
-          <Text style={[lsStyles.priceCellValue, { color: Colors.success }]}>₹{sig.target_price}</Text>
+          <Text style={[lsStyles.priceCellValue, { color: Colors.success }]}>
+            ₹{sig.target_price}
+          </Text>
+        </View>
+        <View style={lsStyles.priceCell}>
+          <Text style={lsStyles.priceCellLabel}>Quantity</Text>
+          <Text style={lsStyles.priceCellValue}>{sig.quantity}</Text>
         </View>
       </View>
 
       {/* Expiry */}
       {expiryDate && (
         <View style={lsStyles.infoRow}>
-          <Feather name="calendar" size={13} color={Colors.textMuted} />
-          <Text style={lsStyles.infoLabel}>Expiry</Text>
+          <Feather name="calendar" size={12} color={Colors.textMuted} />
+          <Text style={lsStyles.infoLabel}>Expiry:</Text>
           <Text style={lsStyles.infoValue}>{expiryDate}</Text>
         </View>
       )}
 
-      {/* Trade setup note */}
-      <View style={lsStyles.infoRow}>
-        <Feather name="file-text" size={13} color={Colors.textMuted} />
-        <Text style={lsStyles.infoLabel}>Trade Setup Note</Text>
-      </View>
-      <Text style={lsStyles.noteText}>Follow the entry zone and manage risk as per plan.</Text>
-
-      {/* New Signal badge on right */}
-      <View style={lsStyles.newSignalBadge}>
-        <Ionicons name="bar-chart" size={22} color={Colors.success} />
-        <Text style={lsStyles.newSignalBadgeTitle}>New Signal</Text>
-        <Text style={lsStyles.newSignalBadgeSub}>Be the first to act</Text>
+      {/* Tap to trade banner */}
+      <View style={lsStyles.actionBanner}>
+        <View style={lsStyles.actionLeft}>
+          <Ionicons name="flash" size={14} color={Colors.primary} />
+          <Text style={lsStyles.actionText}>Tap to view and place order</Text>
+        </View>
+        <Feather name="arrow-right" size={14} color={Colors.primary} />
       </View>
 
-      {/* Disclaimer */}
-      <Text style={lsStyles.disclaimer}>This is an educational view. We don't provide any profit guarantee.</Text>
-    </View>
+      <Text style={lsStyles.disclaimer}>Tap anywhere on this card to act in Signals tab</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -184,86 +204,110 @@ const lsStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     gap: Spacing.sm,
-    position: 'relative',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  newSignalRow: {
+  liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: Colors.successBg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
   },
-  newSignalText: {
-    fontSize: moderateScale(14),
-    fontWeight: '700',
-    color: Colors.primary,
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: Colors.success,
   },
-  timerRow: {
+  liveText: {
+    fontSize: moderateScale(11),
+    fontWeight: '800',
+    color: Colors.success,
+    letterSpacing: 0.5,
+  },
+  timerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    backgroundColor: Colors.warningBg,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  timerBadgeUrgent: {
+    backgroundColor: Colors.errorBg,
+    borderColor: '#FECACA',
   },
   timerText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     color: Colors.warning,
     fontWeight: '700',
   },
+  timerTextUrgent: {
+    color: Colors.error,
+  },
   signalTitle: {
-    fontSize: moderateScale(22),
+    fontSize: moderateScale(18),
     fontWeight: '800',
     color: Colors.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   badgeRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     flexWrap: 'wrap',
   },
   txBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
     borderRadius: Radius.full,
   },
   txText: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(12),
     fontWeight: '800',
   },
   tagBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: Radius.full,
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
   },
   tagText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     fontWeight: '600',
     color: Colors.textSecondary,
   },
   priceGrid: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
     backgroundColor: Colors.background,
-    borderRadius: Radius.sm,
-    padding: Spacing.md,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
   },
   priceCell: {
     flex: 1,
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
-  priceCellHighlight: {},
   priceCellLabel: {
-    fontSize: moderateScale(11),
+    fontSize: moderateScale(10),
     color: Colors.textMuted,
     fontWeight: '600',
   },
   priceCellValue: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(14),
     fontWeight: '800',
     color: Colors.text,
   },
@@ -273,48 +317,40 @@ const lsStyles = StyleSheet.create({
     gap: 6,
   },
   infoLabel: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     color: Colors.textMuted,
     fontWeight: '600',
   },
   infoValue: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(12),
     color: Colors.text,
     fontWeight: '700',
   },
-  noteText: {
-    fontSize: moderateScale(12),
-    color: Colors.textMuted,
-    marginLeft: 19,
-    marginTop: -4,
-  },
-  newSignalBadge: {
-    position: 'absolute',
-    right: Spacing.md,
-    top: 90,
+  actionBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.successBg,
+    justifyContent: 'space-between',
+    backgroundColor: Colors.primaryBg,
     borderRadius: Radius.sm,
-    padding: Spacing.sm,
-    gap: 2,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 2,
   },
-  newSignalBadgeTitle: {
-    fontSize: moderateScale(11),
-    fontWeight: '800',
-    color: Colors.success,
+  actionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  newSignalBadgeSub: {
-    fontSize: moderateScale(9),
-    color: Colors.success,
-    textAlign: 'center',
+  actionText: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: Colors.primary,
   },
   disclaimer: {
     fontSize: moderateScale(10),
     color: Colors.textMuted,
     textAlign: 'center',
-    marginTop: Spacing.xs,
+    marginTop: 2,
   },
 });
 
@@ -323,9 +359,21 @@ const lsStyles = StyleSheet.create({
 function NoLiveSignal() {
   return (
     <View style={emptyStyles.container}>
-      <MaterialCommunityIcons name="signal-off" size={40} color={Colors.border} />
-      <Text style={emptyStyles.title}>No Live Signal</Text>
-      <Text style={emptyStyles.sub}>The last signal has expired. Stay tuned for new alerts.</Text>
+      <View style={emptyStyles.iconCircle}>
+        <MaterialCommunityIcons name="signal-variant" size={30} color={Colors.textMuted} />
+      </View>
+      <Text style={emptyStyles.title}>No Live Signals Right Now</Text>
+      <Text style={emptyStyles.sub}>
+        Signals broadcast in the last 60 seconds appear here in real-time.
+      </Text>
+      <TouchableOpacity
+        style={emptyStyles.btn}
+        onPress={() => router.push('/(user)/signals')}
+        activeOpacity={0.8}
+      >
+        <Feather name="radio" size={14} color={Colors.primary} />
+        <Text style={emptyStyles.btnText}>View All Signals</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -334,19 +382,43 @@ const emptyStyles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 36,
     gap: Spacing.sm,
   },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
   title: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(15),
     fontWeight: '700',
-    color: Colors.textSecondary,
+    color: Colors.text,
   },
   sub: {
     fontSize: moderateScale(12),
     color: Colors.textMuted,
     textAlign: 'center',
-    maxWidth: 260,
+    maxWidth: 270,
+  },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primaryBg,
+  },
+  btnText: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: Colors.primary,
   },
 });
 
@@ -374,9 +446,19 @@ function MyTradesPanel() {
   if (!orders.length) {
     return (
       <View style={emptyStyles.container}>
-        <Feather name="shopping-bag" size={36} color={Colors.border} />
+        <View style={emptyStyles.iconCircle}>
+          <Feather name="shopping-bag" size={28} color={Colors.textMuted} />
+        </View>
         <Text style={emptyStyles.title}>No Trades Yet</Text>
-        <Text style={emptyStyles.sub}>Confirmed orders will show here.</Text>
+        <Text style={emptyStyles.sub}>Confirmed orders and executions will show here.</Text>
+        <TouchableOpacity
+          style={emptyStyles.btn}
+          onPress={() => router.push('/(user)/orders')}
+          activeOpacity={0.8}
+        >
+          <Feather name="list" size={14} color={Colors.primary} />
+          <Text style={emptyStyles.btnText}>View Order History</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -387,32 +469,59 @@ function MyTradesPanel() {
         const isBuy = o.signal.transaction_type === 'BUY';
         const pnl = o.realized_pnl;
         return (
-          <View key={o.id} style={tradeStyles.card}>
+          <TouchableOpacity
+            key={o.id}
+            style={tradeStyles.card}
+            onPress={() => router.push('/(user)/orders')}
+            activeOpacity={0.85}
+          >
+            {/* Top row: Badges + Title on left, P&L badge on right (fixed) */}
             <View style={tradeStyles.row}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={tradeStyles.titleLeft}>
                 <View style={[tradeStyles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
                   <Text style={[tradeStyles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>
                     {o.signal.transaction_type}
                   </Text>
                 </View>
-                <Text style={tradeStyles.title} numberOfLines={1}>{o.signal.title}</Text>
+                <Text style={tradeStyles.title} numberOfLines={1} ellipsizeMode="tail">
+                  {o.signal.title}
+                </Text>
               </View>
               {pnl != null && (
-                <Text style={[tradeStyles.pnl, { color: pnl >= 0 ? Colors.success : Colors.error }]}>
-                  {pnl >= 0 ? `+₹${pnl.toFixed(2)}` : `-₹${Math.abs(pnl).toFixed(2)}`}
-                </Text>
+                <View style={[tradeStyles.pnlBadge, { backgroundColor: pnl >= 0 ? Colors.successBg : Colors.errorBg }]}>
+                  <Text style={[tradeStyles.pnlText, { color: pnl >= 0 ? Colors.success : Colors.error }]}>
+                    {pnl >= 0 ? `+₹${pnl.toFixed(2)}` : `-₹${Math.abs(pnl).toFixed(2)}`}
+                  </Text>
+                </View>
               )}
             </View>
+
+            {/* Meta row */}
             <View style={tradeStyles.meta}>
               <Text style={tradeStyles.metaText}>{o.signal.exchange_segment}</Text>
-              <Text style={tradeStyles.metaText}>·</Text>
+              <Text style={tradeStyles.metaDot}>·</Text>
               <Text style={tradeStyles.metaText}>Entry ₹{o.signal.price}</Text>
-              <Text style={tradeStyles.metaText}>·</Text>
+              {o.traded_price != null && (
+                <>
+                  <Text style={tradeStyles.metaDot}>·</Text>
+                  <Text style={tradeStyles.metaText}>Filled ₹{o.traded_price.toFixed(2)}</Text>
+                </>
+              )}
+              <Text style={tradeStyles.metaDot}>·</Text>
               <Text style={tradeStyles.metaText}>{formatDateTimeIST(o.created_at)}</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         );
       })}
+
+      <TouchableOpacity
+        style={tradeStyles.viewAllBtn}
+        onPress={() => router.push('/(user)/orders')}
+        activeOpacity={0.8}
+      >
+        <Text style={tradeStyles.viewAllText}>View All Orders & Trades</Text>
+        <Feather name="chevron-right" size={14} color={Colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -426,18 +535,27 @@ const tradeStyles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
-    gap: 6,
+    gap: 8,
     ...Shadow.card,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  titleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
   txBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: Radius.full,
+    flexShrink: 0,
   },
   txText: { fontSize: 11, fontWeight: '800' },
   title: {
@@ -446,9 +564,45 @@ const tradeStyles = StyleSheet.create({
     color: Colors.text,
     flex: 1,
   },
-  pnl: { fontSize: moderateScale(13), fontWeight: '800' },
-  meta: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
-  metaText: { fontSize: moderateScale(11), color: Colors.textMuted },
+  pnlBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    flexShrink: 0,
+  },
+  pnlText: {
+    fontSize: moderateScale(12),
+    fontWeight: '800',
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  metaDot: {
+    fontSize: moderateScale(11),
+    color: Colors.textMuted,
+  },
+  metaText: {
+    fontSize: moderateScale(11),
+    color: Colors.textMuted,
+  },
+  viewAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    marginTop: 4,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryBg,
+  },
+  viewAllText: {
+    fontSize: moderateScale(12),
+    fontWeight: '700',
+    color: Colors.primary,
+  },
 });
 
 // ── Coming Soon ───────────────────────────────────────────────
@@ -457,7 +611,7 @@ function ComingSoon({ icon, label }: { icon: string; label: string }) {
   return (
     <View style={csStyles.container}>
       <View style={csStyles.iconWrap}>
-        <Ionicons name={icon as any} size={40} color={Colors.primary} />
+        <Ionicons name={icon as any} size={36} color={Colors.primary} />
       </View>
       <Text style={csStyles.title}>{label}</Text>
       <Text style={csStyles.sub}>We're working on this. Check back soon! 🚀</Text>
@@ -472,40 +626,40 @@ const csStyles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 48,
+    paddingVertical: 44,
     gap: Spacing.sm,
   },
   iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: Colors.primaryBg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   title: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(16),
     fontWeight: '800',
     color: Colors.text,
   },
   sub: {
-    fontSize: moderateScale(13),
+    fontSize: moderateScale(12),
     color: Colors.textMuted,
     textAlign: 'center',
     maxWidth: 260,
   },
   badge: {
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
     backgroundColor: Colors.primaryBg,
     borderRadius: Radius.full,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderWidth: 1,
     borderColor: Colors.primaryLight,
   },
   badgeText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     fontWeight: '700',
     color: Colors.primary,
   },
@@ -518,21 +672,15 @@ const csStyles = StyleSheet.create({
 export default function HomeTabsSection() {
   const [activeTab, setActiveTab] = useState<Tab>('Live Signals');
 
-  // Live signal state
-  const [latestSignal, setLatestSignal] = useState<SignalNotification | null>(null);
-  const [signalAge, setSignalAge] = useState(0);
+  // Notifications pool
+  const [notifications, setNotifications] = useState<SignalNotification[]>([]);
   const [signalLoading, setSignalLoading] = useState(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  const fetchLatestSignal = useCallback(async () => {
+  const fetchSignals = useCallback(async () => {
     try {
-      const res = await userApi.getNotifications({ page: 1, pageSize: 1 });
-      const first = res.items[0] ?? null;
-      setLatestSignal(first);
-      if (first) {
-        setSignalAge(getSignalAge(first.created_at));
-      }
+      const res = await userApi.getNotifications({ page: 1, pageSize: 5 });
+      setNotifications(res.items);
     } catch {
       // keep existing
     } finally {
@@ -541,33 +689,25 @@ export default function HomeTabsSection() {
   }, []);
 
   useEffect(() => {
-    fetchLatestSignal();
-
-    // Poll every 5s for new signals
-    pollRef.current = setInterval(fetchLatestSignal, SIGNAL_POLL_INTERVAL);
-
-    // Tick countdown every second
-    tickRef.current = setInterval(() => {
-      setSignalAge(prev => {
-        if (!latestSignal) return prev;
-        return getSignalAge(latestSignal.created_at);
-      });
-    }, 1000);
+    fetchSignals();
+    const poll = setInterval(fetchSignals, SIGNAL_POLL_INTERVAL);
+    const ticker = setInterval(() => setNow(Date.now()), 1000);
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      if (tickRef.current) clearInterval(tickRef.current);
+      clearInterval(poll);
+      clearInterval(ticker);
     };
-  }, [fetchLatestSignal]);
+  }, [fetchSignals]);
 
-  // Update age ref when signal changes
-  useEffect(() => {
-    if (latestSignal) {
-      setSignalAge(getSignalAge(latestSignal.created_at));
-    }
-  }, [latestSignal]);
-
-  const isLive = latestSignal !== null && signalAge <= LIVE_SIGNAL_TTL_SECONDS;
+  // Filter signals created within the last LIVE_SIGNAL_TTL_SECONDS
+  const liveSignals = notifications
+    .filter((n) => {
+      if (n.status === 'rejected' || n.signal.status === 'cancelled') return false;
+      const createdMs = toUTCDate(n.created_at).getTime();
+      const ageSeconds = Math.floor((now - createdMs) / 1000);
+      return ageSeconds >= 0 && ageSeconds < LIVE_SIGNAL_TTL_SECONDS;
+    })
+    .sort((a, b) => toUTCDate(b.created_at).getTime() - toUTCDate(a.created_at).getTime());
 
   return (
     <View style={styles.container}>
@@ -579,8 +719,20 @@ export default function HomeTabsSection() {
             <View style={{ padding: 40, alignItems: 'center' }}>
               <ActivityIndicator color={Colors.primary} />
             </View>
-          ) : isLive ? (
-            <LiveSignalCard notification={latestSignal!} countdown={signalAge} />
+          ) : liveSignals.length > 0 ? (
+            <View style={{ gap: Spacing.md }}>
+              {liveSignals.map((n) => {
+                const ageSeconds = Math.floor((now - toUTCDate(n.created_at).getTime()) / 1000);
+                const remaining = Math.max(0, LIVE_SIGNAL_TTL_SECONDS - ageSeconds);
+                return (
+                  <LiveSignalCard
+                    key={n.id}
+                    notification={n}
+                    remainingSeconds={remaining}
+                  />
+                );
+              })}
+            </View>
           ) : (
             <NoLiveSignal />
           )
@@ -611,6 +763,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: Spacing.md,
-    minHeight: 300,
+    minHeight: 260,
   },
 });

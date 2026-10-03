@@ -9,6 +9,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { adminApi } from '../../../services/api';
 import { Colors, Spacing, Radius, Typography, Shadow, moderateScale } from '../../../constants/theme';
 import { Feather } from '@expo/vector-icons';
+import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import type { UserGroupDetail, AdminUser, Paginated } from '../../../types';
 
 export default function GroupDetailScreen() {
@@ -180,15 +181,15 @@ export default function GroupDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageTitle} numberOfLines={1}>{group.name}</Text>
-        <TouchableOpacity onPress={() => { setRenameValue(group.name); setRenameVisible(true); }}>
-          <Feather name="edit-2" size={18} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <AdminScreenHeader
+        title={group.name}
+        onBack={() => router.back()}
+        rightAction={{
+          icon: 'edit-2',
+          label: 'Rename',
+          onPress: () => { setRenameValue(group.name); setRenameVisible(true); },
+        }}
+      />
 
       {group.description ? (
         <View style={styles.descBar}>

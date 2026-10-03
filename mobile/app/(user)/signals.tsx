@@ -215,6 +215,7 @@ export default function NotificationsScreen() {
 
       <DayGroupedList<SignalNotification>
         refreshNonce={refreshNonce}
+        itemTypeLabel="signal"
         fetchDays={({ page, pageSize }) => userApi.getNotificationDays({ page, pageSize })}
         fetchItemsForDay={({ date, page, pageSize }) => userApi.getNotifications({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}
@@ -405,6 +406,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
     ...Shadow.card,
     gap: Spacing.sm,
   },

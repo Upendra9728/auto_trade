@@ -130,6 +130,7 @@ export default function AdminSignalsScreen() {
 
       <DayGroupedList<Signal>
         refreshNonce={refreshNonce}
+        itemTypeLabel="signal"
         fetchDays={({ page, pageSize }) => adminApi.getSignalDays({ page, pageSize })}
         fetchItemsForDay={({ date, page, pageSize }) => adminApi.getSignals({ page, pageSize, date_from: date, date_to: date })}
         renderItem={renderItem}
