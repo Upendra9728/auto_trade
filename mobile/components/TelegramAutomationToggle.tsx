@@ -12,14 +12,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { userApi } from '../services/api';
 import { Colors, Radius } from '../constants/theme';
 
-export default function TelegramAutomationToggle() {
+export function useTelegramAutomation() {
   const { user, refreshUser } = useAuth();
   const [saving, setSaving] = useState(false);
 
-  // Non-admins do not see this control
-  if (!user || user.role !== 'admin') return null;
-
-  const isEnabled = Boolean(user.telegram_automation_enabled);
+  const isAdmin = !!user && user.role === 'admin';
+  const isEnabled = Boolean(user?.telegram_automation_enabled);
+  const channelName = user?.telegram_channel_name ?? null;
 
   const applyToggle = async (nextState: boolean) => {
     setSaving(true);
@@ -35,7 +34,7 @@ export default function TelegramAutomationToggle() {
     }
   };
 
-  const handlePress = () => {
+  const toggle = () => {
     if (saving) return;
 
     if (isEnabled) {
@@ -55,6 +54,15 @@ export default function TelegramAutomationToggle() {
       void applyToggle(true);
     }
   };
+
+  return { isAdmin, isEnabled, channelName, saving, toggle };
+}
+
+export default function TelegramAutomationToggle() {
+  const { isAdmin, isEnabled, saving, toggle: handlePress } = useTelegramAutomation();
+
+  // Non-admins do not see this control
+  if (!isAdmin) return null;
 
   return (
     <TouchableOpacity

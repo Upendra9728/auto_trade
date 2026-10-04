@@ -1643,7 +1643,25 @@ def dashboard(
     users_with_ipv6 = db.query(User).filter(User.assigned_ipv6.isnot(None)).count()
     users_with_dhan = db.query(DhanCredential).filter(DhanCredential.is_active.is_(True)).count()
     total_signals = db.query(Signal).count()
-    active_signals = db.query(Signal).filter(Signal.status == "active").count()
+    # "Active" = still has a pending notification or an open (non-terminal, no exit) order.
+    active_signals = (
+        db.query(SignalNotification.signal_id)
+        .join(Signal, Signal.id == SignalNotification.signal_id)
+        .filter(
+            Signal.status == "active",
+            or_(
+                SignalNotification.status == "pending",
+                (SignalNotification.status == "placed")
+                & SignalNotification.exit_leg.is_(None)
+                & or_(
+                    SignalNotification.live_status.is_(None),
+                    SignalNotification.live_status.notin_(list(_TERMINAL_LIVE_STATUSES)),
+                ),
+            ),
+        )
+        .distinct()
+        .count()
+    )
 
     total_failed = db.query(SignalNotification).filter(SignalNotification.status == "failed").count()
     total_pending = db.query(SignalNotification).filter(SignalNotification.status == "pending").count()
@@ -1668,17 +1686,19 @@ def dashboard(
     total_unrealized_pnl = float(db.query(func.coalesce(func.sum(UserPosition.unrealized_profit), 0.0)).scalar() or 0.0)
 
     pending_approvals = db.query(User).filter(User.is_active.is_(False)).count()
-    recent_signals = [
-        {
+    recent_signals = []
+    for s in db.query(Signal).order_by(Signal.created_at.desc()).limit(5).all():
+        resp = _to_signal_response(s, db)
+        recent_signals.append({
             "id": s.id,
             "title": s.title,
             "status": s.status,
+            "lifecycle": resp.lifecycle,
+            "transaction_type": s.transaction_type,
             "created_at": s.created_at.isoformat(),
-            "total_notified": s.notifications and len(s.notifications) or 0,
-            "placed": sum(1 for n in s.notifications if n.status == "placed"),
-        }
-        for s in db.query(Signal).order_by(Signal.created_at.desc()).limit(5).all()
-    ]
+            "total_notified": resp.total_notified or 0,
+            "placed": resp.placed or 0,
+        })
 
     return {
         "users": {

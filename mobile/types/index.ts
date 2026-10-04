@@ -303,6 +303,8 @@ export interface Dashboard {
     id: number;
     title: string;
     status: 'active' | 'cancelled';
+    lifecycle?: 'cancelled' | 'awaiting' | 'live' | 'completed' | 'ended';
+    transaction_type?: 'BUY' | 'SELL';
     created_at: string;
     total_notified: number;
     placed: number;
