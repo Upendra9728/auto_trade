@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl, ActivityIndicator, TouchableOpacity, Image,
+  Animated, Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -11,6 +12,7 @@ import { formatDateTimeIST } from '../../../utils/time';
 import StatusBadge from '../../../components/StatusBadge';
 import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
 import TelegramAutomationCard from '../../../components/TelegramAutomationCard';
+import HeroBackground, { PulseDot } from '../../../components/HeroBackground';
 import type { Dashboard } from '../../../types';
 
 type FeatherName = keyof typeof Feather.glyphMap;
@@ -100,24 +102,33 @@ export default function AdminDashboard() {
 
         {/* Hero */}
         <View style={styles.hero}>
+          <HeroBackground />
           <View style={styles.heroTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.heroGreeting}>Welcome back, Admin</Text>
               <Text style={styles.heroDate}>{todayLabel}</Text>
             </View>
-            <View style={styles.heroIcon}>
-              <Feather name="activity" size={16} color="#FFFFFF" />
-            </View>
+            {(stats?.signals.active ?? 0) > 0 || (stats?.orders.placed ?? 0) > 0 ? (
+              <View style={styles.livePill}>
+                <PulseDot size={6} />
+                <Text style={styles.livePillText}>LIVE</Text>
+              </View>
+            ) : (
+              <View style={styles.heroIcon}>
+                <Feather name="activity" size={16} color="#FFFFFF" />
+              </View>
+            )}
           </View>
 
           <View style={styles.heroStats}>
-            <HeroStat label="Active Signals" value={String(stats?.signals.active ?? 0)} />
+            <HeroStat label="Active Signals" value={stats?.signals.active ?? 0} />
             <View style={styles.heroDivider} />
-            <HeroStat label="Live Orders" value={String(stats?.orders.placed ?? 0)} />
+            <HeroStat label="Live Orders" value={stats?.orders.placed ?? 0} />
             <View style={styles.heroDivider} />
             <HeroStat
               label="Today's P&L"
-              value={formatPnl(todayPnl)}
+              value={todayPnl}
+              format={formatPnl}
               valueColor={todayPnl >= 0 ? '#86EFAC' : '#FCA5A5'}
               small
             />
@@ -207,7 +218,31 @@ export default function AdminDashboard() {
   );
 }
 
-function HeroStat({ label, value, valueColor, small }: { label: string; value: string; valueColor?: string; small?: boolean }) {
+function useCountUp(target: number, duration = 900): number {
+  const [display, setDisplay] = useState(0);
+  const anim = useRef(new Animated.Value(0)).current;
+  const fromRef = useRef(0);
+
+  useEffect(() => {
+    const from = fromRef.current;
+    anim.setValue(0);
+    const id = anim.addListener(({ value }: { value: number }) => {
+      const next = from + (target - from) * value;
+      fromRef.current = next;
+      setDisplay(next);
+    });
+    Animated.timing(anim, { toValue: 1, duration, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    return () => anim.removeListener(id);
+  }, [target, duration, anim]);
+
+  return display;
+}
+
+function HeroStat({ label, value, format, valueColor, small }: {
+  label: string; value: number; format?: (n: number) => string; valueColor?: string; small?: boolean;
+}) {
+  const animated = useCountUp(value);
+  const text = format ? format(animated) : String(Math.round(animated));
   return (
     <View style={styles.heroStat}>
       <Text
@@ -215,7 +250,7 @@ function HeroStat({ label, value, valueColor, small }: { label: string; value: s
         numberOfLines={1}
         adjustsFontSizeToFit
       >
-        {value}
+        {text}
       </Text>
       <Text style={styles.heroStatLabel}>{label}</Text>
     </View>
@@ -301,8 +336,15 @@ const styles = StyleSheet.create({
 
   hero: {
     backgroundColor: '#1E3A8A', borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm + 4,
+    overflow: 'hidden',
     ...Shadow.card,
   },
+  livePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    paddingLeft: 4, paddingRight: 10, paddingVertical: 2, borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  livePillText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF', letterSpacing: 1 },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   heroGreeting: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   heroDate: { fontSize: 11, color: '#BFDBFE', marginTop: 2 },
