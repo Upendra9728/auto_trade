@@ -15,11 +15,15 @@ import OrderTimeline from '../../components/OrderTimeline';
 import EmptyState from '../../components/EmptyState';
 import CreditsHeader from '../../components/CreditsHeader';
 import DayGroupedList from '../../components/DayGroupedList';
+import TradeInsightsModal from '../../components/TradeInsightsModal';
 import type { SignalNotification, OrderEvent } from '../../types';
 
 export default function OrdersScreen() {
   const [orders, setOrders] = useState<SignalNotification[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
+
+  // Insights modal state
+  const [selectedInsightNotifId, setSelectedInsightNotifId] = useState<number | null>(null);
 
   // Timeline modal state
   const [selectedNotifId, setSelectedNotifId] = useState<number | null>(null);
@@ -129,11 +133,20 @@ export default function OrdersScreen() {
           </View>
         )}
 
-        {/* Timeline trigger */}
-        <TouchableOpacity style={styles.timelineBtn} onPress={() => openTimeline(o)}>
-          <Feather name="clock" size={14} color={Colors.primary} />
-          <Text style={styles.timelineBtnText}>View Live Timeline</Text>
-        </TouchableOpacity>
+        {/* Action triggers */}
+        <View style={styles.cardActionsRow}>
+          <TouchableOpacity style={styles.timelineBtn} onPress={() => openTimeline(o)}>
+            <Feather name="clock" size={13} color={Colors.primary} />
+            <Text style={styles.timelineBtnText}>Timeline</Text>
+          </TouchableOpacity>
+
+          {(o.exit_leg != null || o.realized_pnl != null || o.live_status === 'CLOSED') && (
+            <TouchableOpacity style={styles.insightsBtn} onPress={() => setSelectedInsightNotifId(o.id)}>
+              <Feather name="bar-chart-2" size={13} color={Colors.primary} />
+              <Text style={styles.insightsBtnText}>Insights</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -145,6 +158,12 @@ export default function OrdersScreen() {
         <Text style={styles.pageTitle}>Order History</Text>
         <Text style={styles.count}>{orders.length} orders</Text>
       </View>
+
+      <TradeInsightsModal
+        visible={selectedInsightNotifId != null}
+        notificationId={selectedInsightNotifId}
+        onClose={() => setSelectedInsightNotifId(null)}
+      />
 
       <DayGroupedList<SignalNotification>
         refreshNonce={refreshNonce}
@@ -215,11 +234,24 @@ const styles = StyleSheet.create({
   successText: { fontSize: 13, color: Colors.success, fontWeight: '600' },
   errorText: { fontSize: 13, color: Colors.error, fontWeight: '600' },
   timeText: { fontSize: 11, color: Colors.textMuted },
-  timelineBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 8, backgroundColor: Colors.primaryBg, borderRadius: Radius.sm, marginTop: 4,
+  cardActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: 4,
   },
-  timelineBtnText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  timelineBtn: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8, backgroundColor: Colors.primaryBg, borderRadius: Radius.sm,
+  },
+  timelineBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  insightsBtn: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8, backgroundColor: '#EFF6FF', borderRadius: Radius.sm,
+    borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  insightsBtnText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
 
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end',

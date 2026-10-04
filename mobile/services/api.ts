@@ -27,6 +27,7 @@ import type {
   RazorpayOrder,
   PaymentVerifyPayload,
   CreditPurchaseResult,
+  SignalTradeInsightsResponse,
 } from '../types';
 
 const BASE_URL: string =
@@ -196,6 +197,8 @@ export const userApi = {
     })}`),
   getNotificationEvents: (notifId: number) =>
     get<OrderEvent[]>(`/api/users/me/notifications/${notifId}/events`),
+  getNotificationInsights: (notifId: number) =>
+    get<SignalTradeInsightsResponse>(`/api/users/me/notifications/${notifId}/insights`),
   testIp: () => get<{ bound_ipv6: string | null; status: string }>('/api/users/test-ip'),
 };
 
@@ -232,6 +235,8 @@ export interface MarketIndicesResponse {
 
 export const marketApi = {
   getIndices: () => get<MarketIndicesResponse>('/api/market/indices'),
+  getLtp: (instruments: { segment: string; security_id: string }[]) =>
+    post<{ prices: Record<string, number> }>('/api/market/ltp', { instruments }),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
@@ -288,6 +293,7 @@ export const adminApi = {
       page_size: params.pageSize,
     })}`),
   getSignal: (id: number) => get<AdminSignalDetail>(`/api/admin/signals/${id}`),
+  getSignalInsights: (id: number) => get<SignalTradeInsightsResponse>(`/api/admin/signals/${id}/insights`),
   getSignalNotifications: (id: number, params: { page?: number; pageSize?: number; status?: string } & DateRangeFilter = {}) =>
     get<AdminSignalNotificationsResponse>(`/api/admin/signals/${id}/notifications${buildQuery({
       page: params.page,

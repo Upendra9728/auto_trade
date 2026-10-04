@@ -15,6 +15,9 @@ import LiveStatusBadge from '../../../components/LiveStatusBadge';
 import Pagination from '../../../components/Pagination';
 import OrderTimeline from '../../../components/OrderTimeline';
 import AdminScreenHeader from '../../../components/AdminScreenHeader';
+import TradeInsightsModal from '../../../components/TradeInsightsModal';
+import SignalPriceBar from '../../../components/SignalPriceBar';
+import { useLiveLtp } from '../../../hooks/useLiveLtp';
 import type {
   Signal, AdminSignalNotificationRow, AdminSignalNotificationsResponse,
   SignalOrderModifyPayload, OrderActionResult, OrderEvent,
@@ -37,6 +40,10 @@ export default function SignalDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [signalError, setSignalError] = useState<string | null>(null);
+  const [insightsVisible, setInsightsVisible] = useState(false);
+
+  const instruments = signal ? [{ segment: signal.exchange_segment, security_id: signal.security_id }] : [];
+  const { getLtp } = useLiveLtp(instruments);
 
   // Detail modal
   const [selectedNotif, setSelectedNotif] = useState<AdminSignalNotificationRow | null>(null);
@@ -335,7 +342,22 @@ export default function SignalDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <AdminScreenHeader title={`Signal #${signal.id}`} onBack={() => router.back()} />
+      <TradeInsightsModal
+        visible={insightsVisible}
+        signalId={Number(id)}
+        isAdmin
+        onClose={() => setInsightsVisible(false)}
+      />
+
+      <AdminScreenHeader
+        title={`Signal #${signal.id}`}
+        onBack={() => router.back()}
+        rightAction={signal.lifecycle === 'completed' ? {
+          icon: 'bar-chart-2',
+          label: 'Insights',
+          onPress: () => setInsightsVisible(true),
+        } : undefined}
+      />
 
       <FlatList
         data={notifPage?.items ?? []}
@@ -356,18 +378,32 @@ export default function SignalDetailScreen() {
             <View style={styles.signalCard}>
               <View style={styles.signalTop}>
                 <Text style={styles.signalTitle}>{signal.title}</Text>
-                <StatusBadge status={signal.status} />
+                <StatusBadge status={signal.lifecycle ?? signal.status} />
               </View>
               <Text style={styles.signalMeta}>
                 {signal.transaction_type} · {signal.quantity}{signal.lot_size ? ` (lot: ${signal.lot_size})` : ''} · {signal.exchange_segment} / {signal.security_id}
               </Text>
-              <View style={styles.priceRow}>
-                <PriceChip label="Entry" value={`₹${signal.price}`} />
-                <PriceChip label="SL" value={`₹${signal.stop_loss_price}`} color={Colors.error} />
-                <PriceChip label="Target" value={`₹${signal.target_price}`} color={Colors.success} />
-                {signal.trailing_jump > 0 && <PriceChip label="Trail" value={`₹${signal.trailing_jump}`} />}
+              <SignalPriceBar
+                entryPrice={signal.price}
+                targetPrice={signal.target_price}
+                stopLossPrice={signal.stop_loss_price}
+                transactionType={signal.transaction_type}
+                currentPrice={getLtp(signal.exchange_segment, signal.security_id)}
+                variant="full"
+              />
+              <View style={styles.signalFooter}>
+                <Text style={styles.timeText}>{formatDateTimeIST(signal.created_at)}</Text>
+                {signal.lifecycle === 'completed' && (
+                  <TouchableOpacity
+                    style={styles.insightsHeaderBtn}
+                    onPress={() => setInsightsVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="bar-chart-2" size={13} color={Colors.primary} />
+                    <Text style={styles.insightsHeaderBtnText}>View Trade Insights</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              <Text style={styles.timeText}>{formatDateTimeIST(signal.created_at)}</Text>
             </View>
 
             {/* Bulk actions */}
@@ -630,6 +666,23 @@ const styles = StyleSheet.create({
   signalMeta: { ...Typography.bodySmall },
   priceRow: { flexDirection: 'row', backgroundColor: Colors.background, borderRadius: Radius.sm, paddingVertical: 8 },
   timeText: { ...Typography.caption },
+  signalFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  insightsHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primaryBg,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  insightsHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
   actionsBar: { flexDirection: 'row', gap: Spacing.sm },
   actionBtn: {
     flex: 1, paddingVertical: 11, borderRadius: Radius.sm, alignItems: 'center',

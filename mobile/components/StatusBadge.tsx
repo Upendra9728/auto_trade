@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Radius, moderateScale } from '../constants/theme';
 
-type StatusType = 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'active' | 'cancelled' | 'expired' | 'timed_out';
+type StatusType = 'pending' | 'confirmed' | 'rejected' | 'placed' | 'failed' | 'active' | 'cancelled' | 'expired' | 'timed_out' | 'awaiting' | 'live' | 'completed' | 'ended';
 
 const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> = {
   pending:   { label: 'Pending',    bg: Colors.warningBg,  color: Colors.warning },
@@ -14,6 +14,10 @@ const CONFIG: Record<StatusType, { label: string; bg: string; color: string }> =
   cancelled: { label: 'Cancelled',  bg: '#F3F4F6',         color: '#6B7280' },
   expired:   { label: '⏱ Expired Unfilled', bg: Colors.warningBg, color: Colors.warning },
   timed_out: { label: '⏱ Timed Out',   bg: Colors.warningBg,  color: Colors.warning },
+  awaiting:  { label: 'Awaiting Actions', bg: Colors.warningBg,  color: Colors.warning },
+  live:      { label: '● LIVE',     bg: '#EFF6FF',         color: Colors.primary },
+  completed: { label: '✓ Completed', bg: Colors.successBg, color: Colors.success },
+  ended:     { label: 'Ended',      bg: '#F3F4F6',         color: '#6B7280' },
 };
 
 interface Props {

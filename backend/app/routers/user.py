@@ -26,6 +26,8 @@ from ..schemas import (
     PaginatedNotificationsResponse,
     SignalNotificationResponse,
     SignalResponse,
+    SignalTradeInsightParticipant,
+    SignalTradeInsightsResponse,
     UpdateAutoTradeRequest,
     UpdateFcmTokenRequest,
     UpdateProfileRequest,
@@ -56,7 +58,23 @@ def _to_profile(user: User) -> UserProfileResponse:
     )
 
 
-def _to_signal_response(signal: Signal) -> SignalResponse:
+def _to_signal_response(signal: Signal, notif: SignalNotification | None = None) -> SignalResponse:
+    lifecycle = "cancelled" if signal.status == "cancelled" else "active"
+    completed_at = None
+    if signal.status == "cancelled":
+        lifecycle = "cancelled"
+    elif notif is not None:
+        if notif.exit_leg is not None or notif.live_status == "CLOSED":
+            lifecycle = "completed"
+            if notif.exit_time:
+                completed_at = notif.exit_time.isoformat()
+        elif notif.status == "placed" and notif.live_status not in ("CLOSED", "EXPIRED", "CANCELLED", "REJECTED"):
+            lifecycle = "live"
+        elif notif.status == "pending":
+            lifecycle = "awaiting"
+        elif notif.status in ("failed", "rejected", "timed_out"):
+            lifecycle = "ended"
+
     return SignalResponse(
         id=signal.id,
         title=signal.title,
@@ -75,6 +93,8 @@ def _to_signal_response(signal: Signal) -> SignalResponse:
         created_by_id=signal.created_by_id,
         created_at=signal.created_at.isoformat(),
         expires_at=signal.expires_at.isoformat() if signal.expires_at else None,
+        lifecycle=lifecycle,
+        completed_at=completed_at,
     )
 
 
@@ -83,7 +103,7 @@ def _to_notification_response(notif: SignalNotification) -> SignalNotificationRe
         id=notif.id,
         signal_id=notif.signal_id,
         status=notif.status,
-        signal=_to_signal_response(notif.signal),
+        signal=_to_signal_response(notif.signal, notif=notif),
         error_message=notif.error_message,
         dhan_order_id=notif.dhan_order_id,
         confirmed_at=notif.confirmed_at.isoformat() if notif.confirmed_at else None,
@@ -569,6 +589,71 @@ def get_user_notification_events(
         )
         for e in events
     ]
+
+
+@router.get("/me/notifications/{notification_id}/insights", response_model=SignalTradeInsightsResponse)
+def get_user_trade_insights(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SignalTradeInsightsResponse:
+    notif = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.signal))
+        .filter(SignalNotification.id == notification_id, SignalNotification.user_id == current_user.id)
+        .one_or_none()
+    )
+    if notif is None:
+        raise HTTPException(status_code=404, detail="Trade notification not found")
+
+    signal = notif.signal
+    user_pnl = notif.realized_pnl or 0.0
+    target_hit = 1 if notif.exit_leg == "TARGET_LEG" else 0
+    sl_hit = 1 if notif.exit_leg == "STOP_LOSS_LEG" else 0
+    win_rate = 100.0 if target_hit else 0.0
+
+    user_trade = SignalTradeInsightParticipant(
+        notification_id=notif.id,
+        user_id=current_user.id,
+        user_name=current_user.name,
+        user_email=current_user.email,
+        ordered_quantity=notif.ordered_quantity or signal.quantity,
+        traded_qty=notif.traded_qty,
+        traded_price=notif.traded_price,
+        exit_leg=notif.exit_leg,
+        exit_price=notif.exit_price,
+        exit_time=notif.exit_time.isoformat() if notif.exit_time else None,
+        realized_pnl=notif.realized_pnl,
+        live_status=notif.live_status,
+        is_auto_placed=notif.is_auto_placed,
+    )
+
+    sig_resp = _to_signal_response(signal, notif=notif)
+
+    return SignalTradeInsightsResponse(
+        signal_id=signal.id,
+        signal_title=signal.title,
+        transaction_type=signal.transaction_type,
+        exchange_segment=signal.exchange_segment,
+        security_id=signal.security_id,
+        entry_price=signal.price,
+        target_price=signal.target_price,
+        stop_loss_price=signal.stop_loss_price,
+        created_at=signal.created_at.isoformat(),
+        completed_at=notif.exit_time.isoformat() if notif.exit_time else None,
+        lifecycle=sig_resp.lifecycle or "completed",
+        total_participants=1,
+        total_orders_placed=1 if notif.dhan_order_id else 0,
+        target_hit_count=target_hit,
+        stop_loss_hit_count=sl_hit,
+        win_rate_pct=win_rate,
+        net_pnl=round(user_pnl, 2),
+        gross_profit=round(user_pnl if user_pnl > 0 else 0.0, 2),
+        gross_loss=round(abs(user_pnl) if user_pnl < 0 else 0.0, 2),
+        total_traded_quantity=notif.traded_qty or 0,
+        participants=[],
+        user_trade=user_trade,
+    )
 
 
 @router.get("/test-ip")

@@ -9,6 +9,8 @@ import { Colors, Spacing, Radius, moderateScale, Shadow } from '../../constants/
 import { userApi } from '../../services/api';
 import type { SignalNotification } from '../../types';
 import { formatDateTimeIST, toUTCDate } from '../../utils/time';
+import SignalPriceBar from '../SignalPriceBar';
+import { useLiveLtp } from '../../hooks/useLiveLtp';
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -89,9 +91,11 @@ const tabStyles = StyleSheet.create({
 function LiveSignalCard({
   notification,
   remainingSeconds,
+  livePrice,
 }: {
   notification: SignalNotification;
   remainingSeconds: number;
+  livePrice?: number | null;
 }) {
   const sig = notification.signal;
   const isBuy = sig.transaction_type === 'BUY';
@@ -148,29 +152,17 @@ function LiveSignalCard({
         ) : null}
       </View>
 
-      {/* Price grid */}
-      <View style={lsStyles.priceGrid}>
-        <View style={lsStyles.priceCell}>
-          <Text style={lsStyles.priceCellLabel}>Entry Zone</Text>
-          <Text style={lsStyles.priceCellValue}>₹{sig.price}</Text>
-        </View>
-        <View style={lsStyles.priceCell}>
-          <Text style={[lsStyles.priceCellLabel, { color: Colors.error }]}>Stop Loss</Text>
-          <Text style={[lsStyles.priceCellValue, { color: Colors.error }]}>
-            ₹{sig.stop_loss_price}
-          </Text>
-        </View>
-        <View style={lsStyles.priceCell}>
-          <Text style={[lsStyles.priceCellLabel, { color: Colors.success }]}>Target 1</Text>
-          <Text style={[lsStyles.priceCellValue, { color: Colors.success }]}>
-            ₹{sig.target_price}
-          </Text>
-        </View>
-        <View style={lsStyles.priceCell}>
-          <Text style={lsStyles.priceCellLabel}>Quantity</Text>
-          <Text style={lsStyles.priceCellValue}>{sig.quantity}</Text>
-        </View>
-      </View>
+      {/* Graphical Price Bar with live pointer */}
+      <SignalPriceBar
+        entryPrice={sig.price}
+        targetPrice={sig.target_price}
+        stopLossPrice={sig.stop_loss_price}
+        transactionType={sig.transaction_type}
+        currentPrice={livePrice}
+        exitPrice={notification.exit_price}
+        exitLeg={notification.exit_leg}
+        variant="compact"
+      />
 
       {/* Expiry */}
       {expiryDate && (
@@ -709,6 +701,12 @@ export default function HomeTabsSection() {
     })
     .sort((a, b) => toUTCDate(b.created_at).getTime() - toUTCDate(a.created_at).getTime());
 
+  const instruments = liveSignals.map((n) => ({
+    segment: n.signal.exchange_segment,
+    security_id: n.signal.security_id,
+  }));
+  const { getLtp } = useLiveLtp(instruments);
+
   return (
     <View style={styles.container}>
       <TabBar active={activeTab} onSelect={setActiveTab} />
@@ -729,6 +727,7 @@ export default function HomeTabsSection() {
                     key={n.id}
                     notification={n}
                     remainingSeconds={remaining}
+                    livePrice={getLtp(n.signal.exchange_segment, n.signal.security_id)}
                   />
                 );
               })}

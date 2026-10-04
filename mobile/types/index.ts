@@ -67,6 +67,10 @@ export interface Signal {
   awaiting_confirmation?: number;
   // How many 'placed' notifications are still actually cancellable/modifiable at the exchange
   cancellable_count?: number;
+  // Lifecycle status
+  lifecycle?: 'cancelled' | 'awaiting' | 'live' | 'completed' | 'ended';
+  pending_count?: number;
+  completed_at?: string | null;
   // Group IDs this signal was targeted to (undefined/null = all eligible users)
   target_group_ids?: number[] | null;
 }
@@ -229,6 +233,47 @@ export interface OrderActionResult {
   dhan_order_id: string | null;
   success: boolean;
   reason: string | null;
+}
+
+export interface SignalTradeInsightParticipant {
+  notification_id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  ordered_quantity: number;
+  traded_qty?: number | null;
+  traded_price?: number | null;
+  exit_leg?: string | null;
+  exit_price?: number | null;
+  exit_time?: string | null;
+  realized_pnl?: number | null;
+  live_status?: string | null;
+  is_auto_placed?: boolean;
+}
+
+export interface SignalTradeInsightsResponse {
+  signal_id: number;
+  signal_title: string;
+  transaction_type: 'BUY' | 'SELL';
+  exchange_segment: string;
+  security_id: string;
+  entry_price: number;
+  target_price: number;
+  stop_loss_price: number;
+  created_at: string;
+  completed_at?: string | null;
+  lifecycle: string;
+  total_participants: number;
+  total_orders_placed: number;
+  target_hit_count: number;
+  stop_loss_hit_count: number;
+  win_rate_pct: number;
+  net_pnl: number;
+  gross_profit: number;
+  gross_loss: number;
+  total_traded_quantity: number;
+  participants: SignalTradeInsightParticipant[];
+  user_trade?: SignalTradeInsightParticipant | null;
 }
 
 export interface Dashboard {

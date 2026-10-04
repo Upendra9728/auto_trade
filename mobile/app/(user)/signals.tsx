@@ -14,6 +14,9 @@ import EmptyState from '../../components/EmptyState';
 import CreditsHeader from '../../components/CreditsHeader';
 import DayGroupedList from '../../components/DayGroupedList';
 import GlowBorder from '../../components/GlowBorder';
+import TradeInsightsModal from '../../components/TradeInsightsModal';
+import SignalPriceBar from '../../components/SignalPriceBar';
+import { useLiveLtp } from '../../hooks/useLiveLtp';
 import type { SignalNotification } from '../../types';
 
 const QTY_PRESETS = [5, 15, 20, 25, 30];
@@ -27,6 +30,13 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<SignalNotification[]>([]);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [actionId, setActionId] = useState<number | null>(null);
+  const [selectedInsightNotifId, setSelectedInsightNotifId] = useState<number | null>(null);
+
+  const instruments = items.map((n) => ({
+    segment: n.signal.exchange_segment,
+    security_id: n.signal.security_id,
+  }));
+  const { getLtp } = useLiveLtp(instruments);
   // Notifications whose countdown hit 0 client-side, ahead of the server's own timeout sweep.
   const [locallyTimedOutIds, setLocallyTimedOutIds] = useState<Set<number>>(new Set());
 
@@ -139,15 +149,21 @@ export default function NotificationsScreen() {
 
         {/* Title */}
         <Text style={styles.signalTitle}>{n.signal.title}</Text>
-        <Text style={styles.segment}>{n.signal.exchange_segment} · {n.signal.security_id}</Text>
+        <Text style={styles.segment}>
+          {n.signal.exchange_segment} · {n.signal.security_id} · Qty {n.ordered_quantity ?? n.signal.quantity}
+        </Text>
 
-        {/* Price grid */}
-        <View style={styles.priceGrid}>
-          <PriceCell label="Entry" value={n.signal.price} />
-          <PriceCell label="Stop Loss" value={n.signal.stop_loss_price} color={Colors.error} />
-          <PriceCell label="Target" value={n.signal.target_price} color={Colors.success} />
-          <PriceCell label="Qty" value={n.signal.quantity} isInt />
-        </View>
+        {/* Graphical Price Bar with live pointer */}
+        <SignalPriceBar
+          entryPrice={n.signal.price}
+          targetPrice={n.signal.target_price}
+          stopLossPrice={n.signal.stop_loss_price}
+          transactionType={n.signal.transaction_type}
+          currentPrice={getLtp(n.signal.exchange_segment, n.signal.security_id)}
+          exitPrice={n.exit_price}
+          exitLeg={n.exit_leg}
+          variant="compact"
+        />
 
         {/* Result info */}
         {n.status === 'placed' && (
@@ -197,7 +213,19 @@ export default function NotificationsScreen() {
           </View>
         )}
 
-        <Text style={styles.time}>{formatDateTimeIST(n.created_at)}</Text>
+        <View style={styles.cardBottomRow}>
+          <Text style={styles.time}>{formatDateTimeIST(n.created_at)}</Text>
+          {(n.exit_leg != null || n.realized_pnl != null || n.signal.lifecycle === 'completed' || n.live_status === 'CLOSED') && (
+            <TouchableOpacity
+              style={styles.insightsBtn}
+              onPress={() => setSelectedInsightNotifId(n.id)}
+              activeOpacity={0.8}
+            >
+              <Feather name="bar-chart-2" size={12} color={Colors.primary} />
+              <Text style={styles.insightsBtnText}>Trade Insights</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         </View>
       </View>
     );
@@ -212,6 +240,12 @@ export default function NotificationsScreen() {
           {items.filter((n) => n.status === 'pending').length} pending
         </Text>
       </View>
+
+      <TradeInsightsModal
+        visible={selectedInsightNotifId != null}
+        notificationId={selectedInsightNotifId}
+        onClose={() => setSelectedInsightNotifId(null)}
+      />
 
       <DayGroupedList<SignalNotification>
         refreshNonce={refreshNonce}
@@ -428,7 +462,29 @@ const styles = StyleSheet.create({
   confirmBtn: { backgroundColor: Colors.primary },
   rejectText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
   confirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  time: { ...Typography.caption, textAlign: 'right' },
+  time: { ...Typography.caption },
+  cardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  insightsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  insightsBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
 
   // Quantity picker modal
   modalOverlay: {

@@ -165,6 +165,10 @@ class SignalResponse(BaseModel):
     # Count of 'placed' notifications that are still actually cancellable/modifiable
     # at the exchange (mirrors the exact filter used by the bulk cancel/modify endpoints).
     cancellable_count: int | None = None
+    # Derived lifecycle: 'cancelled' | 'awaiting' | 'live' | 'completed' | 'ended'
+    lifecycle: str | None = None
+    pending_count: int | None = None
+    completed_at: str | None = None
     # IDs of the groups this signal was targeted at (None = all eligible users)
     target_group_ids: list[int] | None = None
 
@@ -337,6 +341,47 @@ class OrderActionResult(BaseModel):
     dhan_order_id: str | None = None
     success: bool
     reason: str | None = None
+
+
+class SignalTradeInsightParticipant(BaseModel):
+    notification_id: int
+    user_id: int
+    user_name: str
+    user_email: str
+    ordered_quantity: int
+    traded_qty: int | None = None
+    traded_price: float | None = None
+    exit_leg: str | None = None
+    exit_price: float | None = None
+    exit_time: str | None = None
+    realized_pnl: float | None = None
+    live_status: str | None = None
+    is_auto_placed: bool = False
+
+
+class SignalTradeInsightsResponse(BaseModel):
+    signal_id: int
+    signal_title: str
+    transaction_type: str
+    exchange_segment: str
+    security_id: str
+    entry_price: float
+    target_price: float
+    stop_loss_price: float
+    created_at: str
+    completed_at: str | None = None
+    lifecycle: str
+    total_participants: int
+    total_orders_placed: int
+    target_hit_count: int
+    stop_loss_hit_count: int
+    win_rate_pct: float
+    net_pnl: float
+    gross_profit: float
+    gross_loss: float
+    total_traded_quantity: int
+    participants: list[SignalTradeInsightParticipant] = []
+    user_trade: SignalTradeInsightParticipant | None = None
 
 
 # ---------------------------------------------------------------------------

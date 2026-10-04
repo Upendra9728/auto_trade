@@ -50,6 +50,8 @@ from ..schemas import (
     SignalCreateRequest,
     SignalOrderModifyRequest,
     SignalResponse,
+    SignalTradeInsightParticipant,
+    SignalTradeInsightsResponse,
     PaginationMeta,
     UserPositionResponse,
 )
@@ -153,6 +155,10 @@ def _sanitize_modify_payload(req: SignalOrderModifyRequest) -> dict[str, float]:
     return payload
 
 
+_ACTIVE_LIVE_STATUSES = {"TRANSIT", "PENDING", "PART_TRADED", "TRADED"}
+_TERMINAL_LIVE_STATUSES = {"CLOSED", "EXPIRED", "CANCELLED", "REJECTED"}
+
+
 def _is_entry_leg_modifiable(live_status: str | None) -> bool:
     return live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
 
@@ -161,13 +167,23 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
     counts: dict[str, int] = {}
     exchange_confirmed = exchange_rejected = awaiting_confirmation = None
     cancellable_count = None
+    lifecycle = "cancelled" if signal.status == "cancelled" else "active"
+    pending_count = 0
+    completed_at = None
+
     if include_counts:
         rows = db.query(SignalNotification).filter(SignalNotification.signal_id == signal.id).all()
         exchange_confirmed = exchange_rejected = awaiting_confirmation = 0
         cancellable_count = 0
+        live_count = 0
+        completed_count = 0
+        exit_times: list[dt.datetime] = []
+
         for row in rows:
             counts[row.status] = counts.get(row.status, 0) + 1
-            if row.status == "placed":
+            if row.status == "pending":
+                pending_count += 1
+            elif row.status == "placed":
                 if row.live_status in ("TRANSIT", "PENDING", "TRADED"):
                     exchange_confirmed += 1
                 else:
@@ -175,8 +191,27 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
                 # Same predicate as the bulk cancel/modify endpoints below.
                 if row.exit_leg is None and row.live_status not in _TERMINAL_LIVE_STATUSES:
                     cancellable_count += 1
+                    live_count += 1
             elif row.live_status in ("REJECTED", "CANCELLED", "EXPIRED"):
                 exchange_rejected += 1
+
+            if row.exit_leg is not None or row.live_status == "CLOSED":
+                completed_count += 1
+                if row.exit_time:
+                    exit_times.append(row.exit_time)
+
+        if signal.status == "cancelled":
+            lifecycle = "cancelled"
+        elif pending_count > 0:
+            lifecycle = "awaiting"
+        elif live_count > 0:
+            lifecycle = "live"
+        elif completed_count > 0:
+            lifecycle = "completed"
+            if exit_times:
+                completed_at = max(exit_times).isoformat()
+        else:
+            lifecycle = "ended"
 
     import json as _json
     target_group_ids: list[int] | None = None
@@ -213,6 +248,9 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
         exchange_rejected=exchange_rejected,
         awaiting_confirmation=awaiting_confirmation,
         cancellable_count=cancellable_count,
+        lifecycle=lifecycle,
+        pending_count=pending_count,
+        completed_at=completed_at,
         target_group_ids=target_group_ids,
     )
 
@@ -946,6 +984,109 @@ def _notif_to_row(n: SignalNotification) -> AdminSignalNotificationRow:
     )
 
 
+@router.get("/signals/{signal_id}/insights", response_model=SignalTradeInsightsResponse)
+def get_signal_trade_insights(
+    signal_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> SignalTradeInsightsResponse:
+    signal = db.query(Signal).filter(Signal.id == signal_id).one_or_none()
+    if signal is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    notifications = (
+        db.query(SignalNotification)
+        .options(joinedload(SignalNotification.user))
+        .filter(SignalNotification.signal_id == signal_id)
+        .all()
+    )
+
+    participants: list[SignalTradeInsightParticipant] = []
+    total_participants = 0
+    total_orders_placed = 0
+    target_hit_count = 0
+    stop_loss_hit_count = 0
+    net_pnl = 0.0
+    gross_profit = 0.0
+    gross_loss = 0.0
+    total_traded_quantity = 0
+    exit_times: list[dt.datetime] = []
+
+    for n in notifications:
+        is_placed = n.status in ("placed", "confirmed") or n.dhan_order_id is not None
+        if is_placed:
+            total_orders_placed += 1
+
+        if n.traded_qty and n.traded_qty > 0:
+            total_traded_quantity += n.traded_qty
+
+        pnl = n.realized_pnl or 0.0
+        if n.exit_leg == "TARGET_LEG":
+            target_hit_count += 1
+        elif n.exit_leg == "STOP_LOSS_LEG":
+            stop_loss_hit_count += 1
+
+        if pnl > 0:
+            gross_profit += pnl
+        elif pnl < 0:
+            gross_loss += abs(pnl)
+        net_pnl += pnl
+
+        if n.exit_time:
+            exit_times.append(n.exit_time)
+
+        if is_placed or n.status == "confirmed" or n.realized_pnl is not None:
+            total_participants += 1
+            participants.append(
+                SignalTradeInsightParticipant(
+                    notification_id=n.id,
+                    user_id=n.user_id,
+                    user_name=n.user.name if n.user else f"User {n.user_id}",
+                    user_email=n.user.email if n.user else "",
+                    ordered_quantity=n.ordered_quantity or signal.quantity,
+                    traded_qty=n.traded_qty,
+                    traded_price=n.traded_price,
+                    exit_leg=n.exit_leg,
+                    exit_price=n.exit_price,
+                    exit_time=n.exit_time.isoformat() if n.exit_time else None,
+                    realized_pnl=n.realized_pnl,
+                    live_status=n.live_status,
+                    is_auto_placed=n.is_auto_placed,
+                )
+            )
+
+    completed_trades = target_hit_count + stop_loss_hit_count
+    win_rate_pct = round((target_hit_count / completed_trades * 100), 1) if completed_trades > 0 else 0.0
+
+    sig_resp = _to_signal_response(signal, db, include_counts=True)
+    completed_at = max(exit_times).isoformat() if exit_times else sig_resp.completed_at
+
+    return SignalTradeInsightsResponse(
+        signal_id=signal.id,
+        signal_title=signal.title,
+        transaction_type=signal.transaction_type,
+        exchange_segment=signal.exchange_segment,
+        security_id=signal.security_id,
+        entry_price=signal.price,
+        target_price=signal.target_price,
+        stop_loss_price=signal.stop_loss_price,
+        created_at=signal.created_at.isoformat(),
+        completed_at=completed_at,
+        lifecycle=sig_resp.lifecycle or signal.status,
+        total_participants=total_participants,
+        total_orders_placed=total_orders_placed,
+        target_hit_count=target_hit_count,
+        stop_loss_hit_count=stop_loss_hit_count,
+        win_rate_pct=win_rate_pct,
+        net_pnl=round(net_pnl, 2),
+        gross_profit=round(gross_profit, 2),
+        gross_loss=round(gross_loss, 2),
+        total_traded_quantity=total_traded_quantity,
+        participants=participants,
+        user_trade=None,
+    )
+
+
 @router.get("/signals/{signal_id}/notifications", response_model=PaginatedNotificationsAdminResponse)
 def list_signal_notifications(
     signal_id: int,
@@ -987,12 +1128,6 @@ def list_signal_notifications(
     )
 
 
-# Statuses that mean the order is still potentially active at the exchange.
-# NOTE: TRADED is intentionally absent — entry filled means exit legs are still live.
-_ACTIVE_LIVE_STATUSES = {"TRANSIT", "PENDING", "PART_TRADED", "TRADED"}
-# Statuses where the order is fully terminal — no action possible.
-# CLOSED = entry + exit leg fully done. TRADED is NOT terminal (exit legs still open).
-_TERMINAL_LIVE_STATUSES = {"CLOSED", "EXPIRED", "CANCELLED", "REJECTED"}
 # Max concurrent outbound Dhan API calls during bulk cancel/modify (protects rate limits).
 _BULK_CONCURRENCY = 50
 

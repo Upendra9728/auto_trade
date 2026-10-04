@@ -5,10 +5,12 @@ by calling the Dhan OHLC market feed API with an available user credential.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..crypto import decrypt_token
@@ -19,6 +21,36 @@ router = APIRouter(prefix="/api/market", tags=["market"])
 logger = logging.getLogger(__name__)
 
 DHAN_OHLC_URL = "https://api.dhan.co/v2/marketfeed/ohlc"
+DHAN_LTP_URL = "https://api.dhan.co/v2/marketfeed/ltp"
+
+_ltp_cache: dict[str, tuple[float, float]] = {}  # key -> (last_price, timestamp)
+_CACHE_TTL_SECONDS = 2.0
+
+SEGMENT_LTP_MAP = {
+    "NSE_FO": "NSE_FNO",
+    "BSE_FO": "BSE_FNO",
+    "NSE_FNO": "NSE_FNO",
+    "BSE_FNO": "BSE_FNO",
+    "NSE_EQ": "NSE_EQ",
+    "BSE_EQ": "BSE_EQ",
+    "MCX_COMM": "MCX_COMM",
+    "NSE_CURRENCY": "NSE_CURRENCY",
+    "BSE_CURRENCY": "BSE_CURRENCY",
+    "IDX_I": "IDX_I",
+}
+
+
+class LtpInstrument(BaseModel):
+    segment: str
+    security_id: str
+
+
+class LtpRequest(BaseModel):
+    instruments: list[LtpInstrument]
+
+
+class LtpResponse(BaseModel):
+    prices: dict[str, float]
 
 # Security IDs for Indian indices on Dhan
 # NSE_EQ: Nifty 50 = 13, Bank Nifty = 25 (these are NSE index IDs)
@@ -141,3 +173,88 @@ async def get_market_indices(
     except Exception as exc:
         logger.exception("Unexpected error fetching market indices: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to fetch market indices.")
+
+
+@router.post("/ltp", response_model=LtpResponse)
+async def get_market_ltp(
+    req: LtpRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LtpResponse:
+    now = time.time()
+    prices: dict[str, float] = {}
+    missing_instruments: list[tuple[str, str, int]] = []
+
+    for inst in req.instruments:
+        key = f"{inst.segment}:{inst.security_id}"
+        if key in _ltp_cache:
+            val, ts = _ltp_cache[key]
+            if (now - ts) <= _CACHE_TTL_SECONDS:
+                prices[key] = val
+                continue
+        mapped_seg = SEGMENT_LTP_MAP.get(inst.segment.upper(), inst.segment.upper())
+        try:
+            sec_id_int = int(inst.security_id)
+            missing_instruments.append((inst.segment, mapped_seg, sec_id_int))
+        except ValueError:
+            pass
+
+    if not missing_instruments:
+        return LtpResponse(prices=prices)
+
+    dhan_payload: dict[str, list[int]] = {}
+    for _, mapped_seg, sec_id_int in missing_instruments:
+        dhan_payload.setdefault(mapped_seg, []).append(sec_id_int)
+
+    for seg in dhan_payload:
+        dhan_payload[seg] = list(set(dhan_payload[seg]))
+
+    candidates: list[DhanCredential] = (
+        db.query(DhanCredential)
+        .filter(DhanCredential.is_active == True)
+        .order_by((DhanCredential.user_id == current_user.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    if not candidates:
+        return LtpResponse(prices=prices)
+
+    for cred in candidates:
+        try:
+            token = decrypt_token(cred.access_token_encrypted)
+        except Exception:
+            continue
+
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "access-token": token,
+            "client-id": cred.dhan_client_id,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                resp = await client.post(DHAN_LTP_URL, json=dhan_payload, headers=headers)
+            if resp.status_code == 200:
+                raw = resp.json()
+                if raw.get("status") == "success":
+                    data = raw.get("data", {})
+                    for orig_seg, mapped_seg, sec_id_int in missing_instruments:
+                        sec_str = str(sec_id_int)
+                        ltp_val = data.get(mapped_seg, {}).get(sec_str, {}).get("last_price")
+                        if ltp_val is not None:
+                            p_float = float(ltp_val)
+                            key = f"{orig_seg}:{sec_str}"
+                            prices[key] = p_float
+                            _ltp_cache[key] = (p_float, now)
+                    break
+        except Exception as exc:
+            logger.warning("Error fetching Dhan LTP with client %s: %s", cred.dhan_client_id, exc)
+
+    for inst in req.instruments:
+        key = f"{inst.segment}:{inst.security_id}"
+        if key not in prices and key in _ltp_cache:
+            prices[key] = _ltp_cache[key][0]
+
+    return LtpResponse(prices=prices)
