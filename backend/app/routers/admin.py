@@ -1685,6 +1685,18 @@ def dashboard(
     total_realized_pnl = float(db.query(func.coalesce(func.sum(SignalNotification.realized_pnl), 0.0)).scalar() or 0.0)
     total_unrealized_pnl = float(db.query(func.coalesce(func.sum(UserPosition.unrealized_profit), 0.0)).scalar() or 0.0)
 
+    today_ist = (dt.datetime.utcnow() + dt.timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d")
+    today_start_utc, today_end_utc = parse_ist_date_range(today_ist, today_ist)
+    today_pnl = float(
+        db.query(func.coalesce(func.sum(SignalNotification.realized_pnl), 0.0))
+        .filter(
+            SignalNotification.exit_time >= today_start_utc,
+            SignalNotification.exit_time < today_end_utc,
+        )
+        .scalar()
+        or 0.0
+    )
+
     pending_approvals = db.query(User).filter(User.is_active.is_(False)).count()
     recent_signals = []
     for s in db.query(Signal).order_by(Signal.created_at.desc()).limit(5).all():
@@ -1721,6 +1733,7 @@ def dashboard(
             "pending": total_pending,
             "total_realized_pnl": round(total_realized_pnl, 2),
             "total_unrealized_pnl": round(total_unrealized_pnl, 2),
+            "today_pnl": round(today_pnl, 2),
         },
         "pending_approvals": pending_approvals,
         "recent_signals": recent_signals,

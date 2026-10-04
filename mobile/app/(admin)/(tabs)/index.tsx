@@ -66,8 +66,7 @@ export default function AdminDashboard() {
 
   const pendingApprovals = stats?.pending_approvals ?? 0;
   const ipv6Missing = Math.max((stats?.users.active ?? 0) - (stats?.users.with_ipv6_assigned ?? 0), 0);
-  const realizedPnl = stats?.orders.total_realized_pnl ?? 0;
-  const unrealizedPnl = stats?.orders.total_unrealized_pnl ?? 0;
+  const todayPnl = stats?.orders.today_pnl ?? 0;
   const todayLabel = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata',
   });
@@ -107,7 +106,7 @@ export default function AdminDashboard() {
               <Text style={styles.heroDate}>{todayLabel}</Text>
             </View>
             <View style={styles.heroIcon}>
-              <Feather name="activity" size={20} color="#FFFFFF" />
+              <Feather name="activity" size={16} color="#FFFFFF" />
             </View>
           </View>
 
@@ -117,16 +116,11 @@ export default function AdminDashboard() {
             <HeroStat label="Live Orders" value={String(stats?.orders.placed ?? 0)} />
             <View style={styles.heroDivider} />
             <HeroStat
-              label="Realized P&L"
-              value={formatPnl(realizedPnl)}
-              valueColor={realizedPnl >= 0 ? '#86EFAC' : '#FCA5A5'}
+              label="Today's P&L"
+              value={formatPnl(todayPnl)}
+              valueColor={todayPnl >= 0 ? '#86EFAC' : '#FCA5A5'}
               small
             />
-          </View>
-
-          <View style={styles.heroFooter}>
-            <Feather name="trending-up" size={12} color="#BFDBFE" />
-            <Text style={styles.heroFooterText}>Open positions: {formatPnl(unrealizedPnl)} unrealized</Text>
           </View>
         </View>
 
@@ -306,27 +300,25 @@ const styles = StyleSheet.create({
   adminPillText: { color: Colors.primary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
 
   hero: {
-    backgroundColor: Colors.primary, borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.md,
+    backgroundColor: '#1E3A8A', borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm + 4,
     ...Shadow.card,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  heroGreeting: { fontSize: moderateScale(18), fontWeight: '800', color: '#FFFFFF' },
-  heroDate: { fontSize: moderateScale(12), color: '#BFDBFE', marginTop: 2 },
+  heroGreeting: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  heroDate: { fontSize: 11, color: '#BFDBFE', marginTop: 2 },
   heroIcon: {
-    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   heroStats: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: Radius.md, paddingVertical: Spacing.sm + 2,
+    backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: Radius.md, paddingVertical: Spacing.sm,
   },
   heroStat: { flex: 1, alignItems: 'center', gap: 2, paddingHorizontal: 4 },
-  heroStatValue: { fontSize: moderateScale(24), fontWeight: '800', color: '#FFFFFF' },
-  heroStatValueSmall: { fontSize: moderateScale(16) },
-  heroStatLabel: { fontSize: 10, fontWeight: '600', color: '#BFDBFE', textTransform: 'uppercase', letterSpacing: 0.5 },
-  heroDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.25)' },
-  heroFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroFooterText: { fontSize: 11, color: '#BFDBFE', fontWeight: '600' },
+  heroStatValue: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+  heroStatValueSmall: { fontSize: 15 },
+  heroStatLabel: { fontSize: 10, fontWeight: '600', color: '#BFDBFE', textTransform: 'uppercase', letterSpacing: 0.4 },
+  heroDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.2)' },
 
   sectionTitle: {
     fontSize: 12, fontWeight: '800', color: Colors.textSecondary,

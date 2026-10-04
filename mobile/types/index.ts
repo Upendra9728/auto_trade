@@ -297,6 +297,7 @@ export interface Dashboard {
     pending: number;
     total_realized_pnl?: number;
     total_unrealized_pnl?: number;
+    today_pnl?: number;
   };
   pending_approvals: number;
   recent_signals: {
