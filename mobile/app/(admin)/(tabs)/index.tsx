@@ -13,7 +13,9 @@ import StatusBadge from '../../../components/StatusBadge';
 import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
 import TelegramAutomationCard from '../../../components/TelegramAutomationCard';
 import HeroBackground, { PulseDot } from '../../../components/HeroBackground';
-import type { Dashboard } from '../../../types';
+import AudienceBadge from '../../../components/AudienceBadge';
+import AudienceGroupsModal from '../../../components/AudienceGroupsModal';
+import type { Dashboard, GroupRef } from '../../../types';
 
 type FeatherName = keyof typeof Feather.glyphMap;
 
@@ -28,6 +30,7 @@ export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [audienceModalData, setAudienceModalData] = useState<{ groups: GroupRef[]; title?: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,6 +101,13 @@ export default function AdminDashboard() {
           visible={exportModalVisible}
           onClose={() => setExportModalVisible(false)}
           onSubmit={handleExportConfirm}
+        />
+
+        <AudienceGroupsModal
+          visible={audienceModalData != null}
+          groups={audienceModalData?.groups ?? []}
+          signalTitle={audienceModalData?.title}
+          onClose={() => setAudienceModalData(null)}
         />
 
         {/* Hero */}
@@ -207,7 +217,12 @@ export default function AdminDashboard() {
         <View style={styles.recentList}>
           {stats?.recent_signals && stats.recent_signals.length > 0 ? (
             stats.recent_signals.map((s, idx) => (
-              <RecentSignalRow key={s.id} signal={s} isLast={idx === stats.recent_signals.length - 1} />
+              <RecentSignalRow
+                key={s.id}
+                signal={s}
+                isLast={idx === stats.recent_signals.length - 1}
+                onOpenAudience={(groups, title) => setAudienceModalData({ groups, title })}
+              />
             ))
           ) : (
             <Text style={styles.emptyRecent}>No signals created yet.</Text>
@@ -286,7 +301,15 @@ function StatTile({ icon, label, value, tint, tintBg }: {
   );
 }
 
-function RecentSignalRow({ signal, isLast }: { signal: NonNullable<Dashboard['recent_signals']>[number]; isLast: boolean }) {
+function RecentSignalRow({
+  signal,
+  isLast,
+  onOpenAudience,
+}: {
+  signal: NonNullable<Dashboard['recent_signals']>[number];
+  isLast: boolean;
+  onOpenAudience?: (groups: GroupRef[], title?: string) => void;
+}) {
   const isBuy = signal.transaction_type === 'BUY';
   const pct = signal.total_notified > 0 ? Math.min(100, Math.round((signal.placed / signal.total_notified) * 100)) : 0;
   return (
@@ -301,7 +324,15 @@ function RecentSignalRow({ signal, isLast }: { signal: NonNullable<Dashboard['re
         </View>
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.recentTitle} numberOfLines={1}>{signal.title}</Text>
+        <View style={styles.recentTitleRow}>
+          <Text style={styles.recentTitle} numberOfLines={1}>{signal.title}</Text>
+          <AudienceBadge
+            targetGroupIds={signal.target_group_ids}
+            targetGroups={signal.target_groups}
+            onPressGroups={(groups) => onOpenAudience?.(groups, signal.title)}
+            size="sm"
+          />
+        </View>
         <Text style={styles.recentMeta}>{formatDateTimeIST(signal.created_at)} · {signal.placed}/{signal.total_notified} placed</Text>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${pct}%` }]} />
@@ -417,7 +448,8 @@ const styles = StyleSheet.create({
   },
   recentTx: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
   recentTxText: { fontSize: 10, fontWeight: '800' },
-  recentTitle: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  recentTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  recentTitle: { fontSize: 14, fontWeight: '700', color: Colors.text, flexShrink: 1 },
   recentMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   progressTrack: { height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', marginTop: 6, overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: Colors.success },

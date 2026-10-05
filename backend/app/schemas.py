@@ -133,6 +133,11 @@ class SignalCreateRequest(BaseModel):
     send_to_telegram: bool = False
 
 
+class GroupRef(BaseModel):
+    id: int
+    name: str
+
+
 class SignalResponse(BaseModel):
     id: int
     title: str
@@ -171,6 +176,8 @@ class SignalResponse(BaseModel):
     completed_at: str | None = None
     # IDs of the groups this signal was targeted at (None = all eligible users)
     target_group_ids: list[int] | None = None
+    # Resolved group references (id + name) for group-targeted signals
+    target_groups: list[GroupRef] | None = None
 
 
 # ---------------------------------------------------------------------------

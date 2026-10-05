@@ -17,8 +17,10 @@ import DayGroupedList from '../../../components/DayGroupedList';
 import ExportDateRangeModal from '../../../components/ExportDateRangeModal';
 import TradeInsightsModal from '../../../components/TradeInsightsModal';
 import SignalPriceBar from '../../../components/SignalPriceBar';
+import AudienceBadge from '../../../components/AudienceBadge';
+import AudienceGroupsModal from '../../../components/AudienceGroupsModal';
 import { useLiveLtp } from '../../../hooks/useLiveLtp';
-import type { Signal } from '../../../types';
+import type { Signal, GroupRef } from '../../../types';
 
 export default function AdminSignalsScreen() {
   const insets = useSafeAreaInsets();
@@ -26,6 +28,7 @@ export default function AdminSignalsScreen() {
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [insightsSignalId, setInsightsSignalId] = useState<number | null>(null);
+  const [audienceModalData, setAudienceModalData] = useState<{ groups: GroupRef[]; title?: string } | null>(null);
   const [visibleSignals, setVisibleSignals] = useState<Signal[]>([]);
 
   const instruments = visibleSignals.map((s) => ({
@@ -92,8 +95,16 @@ export default function AdminSignalsScreen() {
         activeOpacity={0.8}
       >
         <View style={styles.cardTop}>
-          <View style={[styles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
-            <Text style={[styles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>{s.transaction_type}</Text>
+          <View style={styles.cardTopLeft}>
+            <View style={[styles.txBadge, { backgroundColor: isBuy ? Colors.buyBg : Colors.sellBg }]}>
+              <Text style={[styles.txText, { color: isBuy ? Colors.buy : Colors.sell }]}>{s.transaction_type}</Text>
+            </View>
+            <AudienceBadge
+              targetGroupIds={s.target_group_ids}
+              targetGroups={s.target_groups}
+              onPressGroups={(groups) => setAudienceModalData({ groups, title: s.title })}
+              size="sm"
+            />
           </View>
           <StatusBadge status={currentLifecycle} size="sm" />
         </View>
@@ -150,6 +161,13 @@ export default function AdminSignalsScreen() {
         signalId={insightsSignalId}
         isAdmin
         onClose={() => setInsightsSignalId(null)}
+      />
+
+      <AudienceGroupsModal
+        visible={audienceModalData != null}
+        groups={audienceModalData?.groups ?? []}
+        signalTitle={audienceModalData?.title}
+        onClose={() => setAudienceModalData(null)}
       />
 
       <ExportDateRangeModal
@@ -218,7 +236,8 @@ const styles = StyleSheet.create({
   exportText: { color: Colors.primary, fontSize: 13, fontWeight: '700' },
   list: { padding: Spacing.md, gap: Spacing.md },
   card: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: 8 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.xs },
+  cardTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0 },
   txBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: Radius.full },
   txText: { fontSize: 12, fontWeight: '800' },
   title: { ...Typography.h3 },

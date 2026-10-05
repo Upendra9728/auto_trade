@@ -37,6 +37,11 @@ export interface DhanCredential {
 
 // ── Signals ──────────────────────────────────────────────────────────────────
 
+export interface GroupRef {
+  id: number;
+  name: string;
+}
+
 export interface Signal {
   id: number;
   title: string;
@@ -73,6 +78,8 @@ export interface Signal {
   completed_at?: string | null;
   // Group IDs this signal was targeted to (undefined/null = all eligible users)
   target_group_ids?: number[] | null;
+  // Resolved group references for group-targeted signals
+  target_groups?: GroupRef[] | null;
 }
 
 export interface SignalNotification {
@@ -309,6 +316,8 @@ export interface Dashboard {
     created_at: string;
     total_notified: number;
     placed: number;
+    target_group_ids?: number[] | null;
+    target_groups?: GroupRef[] | null;
   }[];
 }
 

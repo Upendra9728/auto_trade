@@ -17,10 +17,12 @@ import OrderTimeline from '../../../components/OrderTimeline';
 import AdminScreenHeader from '../../../components/AdminScreenHeader';
 import TradeInsightsModal from '../../../components/TradeInsightsModal';
 import SignalPriceBar from '../../../components/SignalPriceBar';
+import AudienceBadge from '../../../components/AudienceBadge';
+import AudienceGroupsModal from '../../../components/AudienceGroupsModal';
 import { useLiveLtp } from '../../../hooks/useLiveLtp';
 import type {
   Signal, AdminSignalNotificationRow, AdminSignalNotificationsResponse,
-  SignalOrderModifyPayload, OrderActionResult, OrderEvent,
+  SignalOrderModifyPayload, OrderActionResult, OrderEvent, GroupRef,
 } from '../../../types';
 
 const STATUS_FILTERS = ['all', 'placed', 'pending', 'failed', 'cancelled', 'rejected'] as const;
@@ -41,6 +43,7 @@ export default function SignalDetailScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [signalError, setSignalError] = useState<string | null>(null);
   const [insightsVisible, setInsightsVisible] = useState(false);
+  const [audienceModalData, setAudienceModalData] = useState<{ groups: GroupRef[]; title?: string } | null>(null);
 
   const instruments = signal ? [{ segment: signal.exchange_segment, security_id: signal.security_id }] : [];
   const { getLtp } = useLiveLtp(instruments);
@@ -349,6 +352,13 @@ export default function SignalDetailScreen() {
         onClose={() => setInsightsVisible(false)}
       />
 
+      <AudienceGroupsModal
+        visible={audienceModalData != null}
+        groups={audienceModalData?.groups ?? []}
+        signalTitle={audienceModalData?.title}
+        onClose={() => setAudienceModalData(null)}
+      />
+
       <AdminScreenHeader
         title={`Signal #${signal.id}`}
         onBack={() => router.back()}
@@ -378,7 +388,15 @@ export default function SignalDetailScreen() {
             <View style={styles.signalCard}>
               <View style={styles.signalTop}>
                 <Text style={styles.signalTitle}>{signal.title}</Text>
-                <StatusBadge status={signal.lifecycle ?? signal.status} />
+                <View style={styles.signalTopBadges}>
+                  <AudienceBadge
+                    targetGroupIds={signal.target_group_ids}
+                    targetGroups={signal.target_groups}
+                    onPressGroups={(groups) => setAudienceModalData({ groups, title: signal.title })}
+                    size="sm"
+                  />
+                  <StatusBadge status={signal.lifecycle ?? signal.status} />
+                </View>
               </View>
               <Text style={styles.signalMeta}>
                 {signal.transaction_type} · {signal.quantity}{signal.lot_size ? ` (lot: ${signal.lot_size})` : ''} · {signal.exchange_segment} / {signal.security_id}
@@ -661,7 +679,8 @@ const styles = StyleSheet.create({
   list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xl },
   header: { gap: Spacing.md, marginBottom: Spacing.sm },
   signalCard: { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md, ...Shadow.card, gap: 8 },
-  signalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  signalTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.xs },
+  signalTopBadges: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 },
   signalTitle: { ...Typography.h3, flex: 1, marginRight: 8 },
   signalMeta: { ...Typography.bodySmall },
   priceRow: { flexDirection: 'row', backgroundColor: Colors.background, borderRadius: Radius.sm, paddingVertical: 8 },

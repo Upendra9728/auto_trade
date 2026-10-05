@@ -38,6 +38,7 @@ from ..schemas import (
     GroupAddMembersRequest,
     GroupCreateRequest,
     GroupDetailResponse,
+    GroupRef,
     GroupResponse,
     GroupUpdateRequest,
     OrderActionResult,
@@ -163,7 +164,12 @@ def _is_entry_leg_modifiable(live_status: str | None) -> bool:
     return live_status in (None, "TRANSIT", "PENDING", "PART_TRADED")
 
 
-def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True) -> SignalResponse:
+def _to_signal_response(
+    signal: Signal,
+    db: Session,
+    include_counts: bool = True,
+    group_names_map: dict[int, str] | None = None,
+) -> SignalResponse:
     counts: dict[str, int] = {}
     exchange_confirmed = exchange_rejected = awaiting_confirmation = None
     cancellable_count = None
@@ -215,11 +221,28 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
 
     import json as _json
     target_group_ids: list[int] | None = None
+    target_groups: list[GroupRef] | None = None
     if signal.target_group_ids:
         try:
             target_group_ids = _json.loads(signal.target_group_ids)
         except Exception:
             pass
+
+    if target_group_ids:
+        if group_names_map is not None:
+            target_groups = [
+                GroupRef(id=gid, name=group_names_map[gid])
+                for gid in target_group_ids
+                if gid in group_names_map
+            ]
+        else:
+            db_groups = db.query(UserGroup).filter(UserGroup.id.in_(target_group_ids)).all()
+            name_by_id = {g.id: g.name for g in db_groups}
+            target_groups = [
+                GroupRef(id=gid, name=name_by_id[gid])
+                for gid in target_group_ids
+                if gid in name_by_id
+            ]
 
     return SignalResponse(
         id=signal.id,
@@ -252,6 +275,7 @@ def _to_signal_response(signal: Signal, db: Session, include_counts: bool = True
         pending_count=pending_count,
         completed_at=completed_at,
         target_group_ids=target_group_ids,
+        target_groups=target_groups,
     )
 
 
@@ -830,8 +854,24 @@ def list_signals(
         .limit(page_size)
         .all()
     )
+
+    all_group_ids: set[int] = set()
+    import json as _json
+    for s in signals:
+        if s.target_group_ids:
+            try:
+                gids = _json.loads(s.target_group_ids)
+                if isinstance(gids, list):
+                    all_group_ids.update(gids)
+            except Exception:
+                pass
+    group_names_map: dict[int, str] = {}
+    if all_group_ids:
+        for g in db.query(UserGroup).filter(UserGroup.id.in_(all_group_ids)).all():
+            group_names_map[g.id] = g.name
+
     return PaginatedSignalsResponse(
-        items=[_to_signal_response(s, db) for s in signals],
+        items=[_to_signal_response(s, db, group_names_map=group_names_map) for s in signals],
         meta=paginate_meta(page=page, page_size=page_size, total=total),
     )
 
@@ -1710,6 +1750,11 @@ def dashboard(
             "created_at": s.created_at.isoformat(),
             "total_notified": resp.total_notified or 0,
             "placed": resp.placed or 0,
+            "target_group_ids": resp.target_group_ids,
+            "target_groups": [
+                {"id": g.id, "name": g.name}
+                for g in (resp.target_groups or [])
+            ] if resp.target_groups is not None else None,
         })
 
     return {
