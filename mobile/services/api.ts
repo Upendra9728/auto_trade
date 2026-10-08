@@ -24,6 +24,7 @@ import type {
   UserGroup,
   UserGroupDetail,
   CreditPlan,
+  CustomCreditConfig,
   RazorpayOrder,
   PaymentVerifyPayload,
   CreditPurchaseResult,
@@ -380,12 +381,15 @@ export const adminApi = {
 // ── Payments ──────────────────────────────────────────────────────────────────
 
 export const paymentsApi = {
-  /** Fetch all 3 credit plans (no auth needed). */
+  /** Fetch all fixed credit plans (no auth needed). */
   getPlans: () => get<CreditPlan[]>('/api/payments/plans'),
 
-  /** Create a Razorpay Order for the given plan; returns Checkout params. */
-  createOrder: (plan_id: string) =>
-    post<RazorpayOrder>('/api/payments/orders', { plan_id }),
+  /** Fetch configuration for custom credit purchases (no auth needed). */
+  getCustomConfig: () => get<CustomCreditConfig>('/api/payments/custom-config'),
+
+  /** Create a Razorpay Order for the given plan or custom credits; returns Checkout params. */
+  createOrder: (plan_id: string, credits?: number) =>
+    post<RazorpayOrder>('/api/payments/orders', { plan_id, ...(credits ? { credits } : {}) }),
 
   /** Verify the payment signature and credit the user after successful checkout. */
   verifyPayment: (payload: PaymentVerifyPayload) =>

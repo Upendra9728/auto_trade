@@ -82,8 +82,17 @@ export default function PlanCard({ plan, onBuy, loading = false, selected = fals
         <View style={styles.creditRow}>
           <View style={[styles.creditDot, { backgroundColor: theme.accent }]} />
           <Text style={styles.creditLabel}>{plan.paid_credits} Credits</Text>
-          <Text style={styles.creditValue}>₹{(plan.paid_credits * (plan.amount_rs / plan.paid_credits)).toLocaleString('en-IN')}</Text>
+          <Text style={styles.creditValue}>₹{(plan.base_amount_rs ?? plan.amount_rs).toLocaleString('en-IN')}</Text>
         </View>
+
+        {/* GST */}
+        {plan.gst_amount_rs ? (
+          <View style={styles.creditRow}>
+            <View style={[styles.creditDot, { backgroundColor: Colors.textMuted }]} />
+            <Text style={[styles.creditLabel, { color: Colors.textSecondary }]}>GST ({plan.gst_percent ?? 18}%)</Text>
+            <Text style={[styles.creditValue, { color: Colors.textSecondary }]}>₹{plan.gst_amount_rs.toLocaleString('en-IN')}</Text>
+          </View>
+        ) : null}
 
         {/* Bonus credits */}
         {plan.bonus_credits > 0 && (

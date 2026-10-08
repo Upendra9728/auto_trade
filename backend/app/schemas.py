@@ -492,20 +492,34 @@ class GroupAddMembersRequest(BaseModel):
 
 class CreditPlanResponse(BaseModel):
     """Describes a purchasable credit plan returned by GET /api/payments/plans."""
-    id: str                     # 'basic' | 'intermediate' | 'pro'
+    id: str                     # 'basic' | 'intermediate' | 'pro' | 'custom'
     name: str                   # Display name, e.g. "Basic"
     paid_credits: int           # Credits purchased
     bonus_credits: int          # Bonus credits gifted free
     total_credits: int          # paid_credits + bonus_credits
-    amount_rs: int              # Price in INR (rupees)
-    amount_paise: int           # Price in paise (INR × 100) — used by Razorpay
+    base_amount_rs: int         # Base price before GST
+    gst_amount_rs: int          # GST component (18%)
+    gst_percent: int            # GST percentage applied (e.g. 18)
+    amount_rs: int              # Total price in INR including GST
+    amount_paise: int           # Total price in paise (INR × 100) — used by Razorpay
     badge: str | None = None    # Optional badge label, e.g. "Most Popular"
     description: str | None = None
+
+
+class CustomCreditConfigResponse(BaseModel):
+    """Configuration limits and rules for custom credit purchases."""
+    min_credits: int
+    max_credits: int
+    credit_value_rs: int
+    bonus_credit_threshold: int
+    bonus_credit_percent: int
+    gst_percent: int
 
 
 class CreateOrderRequest(BaseModel):
     """Body for POST /api/payments/orders."""
     plan_id: str = Field(min_length=1, max_length=32)
+    credits: int | None = Field(default=None, ge=1)
 
 
 class CreateOrderResponse(BaseModel):

@@ -378,15 +378,27 @@ export interface UserGroupDetail {
 // ── Payments / Razorpay ───────────────────────────────────────────────────────
 
 export interface CreditPlan {
-  id: 'basic' | 'intermediate' | 'pro';
+  id: 'basic' | 'intermediate' | 'pro' | 'custom' | string;
   name: string;
   paid_credits: number;
   bonus_credits: number;
   total_credits: number;
+  base_amount_rs?: number;
+  gst_amount_rs?: number;
+  gst_percent?: number;
   amount_rs: number;
   amount_paise: number;
   badge: string | null;
   description: string | null;
+}
+
+export interface CustomCreditConfig {
+  min_credits: number;
+  max_credits: number;
+  credit_value_rs: number;
+  bonus_credit_threshold: number;
+  bonus_credit_percent: number;
+  gst_percent: number;
 }
 
 export interface RazorpayOrder {

@@ -64,10 +64,10 @@ class Settings(BaseSettings):
 
     # Mobile app update distribution (bump when releasing a new APK)
     # Must include the bucket's region — ap-south-1 here, not the global s3.amazonaws.com host.
-    app_latest_version: str = "1.6.9"
+    app_latest_version: str = "1.6.1"
     app_apk_url: str = "https://apk-buket.s3.ap-south-1.amazonaws.com/app-release.apk"
     app_force_update: bool = False
-    app_release_notes: str = "UI Improvements"
+    app_release_notes: str = "New features\nBug fixes\nCustom Credits"
 
     # Telegram <-> app signal integration
     # Bot token from @BotFather; used both by the standalone bot/ process (inbound) and by this
@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     # Price (in INR) for 1 credit.  Used to compute order amounts for each plan.
     # Change this value in .env without touching code.  Example: CREDIT_VALUE_RS=150
     credit_value_rs: int = 100
+
+    # Custom credit plan configuration
+    custom_credits_min: int = 1
+    custom_credits_max: int = 100
+    bonus_credit_threshold: int = 5
+    bonus_credit_percent: int = 20
+    gst_percent: int = 18
 
 
 settings = Settings()

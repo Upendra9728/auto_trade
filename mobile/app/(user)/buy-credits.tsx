@@ -7,17 +7,16 @@ import {
   Alert,
   ActivityIndicator,
   TouchableOpacity,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { paymentsApi } from '../../services/api';
 import { Colors, Radius, Shadow, Spacing, Typography, moderateScale } from '../../constants/theme';
 import PlanCard from '../../components/plans/PlanCard';
-import type { CreditPlan } from '../../types';
+import CustomPlanCard from '../../components/plans/CustomPlanCard';
+import type { CreditPlan, CustomCreditConfig } from '../../types';
 
 // react-native-razorpay is imported dynamically so the screen still renders
 // on simulators / web where the native module is absent.
@@ -33,61 +32,101 @@ export default function BuyCreditsScreen() {
   const { user, refreshUser } = useAuth();
 
   const [plans, setPlans] = useState<CreditPlan[]>([]);
-  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [customConfig, setCustomConfig] = useState<CustomCreditConfig | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
   const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
 
-  const fetchPlans = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      setLoadingPlans(true);
-      const data = await paymentsApi.getPlans();
-      setPlans(data);
+      setLoadingData(true);
+      const [plansData, configData] = await Promise.all([
+        paymentsApi.getPlans(),
+        paymentsApi.getCustomConfig().catch(() => null),
+      ]);
+      setPlans(plansData);
+      setCustomConfig(configData);
     } catch (err: any) {
       Alert.alert('Error', 'Failed to load plans. ' + (err?.message ?? ''));
     } finally {
-      setLoadingPlans(false);
+      setLoadingData(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchPlans();
-  }, [fetchPlans]);
+    fetchData();
+  }, [fetchData]);
 
-  const handleBuy = async (plan: CreditPlan) => {
-    let url = '';
-    if (plan.id === 'basic') {
-      url = 'https://rzp.io/rzp/JrqgY4G';
-    } else if (plan.id === 'intermediate') {
-      url = 'https://rzp.io/rzp/5427OEF';
-    } else if (plan.id === 'pro') {
-      url = 'https://rzp.io/rzp/R1PKfnIu';
+  const startCheckout = async (planId: string, credits?: number) => {
+    if (!RazorpayCheckout) {
+      Alert.alert(
+        'Checkout Unavailable',
+        'In-app Razorpay checkout requires the native Android APK build. Please test on an installed device.',
+      );
+      return;
     }
 
-    if (!url) return;
+    try {
+      setProcessingPlanId(planId === 'custom' ? 'custom' : planId);
 
-    // Properly format the query parameters for Razorpay
-    const params = new URLSearchParams();
-    if (user?.email) params.append('email', user.email);
-    if (user?.phone_number) params.append('phone', user.phone_number);
-    
-    const queryString = params.toString();
-    const finalUrl = queryString ? `${url}?${queryString}` : url;
+      // 1. Create order on backend
+      const order = await paymentsApi.createOrder(planId, credits);
 
-    Alert.alert(
-      'Proceed to Payment',
-      'You will be securely redirected to Razorpay. Once your payment is successful, your credits will be added automatically!',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Continue', 
-          onPress: () => {
-            Linking.openURL(finalUrl);
-            // We refresh the user automatically after a short delay so they see credits 
-            // when they return to the app (the backend webhook handles the actual addition).
-            setTimeout(() => refreshUser(), 10000);
-          } 
-        }
-      ]
-    );
+      // 2. Launch native Razorpay checkout sheet
+      const options = {
+        description: order.plan.description || `Purchase ${order.plan.total_credits} Credits`,
+        image: 'https://www.tradingfloor.co.in/favicon.ico',
+        currency: order.currency,
+        key: order.key_id,
+        amount: order.amount_paise,
+        name: 'Trading Floor',
+        order_id: order.razorpay_order_id,
+        prefill: {
+          email: user?.email || '',
+          contact: user?.phone_number || '',
+          name: user?.name || '',
+        },
+        theme: { color: Colors.primary },
+      };
+
+      const paymentData = await RazorpayCheckout.open(options);
+
+      // 3. Verify signature cryptographically on backend
+      await paymentsApi.verifyPayment({
+        razorpay_order_id: paymentData.razorpay_order_id || order.razorpay_order_id,
+        razorpay_payment_id: paymentData.razorpay_payment_id,
+        razorpay_signature: paymentData.razorpay_signature,
+      });
+
+      // 4. Update user state and notify
+      await refreshUser();
+      Alert.alert(
+        'Payment Successful!',
+        `${order.plan.total_credits} credits have been added to your balance.`,
+      );
+    } catch (err: any) {
+      // Code 0 or description containing cancelled means user backed out
+      const isCancelled =
+        err?.code === 0 ||
+        err?.description?.toLowerCase().includes('cancelled') ||
+        err?.message?.toLowerCase().includes('cancelled');
+
+      if (!isCancelled) {
+        Alert.alert(
+          'Payment Not Completed',
+          err?.description || err?.message || 'Payment could not be processed. Please try again.',
+        );
+      }
+    } finally {
+      setProcessingPlanId(null);
+    }
+  };
+
+  const handleBuyPlan = (plan: CreditPlan) => {
+    startCheckout(plan.id);
+  };
+
+  const handleBuyCustom = (credits: number) => {
+    startCheckout('custom', credits);
   };
 
   return (
@@ -105,7 +144,7 @@ export default function BuyCreditsScreen() {
       </View>
 
       {/* ── Content ── */}
-      {loadingPlans ? (
+      {loadingData ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading plans…</Text>
@@ -149,7 +188,7 @@ export default function BuyCreditsScreen() {
             <View style={styles.infoGstRow}>
               <Feather name="info" size={12} color={Colors.textMuted} />
               <Text style={styles.infoGstText}>
-                All plan prices are exclusive of 18% GST
+                All prices include 18% GST — no hidden fees at checkout
               </Text>
             </View>
           </View>
@@ -157,9 +196,9 @@ export default function BuyCreditsScreen() {
           {/* Feature highlights */}
           <View style={styles.highlights}>
             {[
-              { icon: 'shield' as const, text: 'Secure payment via Razorpay' },
-              { icon: 'zap' as const, text: 'Credits added instantly' },
-              { icon: 'gift' as const, text: 'Bonus credits on bigger plans' },
+              { icon: 'shield' as const, text: 'Secure in-app payment via Razorpay' },
+              { icon: 'zap' as const, text: 'Credits added instantly to your wallet' },
+              { icon: 'gift' as const, text: '20% bonus credits on orders over 5 credits' },
             ].map((item) => (
               <View key={item.text} style={styles.highlightItem}>
                 <View style={styles.highlightIcon}>
@@ -171,18 +210,45 @@ export default function BuyCreditsScreen() {
           </View>
 
           {/* Plan Cards */}
-          <Text style={styles.sectionTitle}>Choose a Plan</Text>
+          <Text style={styles.sectionTitle}>Choose a Standard Plan</Text>
           <View style={styles.cardsContainer}>
             {plans.map((plan) => (
               <PlanCard
                 key={plan.id}
                 plan={plan}
-                onBuy={handleBuy}
+                onBuy={handleBuyPlan}
                 loading={processingPlanId === plan.id}
                 selected={processingPlanId === plan.id}
               />
             ))}
           </View>
+
+          {/* Custom Plan Card */}
+          {customConfig && (
+            <>
+              <Text style={styles.sectionTitle}>Custom Credit Amount</Text>
+              <CustomPlanCard
+                config={customConfig}
+                onBuy={handleBuyCustom}
+                loading={processingPlanId === 'custom'}
+              />
+            </>
+          )}
+
+          {/* Footer note */}
+          <View style={styles.footerNote}>
+            <Feather name="info" size={13} color={Colors.textMuted} />
+            <Text style={styles.footerNoteText}>
+              Credits never expire. All payments are secured by Razorpay. For support, contact us.
+            </Text>
+          </View>
+
+          <View style={{ height: Spacing.xl }} />
+        </ScrollView>
+      )}
+    </SafeAreaView>
+  );
+}
 
           {/* Footer note */}
           <View style={styles.footerNote}>

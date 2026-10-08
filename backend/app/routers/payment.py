@@ -15,6 +15,7 @@ from ..deps import get_current_user, get_db
 from ..models import CreditPurchase, User
 from ..schemas import (
     CreditPlanResponse,
+    CustomCreditConfigResponse,
     CreateOrderRequest,
     CreateOrderResponse,
     CreditPurchaseResponse,
@@ -26,44 +27,71 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Plan definitions — price computed dynamically from settings.credit_value_rs
+# Pricing & Plan definitions
 # ---------------------------------------------------------------------------
 
+def calculate_credit_pricing(
+    paid_credits: int,
+    bonus_credits_override: int | None = None,
+) -> dict:
+    """Calculate pricing, bonus credits, and amounts including GST."""
+    if paid_credits < 1:
+        raise ValueError("Credits must be at least 1")
+
+    rs_per_credit = settings.credit_value_rs
+    base_amount_rs = paid_credits * rs_per_credit
+    gst_percent = settings.gst_percent
+    gst_amount_rs = round(base_amount_rs * gst_percent / 100)
+    amount_rs = base_amount_rs + gst_amount_rs
+    amount_paise = amount_rs * 100
+
+    if bonus_credits_override is not None:
+        bonus_credits = bonus_credits_override
+    elif paid_credits > settings.bonus_credit_threshold:
+        bonus_credits = int(paid_credits * settings.bonus_credit_percent / 100)
+    else:
+        bonus_credits = 0
+
+    total_credits = paid_credits + bonus_credits
+
+    return {
+        "paid_credits": paid_credits,
+        "bonus_credits": bonus_credits,
+        "total_credits": total_credits,
+        "base_amount_rs": base_amount_rs,
+        "gst_amount_rs": gst_amount_rs,
+        "gst_percent": gst_percent,
+        "amount_rs": amount_rs,
+        "amount_paise": amount_paise,
+    }
+
+
 def _build_plans() -> list[CreditPlanResponse]:
-    rs = settings.credit_value_rs  # INR per credit
+    basic_calc = calculate_credit_pricing(5, bonus_credits_override=0)
+    inter_calc = calculate_credit_pricing(10, bonus_credits_override=2)
+    pro_calc = calculate_credit_pricing(15, bonus_credits_override=3)
+
     return [
         CreditPlanResponse(
             id="basic",
             name="Basic",
-            paid_credits=5,
-            bonus_credits=0,
-            total_credits=5,
-            amount_rs=5 * rs,
-            amount_paise=5 * rs * 100,
             badge=None,
             description="Great for getting started with trading signals.",
+            **basic_calc,
         ),
         CreditPlanResponse(
             id="intermediate",
             name="Intermediate",
-            paid_credits=10,
-            bonus_credits=2,
-            total_credits=12,
-            amount_rs=10 * rs,
-            amount_paise=10 * rs * 100,
             badge="Most Popular",
             description="Best value — 2 bonus credits included free!",
+            **inter_calc,
         ),
         CreditPlanResponse(
             id="pro",
             name="Pro",
-            paid_credits=15,
-            bonus_credits=3,
-            total_credits=18,
-            amount_rs=15 * rs,
-            amount_paise=15 * rs * 100,
             badge="Best Deal",
             description="Maximum credits for power traders — 3 bonus credits free!",
+            **pro_calc,
         ),
     ]
 
@@ -73,6 +101,32 @@ def _get_plan(plan_id: str) -> CreditPlanResponse:
     if plan_id not in plans:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
     return plans[plan_id]
+
+
+def _get_plan_or_custom(plan_id: str, custom_credits: int | None = None) -> CreditPlanResponse:
+    if plan_id == "custom":
+        if custom_credits is None:
+            raise HTTPException(status_code=422, detail="credits is required for custom plan")
+        if custom_credits < settings.custom_credits_min or custom_credits > settings.custom_credits_max:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Custom credits must be between {settings.custom_credits_min} and {settings.custom_credits_max}",
+            )
+        calc = calculate_credit_pricing(custom_credits)
+        badge = f"+{calc['bonus_credits']} Bonus" if calc["bonus_credits"] > 0 else None
+        desc = (
+            f"Custom pack: {calc['paid_credits']} credits + {calc['bonus_credits']} bonus free!"
+            if calc["bonus_credits"] > 0
+            else f"Custom pack: {calc['paid_credits']} credits"
+        )
+        return CreditPlanResponse(
+            id="custom",
+            name="Custom Plan",
+            badge=badge,
+            description=desc,
+            **calc,
+        )
+    return _get_plan(plan_id)
 
 
 def _razorpay_client() -> razorpay.Client:
@@ -97,6 +151,21 @@ def get_plans():
     return _build_plans()
 
 
+@router.get("/custom-config", response_model=CustomCreditConfigResponse)
+def get_custom_config():
+    """
+    Public — returns limits and rules for custom credit purchases.
+    """
+    return CustomCreditConfigResponse(
+        min_credits=settings.custom_credits_min,
+        max_credits=settings.custom_credits_max,
+        credit_value_rs=settings.credit_value_rs,
+        bonus_credit_threshold=settings.bonus_credit_threshold,
+        bonus_credit_percent=settings.bonus_credit_percent,
+        gst_percent=settings.gst_percent,
+    )
+
+
 @router.post("/orders", response_model=CreateOrderResponse)
 def create_order(
     body: CreateOrderRequest,
@@ -104,13 +173,14 @@ def create_order(
     db: Session = Depends(get_db),
 ):
     """
-    Create a Razorpay Order for the chosen plan.
+    Create a Razorpay Order for the chosen plan or custom credit count.
     Returns the order details needed by the mobile SDK to launch Checkout.
     """
-    plan = _get_plan(body.plan_id)
+    plan = _get_plan_or_custom(body.plan_id, body.credits)
     client = _razorpay_client()
 
-    receipt = "u" + str(current_user.id) + "_" + plan.id
+    ts = int(dt.datetime.utcnow().timestamp())
+    receipt = f"u{current_user.id}_{plan.id}_{ts}"[:40]
     try:
         rzp_order = client.order.create({
             "amount": plan.amount_paise,
@@ -120,6 +190,9 @@ def create_order(
                 "user_id": str(current_user.id),
                 "user_email": current_user.email,
                 "plan_id": plan.id,
+                "paid_credits": str(plan.paid_credits),
+                "bonus_credits": str(plan.bonus_credits),
+                "total_credits": str(plan.total_credits),
             },
         })
     except Exception as exc:
@@ -270,9 +343,36 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         amount_paise = payment_entity.get("amount")
         email = payment_entity.get("email")
         payment_id = payment_entity.get("id")
+        order_id = payment_entity.get("order_id")
     except KeyError:
         return {"status": "ignored", "reason": "missing payment payload"}
 
+    # 1. Idempotency by payment_id
+    existing_by_payment = db.query(CreditPurchase).filter_by(razorpay_payment_id=payment_id).first()
+    if existing_by_payment and existing_by_payment.status == "paid":
+        return {"status": "already processed"}
+
+    # 2. In-app checkout: match by razorpay_order_id
+    if order_id:
+        purchase = db.query(CreditPurchase).filter_by(razorpay_order_id=order_id).first()
+        if purchase:
+            if purchase.status == "paid":
+                return {"status": "already processed"}
+            user = db.query(User).filter_by(id=purchase.user_id).first()
+            if not user:
+                logger.error("User %s for purchase %s not found", purchase.user_id, purchase.id)
+                return {"status": "ignored", "reason": "user not found"}
+            now = dt.datetime.utcnow()
+            user.credits = int(user.credits or 0) + purchase.total_credits
+            purchase.status = "paid"
+            purchase.razorpay_payment_id = payment_id
+            purchase.razorpay_signature = "webhook_verified"
+            purchase.paid_at = now
+            db.commit()
+            logger.info("Webhook marked order %s as paid (+%d credits)", order_id, purchase.total_credits)
+            return {"status": "success", "credits_added": purchase.total_credits}
+
+    # 3. Fallback for external payment links (no prior order in database)
     if not email:
         logger.warning(f"Webhook payment {payment_id} missing email, skipping")
         return {"status": "ignored", "reason": "no email"}
@@ -282,17 +382,10 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         logger.warning(f"Webhook payment {payment_id} from unknown email {email}, skipping")
         return {"status": "ignored", "reason": "user not found"}
 
-    # Ensure idempotency
-    existing = db.query(CreditPurchase).filter_by(razorpay_payment_id=payment_id).first()
-    if existing:
-        return {"status": "already processed"}
-
-    # Match amount to a plan
-    rs = settings.credit_value_rs
+    # Match amount to a plan (with or without GST)
     plan = None
     for p in _build_plans():
-        expected_with_gst = int(p.amount_paise * 1.18)
-        if amount_paise == p.amount_paise or amount_paise == expected_with_gst:
+        if amount_paise == p.amount_paise or amount_paise == (p.base_amount_rs * 100):
             plan = p
             break
 
@@ -309,7 +402,7 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         total_credits=plan.total_credits,
         amount_paise=plan.amount_paise,
         status="paid",
-        razorpay_order_id=payment_entity.get("order_id", f"manual_{payment_id}"),
+        razorpay_order_id=order_id or f"manual_{payment_id}",
         razorpay_payment_id=payment_id,
         razorpay_signature="webhook_verified",
         paid_at=now
