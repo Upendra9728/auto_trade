@@ -90,9 +90,17 @@ export default function BuyCreditsScreen() {
 
       const paymentData = await RazorpayCheckout.open(options);
 
+      if (
+        !paymentData?.razorpay_payment_id ||
+        !paymentData?.razorpay_signature ||
+        !paymentData?.razorpay_order_id
+      ) {
+        throw new Error('Payment was not completed.');
+      }
+
       // 3. Verify signature cryptographically on backend
       await paymentsApi.verifyPayment({
-        razorpay_order_id: paymentData.razorpay_order_id || order.razorpay_order_id,
+        razorpay_order_id: paymentData.razorpay_order_id,
         razorpay_payment_id: paymentData.razorpay_payment_id,
         razorpay_signature: paymentData.razorpay_signature,
       });
@@ -104,11 +112,11 @@ export default function BuyCreditsScreen() {
         `${order.plan.total_credits} credits have been added to your balance.`,
       );
     } catch (err: any) {
-      // Code 0 or description containing cancelled means user backed out
+      // Razorpay Android codes: 0 = network error, 2 = user cancelled
       const isCancelled =
-        err?.code === 0 ||
-        err?.description?.toLowerCase().includes('cancelled') ||
-        err?.message?.toLowerCase().includes('cancelled');
+        err?.code === 2 ||
+        err?.description?.toLowerCase().includes('cancel') ||
+        err?.message?.toLowerCase().includes('cancel');
 
       if (!isCancelled) {
         Alert.alert(

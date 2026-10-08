@@ -202,6 +202,89 @@ def test_webhook_order_matching_and_no_double_credit(in_memory_db):
     assert user.credits == 24  # No double crediting!
 
 
+def _seed_pending_purchase(db):
+    user = User(
+        id=20,
+        name="Verify User",
+        email="verify@example.com",
+        phone_number="+919876500000",
+        password_hash="fakehash",
+        credits=0,
+    )
+    purchase = CreditPurchase(
+        user_id=20,
+        plan_id="basic",
+        paid_credits=5,
+        bonus_credits=0,
+        total_credits=5,
+        amount_paise=59000,
+        status="created",
+        razorpay_order_id="order_verify_1",
+    )
+    db.add_all([user, purchase])
+    db.commit()
+    return user, purchase
+
+
+def _verify_body(secret: str):
+    from app.schemas import VerifyPaymentRequest
+
+    sig = hmac.new(secret.encode(), b"order_verify_1|pay_verify_1", hashlib.sha256).hexdigest()
+    return VerifyPaymentRequest(
+        razorpay_order_id="order_verify_1",
+        razorpay_payment_id="pay_verify_1",
+        razorpay_signature=sig,
+    )
+
+
+def test_verify_does_not_credit_uncaptured_payment(in_memory_db, monkeypatch):
+    from unittest.mock import MagicMock
+    from app.routers import payment
+
+    user, purchase = _seed_pending_purchase(in_memory_db)
+    monkeypatch.setattr(settings, "razorpay_key_secret", "sec")
+
+    client = MagicMock()
+    client.payment.fetch.return_value = {
+        "status": "failed",
+        "order_id": "order_verify_1",
+        "amount": 59000,
+    }
+    monkeypatch.setattr(payment, "_razorpay_client", lambda: client)
+
+    with pytest.raises(HTTPException) as exc:
+        payment.verify_payment(_verify_body("sec"), current_user=user, db=in_memory_db)
+    assert exc.value.status_code == 402
+
+    in_memory_db.refresh(user)
+    in_memory_db.refresh(purchase)
+    assert user.credits == 0
+    assert purchase.status == "created"
+
+
+def test_verify_credits_captured_payment_once(in_memory_db, monkeypatch):
+    from unittest.mock import MagicMock
+    from app.routers import payment
+
+    user, purchase = _seed_pending_purchase(in_memory_db)
+    monkeypatch.setattr(settings, "razorpay_key_secret", "sec")
+
+    client = MagicMock()
+    client.payment.fetch.return_value = {
+        "status": "captured",
+        "order_id": "order_verify_1",
+        "amount": 59000,
+    }
+    monkeypatch.setattr(payment, "_razorpay_client", lambda: client)
+
+    body = _verify_body("sec")
+    payment.verify_payment(body, current_user=user, db=in_memory_db)
+    payment.verify_payment(body, current_user=user, db=in_memory_db)
+
+    in_memory_db.refresh(user)
+    assert user.credits == 5
+
+
 def test_env_configurable_pricing_settings(monkeypatch):
     from app.config import Settings
 

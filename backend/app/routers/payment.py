@@ -276,7 +276,36 @@ def verify_payment(
         db.commit()
         raise HTTPException(status_code=400, detail="Payment signature verification failed.")
 
-    # 4. Credit the user
+    # 4. Confirm with Razorpay that the money was actually captured for this order and amount
+    client = _razorpay_client()
+    try:
+        rzp_payment = client.payment.fetch(body.razorpay_payment_id)
+        if rzp_payment.get("status") == "authorized":
+            rzp_payment = client.payment.capture(
+                body.razorpay_payment_id, purchase.amount_paise, {"currency": "INR"}
+            )
+    except Exception as exc:
+        logger.exception("Razorpay payment lookup failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not confirm payment with Razorpay. Please try again.")
+
+    if (
+        rzp_payment.get("order_id") != body.razorpay_order_id
+        or rzp_payment.get("amount") != purchase.amount_paise
+    ):
+        logger.error(
+            "Razorpay payment mismatch: payment=%s order=%s amount=%s expected_order=%s expected_amount=%s",
+            body.razorpay_payment_id,
+            rzp_payment.get("order_id"),
+            rzp_payment.get("amount"),
+            body.razorpay_order_id,
+            purchase.amount_paise,
+        )
+        raise HTTPException(status_code=400, detail="Payment details do not match this order.")
+
+    if rzp_payment.get("status") != "captured":
+        raise HTTPException(status_code=402, detail="Payment was not completed. No credits were added.")
+
+    # 5. Credit the user
     now = dt.datetime.utcnow()
     current_user.credits = int(current_user.credits or 0) + purchase.total_credits
     purchase.status = "paid"
