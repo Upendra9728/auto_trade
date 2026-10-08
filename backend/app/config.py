@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -88,12 +89,28 @@ class Settings(BaseSettings):
     # Change this value in .env without touching code.  Example: CREDIT_VALUE_RS=150
     credit_value_rs: int = 100
 
-    # Custom credit plan configuration
-    custom_credits_min: int = 1
-    custom_credits_max: int = 100
-    bonus_credit_threshold: int = 5
-    bonus_credit_percent: int = 20
-    gst_percent: int = 18
+    # Custom credit plan configuration — configurable via .env
+    # Examples in .env: CUSTOM_CREDITS_MIN=1, CUSTOM_CREDITS_MAX=100, GST_PERCENT=18
+    custom_credits_min: int = Field(
+        default=1,
+        validation_alias=AliasChoices("custom_credits_min", "credits_min", "min_credits"),
+    )
+    custom_credits_max: int = Field(
+        default=100,
+        validation_alias=AliasChoices("custom_credits_max", "credits_max", "max_credits"),
+    )
+    bonus_credit_threshold: int = Field(
+        default=5,
+        validation_alias=AliasChoices("bonus_credit_threshold", "bonus_threshold"),
+    )
+    bonus_credit_percent: int = Field(
+        default=20,
+        validation_alias=AliasChoices("bonus_credit_percent", "bonus_percent"),
+    )
+    gst_percent: int = Field(
+        default=18,
+        validation_alias=AliasChoices("gst_percent", "gst_rate", "gst"),
+    )
 
 
 settings = Settings()

@@ -200,3 +200,35 @@ def test_webhook_order_matching_and_no_double_credit(in_memory_db):
 
     in_memory_db.refresh(user)
     assert user.credits == 24  # No double crediting!
+
+
+def test_env_configurable_pricing_settings(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "dummy_key")
+    monkeypatch.setenv("CUSTOM_CREDITS_MIN", "5")
+    monkeypatch.setenv("CUSTOM_CREDITS_MAX", "250")
+    monkeypatch.setenv("GST_PERCENT", "12")
+    monkeypatch.setenv("BONUS_CREDIT_THRESHOLD", "10")
+    monkeypatch.setenv("BONUS_CREDIT_PERCENT", "15")
+
+    custom_settings = Settings()
+    assert custom_settings.custom_credits_min == 5
+    assert custom_settings.custom_credits_max == 250
+    assert custom_settings.gst_percent == 12
+    assert custom_settings.bonus_credit_threshold == 10
+    assert custom_settings.bonus_credit_percent == 15
+
+    # Test aliases (e.g. MIN_CREDITS, MAX_CREDITS, GST)
+    monkeypatch.delenv("CUSTOM_CREDITS_MIN", raising=False)
+    monkeypatch.delenv("CUSTOM_CREDITS_MAX", raising=False)
+    monkeypatch.delenv("GST_PERCENT", raising=False)
+    monkeypatch.setenv("MIN_CREDITS", "2")
+    monkeypatch.setenv("MAX_CREDITS", "150")
+    monkeypatch.setenv("GST", "5")
+
+    alias_settings = Settings()
+    assert alias_settings.custom_credits_min == 2
+    assert alias_settings.custom_credits_max == 150
+    assert alias_settings.gst_percent == 5
+
