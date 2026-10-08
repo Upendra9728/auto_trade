@@ -250,21 +250,6 @@ export default function BuyCreditsScreen() {
   );
 }
 
-          {/* Footer note */}
-          <View style={styles.footerNote}>
-            <Feather name="info" size={13} color={Colors.textMuted} />
-            <Text style={styles.footerNoteText}>
-              Credits never expire. All payments are secured by Razorpay. For support, contact us.
-            </Text>
-          </View>
-
-          <View style={{ height: Spacing.xl }} />
-        </ScrollView>
-      )}
-    </SafeAreaView>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
