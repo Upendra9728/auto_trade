@@ -17,6 +17,7 @@ export interface FeatureAnnouncement {
   ctaRoute?: string;
   dismissText?: string;
   enabled: boolean;
+  targetRole?: 'user' | 'admin' | 'all';
 }
 
 // Registry of announcements in chronological priority order
@@ -47,6 +48,7 @@ export const ANNOUNCEMENT_REGISTRY: FeatureAnnouncement[] = [
     ctaRoute: '/(user)/buy-credits',
     dismissText: 'Got It',
     enabled: true,
+    targetRole: 'user',
   },
 ];
 
@@ -71,9 +73,12 @@ export async function markAnnouncementSeen(userId: number, announcementId: strin
   }
 }
 
-export async function getNextUnseenAnnouncement(userId: number): Promise<FeatureAnnouncement | null> {
+export async function getNextUnseenAnnouncement(userId: number, role?: string): Promise<FeatureAnnouncement | null> {
   for (const item of ANNOUNCEMENT_REGISTRY) {
     if (!item.enabled) continue;
+    if (item.targetRole && item.targetRole !== 'all' && item.targetRole !== role) {
+      continue;
+    }
     const seen = await hasSeenAnnouncement(userId, item.id);
     if (!seen) {
       return item;

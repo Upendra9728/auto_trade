@@ -24,7 +24,7 @@ export default function AnnouncementHost() {
 
     let isMounted = true;
     (async () => {
-      const item = await getNextUnseenAnnouncement(user.id);
+      const item = await getNextUnseenAnnouncement(user.id, user.role);
       if (isMounted && item) {
         setActiveAnnouncement(item);
         setModalVisible(true);
@@ -34,7 +34,7 @@ export default function AnnouncementHost() {
     return () => {
       isMounted = false;
     };
-  }, [user?.id, user?.terms_accepted, updateModalVisible]);
+  }, [user?.id, user?.role, user?.terms_accepted, updateModalVisible]);
 
   const handleDismiss = async () => {
     if (!activeAnnouncement || !user) return;

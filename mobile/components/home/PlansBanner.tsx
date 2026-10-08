@@ -68,6 +68,47 @@ function MiniPlanCard({ plan, onPress }: { plan: CreditPlan; onPress: () => void
   );
 }
 
+function MiniCustomPlanCard({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.88}
+      onPress={onPress}
+      style={[styles.miniCard, { backgroundColor: '#064E3B' }]}
+    >
+      {/* Badge */}
+      <View style={[styles.miniBadge, { backgroundColor: '#059669' }]}>
+        <Text style={styles.miniBadgeText}>CUSTOM PACK</Text>
+      </View>
+
+      {/* Plan name */}
+      <Text style={styles.miniPlanName}>Custom Plan</Text>
+
+      {/* Price */}
+      <View style={styles.miniPriceRow}>
+        <Text style={styles.miniCurrency}>₹</Text>
+        <Text style={styles.miniPrice}>118</Text>
+        <Text style={[styles.miniCurrency, { fontSize: moderateScale(11), marginLeft: 4, marginTop: 10 }]}>
+          onwards
+        </Text>
+      </View>
+
+      {/* Credits */}
+      <View style={[styles.miniCreditsRow, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+        <Feather name="sliders" size={12} color="#fff" />
+        <Text style={styles.miniCreditsText}>
+          1–100 Credits (+20% bonus)
+        </Text>
+      </View>
+
+      {/* CTA arrow */}
+      <View style={styles.miniCta}>
+        <Text style={styles.miniCtaText}>Customize</Text>
+        <Feather name="arrow-right" size={12} color="#fff" />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function PlansBanner() {
   const router = useRouter();
   const [plans, setPlans] = useState<CreditPlan[]>([]);
@@ -88,11 +129,14 @@ export default function PlansBanner() {
     }
   }, []);
 
+  const totalCards = plans.length + 1;
+
   const startAutoScroll = useCallback(() => {
     clearTimer();
-    if (plans.length <= 1) return;
+    const count = plans.length + 1;
+    if (count <= 1) return;
     timerRef.current = setInterval(() => {
-      currentIndex.current = (currentIndex.current + 1) % plans.length;
+      currentIndex.current = (currentIndex.current + 1) % count;
       setActiveIndex(currentIndex.current);
       scrollRef.current?.scrollTo({
         x: currentIndex.current * (CARD_W + CARD_GAP),
@@ -113,7 +157,7 @@ export default function PlansBanner() {
   const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
     const newIndex = Math.round(offsetX / (CARD_W + CARD_GAP));
-    const clamped = Math.max(0, Math.min(newIndex, plans.length - 1));
+    const clamped = Math.max(0, Math.min(newIndex, plans.length));
     currentIndex.current = clamped;
     setActiveIndex(clamped);
     startAutoScroll();
@@ -163,11 +207,12 @@ export default function PlansBanner() {
         {plans.map((plan) => (
           <MiniPlanCard key={plan.id} plan={plan} onPress={handleCardPress} />
         ))}
+        <MiniCustomPlanCard onPress={handleCardPress} />
       </ScrollView>
 
       {/* Dot indicators */}
       <View style={styles.dots}>
-        {plans.map((p, i) => (
+        {[...plans, { id: 'custom' }].map((p, i) => (
           <View
             key={p.id}
             style={[
