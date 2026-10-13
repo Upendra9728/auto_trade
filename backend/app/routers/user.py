@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import datetime as dt
 import logging
@@ -187,7 +187,8 @@ def update_auto_trade(
     """
     Premium: when enabled, every future signal is auto-confirmed and placed immediately
     (costs 3 credits/order instead of 1). auto_trade_quantity, if set, overrides the
-    admin's quantity for every signal; None falls back to the admin's quantity.
+    admin's lot count for every signal (expressed in LOTS, not raw qty);
+    None falls back to the admin's signal lot count.
     """
     current_user.auto_trade_enabled = req.auto_trade_enabled
     current_user.auto_trade_quantity = req.auto_trade_quantity

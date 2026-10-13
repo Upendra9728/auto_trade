@@ -399,7 +399,7 @@ export default function SignalDetailScreen() {
                 </View>
               </View>
               <Text style={styles.signalMeta}>
-                {signal.transaction_type} · {signal.quantity}{signal.lot_size ? ` (lot: ${signal.lot_size})` : ''} · {signal.exchange_segment} / {signal.security_id}
+                {signal.transaction_type} · {signal.quantity} {signal.quantity === 1 ? 'Lot' : 'Lots'}{signal.lot_size ? ` (lot size: ${signal.lot_size})` : ''} · {signal.exchange_segment} / {signal.security_id}
               </Text>
               <SignalPriceBar
                 entryPrice={signal.price}

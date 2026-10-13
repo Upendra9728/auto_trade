@@ -35,6 +35,7 @@ class UserProfileResponse(BaseModel):
     terms_accepted_at: str | None = None
     credits: int = 0
     auto_trade_enabled: bool = False
+    # Number of LOTS override for auto-trade (None = use admin's signal lot count)
     auto_trade_quantity: int | None = None
     telegram_automation_enabled: bool = False
     telegram_channel_name: str | None = None
@@ -83,8 +84,9 @@ class UpdateFcmTokenRequest(BaseModel):
 
 class UpdateAutoTradeRequest(BaseModel):
     auto_trade_enabled: bool
-    # Preset quantity overriding admin's signal quantity for every future signal; None = use admin's qty
-    auto_trade_quantity: int | None = Field(default=None, ge=1)
+    # Number of LOTS overriding the admin's signal lot count for every future auto-trade order.
+    # None = use the admin's signal lot count.
+    auto_trade_quantity: int | None = Field(default=None, ge=1, description="Number of lots (not raw qty). None = use admin's signal lot count.")
 
 
 # ---------------------------------------------------------------------------
@@ -120,8 +122,12 @@ class SignalCreateRequest(BaseModel):
     transaction_type: Literal["BUY", "SELL"] = "BUY"
     product_type: Literal["INTRADAY", "CNC", "MARGIN", "MTF", "CO", "BO"] = "INTRADAY"
     order_type: Literal["LIMIT", "MARKET"] = "LIMIT"
-    quantity: int = Field(ge=1)
-    lot_size: int | None = Field(default=None, ge=1)
+    # Number of LOTS (not raw quantity). Actual Dhan qty = quantity * lot_size.
+    quantity: int = Field(ge=1, description="Number of lots (e.g. 1 = one lot). Actual order qty = quantity × lot_size.")
+    # lot_size is optional here — the backend always resolves it authoritatively from the scrip master
+    # using security_id. If not provided (or None), it is auto-filled at signal creation time.
+    # Clients MAY send it (e.g. to pre-validate), but it will be overwritten by the scrip master value.
+    lot_size: int | None = Field(default=None, ge=1, description="Lot size — auto-resolved from scrip master if not provided.")
     price: float = Field(ge=0)
     target_price: float = Field(ge=0)
     stop_loss_price: float = Field(ge=0)
@@ -226,8 +232,9 @@ class OrderEventResponse(BaseModel):
 
 
 class ConfirmNotificationRequest(BaseModel):
-    """Optional body for the confirm endpoint — lets users override quantity."""
-    quantity: int | None = Field(default=None, ge=1)
+    """Optional body for the confirm endpoint — lets users override the number of lots."""
+    # Number of LOTS override; None = use the signal's default lot count.
+    quantity: int | None = Field(default=None, ge=1, description="Number of lots override (not raw qty). None = use signal's lot count.")
 
 
 class TelegramIngestRequest(BaseModel):

@@ -97,7 +97,7 @@ export default function OrdersScreen() {
 
         <Text style={styles.title}>{o.signal.title}</Text>
         <Text style={styles.meta}>
-          {o.signal.exchange_segment} · {o.signal.security_id} · Qty {o.ordered_quantity ?? o.signal.quantity}
+          {o.signal.exchange_segment} · {o.signal.security_id} · {o.signal.quantity} {o.signal.quantity === 1 ? 'Lot' : 'Lots'}
         </Text>
 
         <View style={styles.priceRow}>

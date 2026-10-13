@@ -200,7 +200,7 @@ def parse_signal_message(raw_text: str) -> ParsedSignal | None:
             stop_raw = line
         elif "TARGET" in upper and not target_raw:
             target_raw = line
-        elif ("QTY" in upper or "QUANTITY" in upper) and not qty_raw:
+        elif ("LOT" in upper or "QTY" in upper or "QUANTITY" in upper) and not qty_raw:
             qty_raw = line
         elif "EXPIRY" in upper and not expiry_raw:
             expiry_raw = line
@@ -212,7 +212,7 @@ def parse_signal_message(raw_text: str) -> ParsedSignal | None:
     if not target_raw:
         target_raw = _pick_value(lines, "TARGETS") or _pick_value(lines, "TARGET")
     if not qty_raw:
-        qty_raw = _pick_value(lines, "QTY") or _pick_value(lines, "QUANTITY")
+        qty_raw = _pick_value(lines, "LOTS") or _pick_value(lines, "LOT") or _pick_value(lines, "QTY") or _pick_value(lines, "QUANTITY")
     if not expiry_raw:
         expiry_raw = _pick_value(lines, "EXPIRY")
 

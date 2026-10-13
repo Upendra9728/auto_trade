@@ -360,18 +360,18 @@ export default function ProfileScreen() {
             Costs 3 credits per successful order (vs 1 for manual confirmation).
           </Text>
           <View style={[styles.field, !autoTradeEnabled && { opacity: 0.5 }]}>
-            <Text style={styles.label}>Preset Quantity (optional)</Text>
+            <Text style={styles.label}>Preset Lots (optional)</Text>
             <TextInput
               style={styles.input}
               value={autoTradeQty}
               onChangeText={setAutoTradeQty}
               editable={autoTradeEnabled}
-              placeholder="Leave blank to use admin's qty"
+              placeholder="Leave blank to use admin's lots (default 1)"
               placeholderTextColor={Colors.textMuted}
               keyboardType="numeric"
             />
             <Text style={styles.hintText}>
-              Overrides the admin's quantity for every future signal while Auto-Trade is on.
+              Overrides the admin's lot count for every future signal while Auto-Trade is on.
             </Text>
             {autoTradeEnabled && autoTradeQty.trim() !== savedAutoTradeQty.trim() && (
               <TouchableOpacity

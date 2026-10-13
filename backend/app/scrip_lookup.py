@@ -196,6 +196,21 @@ async def scrip_master_refresh_loop() -> None:
             reload()
 
 
+def get_lot_size_by_security_id(security_id: str) -> int | None:
+    """
+    Reverse-lookup the lot size for a given Dhan security ID.
+    Scans the in-memory index and returns the lot_size of the first matching entry,
+    or None if the scrip master was not loaded or the security_id is not found.
+    This lets the backend resolve lot_size authoritatively without trusting the client.
+    """
+    _load()
+    for entries in _INDEX.values():
+        for entry in entries:
+            if entry["security_id"] == security_id:
+                return entry["lot_size"]
+    return None
+
+
 def list_symbols() -> list[str]:
     """Return all distinct index/underlying symbols available for quick-select, sorted alphabetically."""
     _load()

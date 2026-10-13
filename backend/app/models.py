@@ -31,7 +31,7 @@ class User(Base):
     credits: Mapped[int] = mapped_column(Integer, default=0)
     # Premium feature: auto-confirm every incoming signal and place the order immediately (costs 3 credits/order)
     auto_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Preset quantity that overrides the admin's signal quantity for every auto-trade order; None = use admin's qty
+    # Number of LOTS that overrides the admin's signal lot count for every auto-trade order; None = use signal's lot count
     auto_trade_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Telegram automation: when enabled, incoming messages from the configured channel are ingested.
     telegram_automation_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

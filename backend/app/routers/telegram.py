@@ -98,6 +98,18 @@ def ingest_telegram_message(
             "reason": f"No matching instrument for {parsed.symbol} {_format_strike(parsed.strike)}{parsed.option_type}",
         }
     match = matches[0]
+    lot_size: int = match["lot_size"]
+
+    # The input message specifies LOTS. Default to 1 lot if not present.
+    # For backwards compatibility: if someone posts a legacy large number >= lot_size
+    # that is cleanly divisible, convert it; otherwise take the parsed value as lots.
+    if parsed.quantity is not None and parsed.quantity > 0:
+        if parsed.quantity >= lot_size and parsed.quantity % lot_size == 0:
+            lots = parsed.quantity // lot_size
+        else:
+            lots = parsed.quantity
+    else:
+        lots = 1  # default: 1 lot
 
     title = f"{parsed.symbol} {_format_strike(parsed.strike)}{parsed.option_type} {match['expiry_date']}"
     create_req = SignalCreateRequest(
@@ -107,7 +119,8 @@ def ingest_telegram_message(
         transaction_type="BUY",
         product_type="INTRADAY",
         order_type="LIMIT",
-        quantity=parsed.quantity or match["lot_size"],
+        quantity=lots,
+        lot_size=lot_size,
         price=parsed.price,
         target_price=parsed.target_price,
         stop_loss_price=parsed.stop_loss_price,

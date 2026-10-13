@@ -142,7 +142,7 @@ export default function SignalCreateScreen() {
           title: `${quickSymbol} ${strike}${quickOptionType} ${match.expiry_date}`,
           security_id: match.security_id,
           exchange_segment: match.exchange_segment,
-          quantity: prev.quantity || String(match.lot_size),
+          quantity: prev.quantity || '1',
         }));
         setScripInfo({ found: true, tradingSymbol: match.trading_symbol, expiryDate: match.expiry_date });
       } else {
@@ -327,8 +327,8 @@ export default function SignalCreateScreen() {
             title: `${first} ${second} ${match.expiry_date}`,
             security_id: match.security_id,
             exchange_segment: match.exchange_segment,
-            // Auto-fill quantity from lot_size if not already set by admin
-            quantity: prev.quantity || String(match.lot_size),
+            // Auto-fill quantity to 1 lot if not parsed
+            quantity: prev.quantity || '1',
           }));
           setScripInfo({ found: true, tradingSymbol: match.trading_symbol, expiryDate: match.expiry_date });
         } else {
@@ -544,7 +544,7 @@ export default function SignalCreateScreen() {
                     ))}
                   </View>
 
-                  <Field label="Quantity *" value={form.quantity} onChangeText={set('quantity')} placeholder="e.g. 1300" keyboardType="numeric" />
+                  <Field label="Lots *" value={form.quantity} onChangeText={set('quantity')} placeholder="e.g. 1" keyboardType="numeric" />
                   <Field label="Entry Price *" value={form.price} onChangeText={set('price')} placeholder="3" keyboardType="decimal-pad" />
                   <Field label="Target Price *" value={form.target_price} onChangeText={set('target_price')} placeholder="15" keyboardType="decimal-pad" />
                   <Field label="Stop Loss Price *" value={form.stop_loss_price} onChangeText={set('stop_loss_price')} placeholder="0" keyboardType="decimal-pad" />
@@ -578,7 +578,7 @@ export default function SignalCreateScreen() {
                 style={styles.pasteInput}
                 value={rawSignal}
                 onChangeText={setRawSignal}
-                placeholder={'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nQTY: 1300'}
+                placeholder={'NIFTY\n23800PE\nPRICE: 3\nSTOPLOSS: 0\nTARGETS: 15\nLOTS: 1'}
                 placeholderTextColor={Colors.textMuted}
                 multiline
                 textAlignVertical="top"
@@ -607,7 +607,7 @@ export default function SignalCreateScreen() {
                 <Text style={[styles.parsedBadge, form.transaction_type === 'BUY' ? styles.buyBadge : styles.sellBadge]}>{form.transaction_type}</Text>
                 <Text style={styles.parsedMeta}>{form.exchange_segment}</Text>
                 <Text style={styles.parsedMeta}>{form.product_type}</Text>
-                <Text style={styles.parsedMeta}>Qty {form.quantity || '\u2014'}</Text>
+                <Text style={styles.parsedMeta}>{form.quantity || '1'} {parseInt(form.quantity || '1', 10) === 1 ? 'Lot' : 'Lots'}</Text>
               </View>
               {lookingUp && (
                 <View style={styles.parsedScripRow}>

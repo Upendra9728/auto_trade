@@ -19,7 +19,7 @@ import SignalPriceBar from '../../components/SignalPriceBar';
 import { useLiveLtp } from '../../hooks/useLiveLtp';
 import type { SignalNotification } from '../../types';
 
-const QTY_PRESETS = [5, 15, 20, 25, 30];
+const LOT_PRESETS = [1, 2, 3, 5, 10];
 
 /** Returns the quantity for N lots given a lot_size, or N directly if lot_size unknown */
 function lotsToQty(lots: number, lotSize: number | null): number {
@@ -56,9 +56,8 @@ export default function NotificationsScreen() {
   );
 
   const handleConfirm = (n: SignalNotification) => {
-    const lotSize = n.signal.lot_size ?? null;
-    // Default selection = admin's lot count (so button shows correctly highlighted)
-    const defaultLots = lotSize ? Math.round(n.signal.quantity / lotSize) : n.signal.quantity;
+    // Default selection = admin's lot count (signal.quantity is already in lots)
+    const defaultLots = n.signal.quantity || 1;
     setSelectedQty(defaultLots);
     setCustomQty('');
     setQtyModal({ notification: n });
@@ -67,12 +66,11 @@ export default function NotificationsScreen() {
   const handlePlaceOrder = async () => {
     if (!qtyModal) return;
     const n = qtyModal.notification;
-    const lotSize = n.signal.lot_size ?? null;
-    const finalQty = customQty.trim()
+    const finalLots = customQty.trim()
       ? parseInt(customQty.trim(), 10)
-      : selectedQty != null ? lotsToQty(selectedQty, lotSize) : null;
-    if (!finalQty || isNaN(finalQty) || finalQty < 1) {
-      Alert.alert('Invalid quantity', 'Please select or enter a valid quantity.');
+      : selectedQty != null ? selectedQty : n.signal.quantity;
+    if (!finalLots || isNaN(finalLots) || finalLots < 1) {
+      Alert.alert('Invalid lots', 'Please select or enter a valid number of lots.');
       return;
     }
     setQtyModal(null);
@@ -80,7 +78,7 @@ export default function NotificationsScreen() {
     try {
       const updated = await userApi.confirmNotification(
         n.id,
-        finalQty !== n.signal.quantity ? finalQty : undefined,
+        finalLots !== n.signal.quantity ? finalLots : undefined,
       );
       setRefreshNonce((value) => value + 1);
       if (updated.status === 'placed') {
@@ -88,7 +86,7 @@ export default function NotificationsScreen() {
           '✅ Order submitted to Dhan',
           updated.live_status
             ? `Live status: ${updated.live_status} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}`
-            : `Qty: ${finalQty} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}\nWaiting for live exchange confirmation.`,
+            : `${finalLots} ${finalLots === 1 ? 'Lot' : 'Lots'} · Dhan Order ID: ${updated.dhan_order_id ?? 'N/A'}\nWaiting for live exchange confirmation.`,
         );
       } else {
         Alert.alert('❌ Order Failed', updated.error_message ?? 'Unknown error');
@@ -150,7 +148,7 @@ export default function NotificationsScreen() {
         {/* Title */}
         <Text style={styles.signalTitle}>{n.signal.title}</Text>
         <Text style={styles.segment}>
-          {n.signal.exchange_segment} · {n.signal.security_id} · Qty {n.ordered_quantity ?? n.signal.quantity}
+          {n.signal.exchange_segment} · {n.signal.security_id} · {n.signal.quantity} {n.signal.quantity === 1 ? 'Lot' : 'Lots'}
         </Text>
 
         {/* Graphical Price Bar with live pointer */}
@@ -266,16 +264,15 @@ export default function NotificationsScreen() {
               const n = qtyModal.notification;
               const isBuy = n.signal.transaction_type === 'BUY';
               const lotSize = n.signal.lot_size ?? null;
-              // Admin's quantity expressed in lots (or raw if no lot_size)
-              const adminLots = lotSize ? Math.round(n.signal.quantity / lotSize) : n.signal.quantity;
+              const adminLots = n.signal.quantity || 1;
               // Build deduplicated sorted preset list (in lots)
-              const lotPresets = [...QTY_PRESETS, adminLots]
+              const lotPresets = [...LOT_PRESETS, adminLots]
                 .filter((v, i, a) => a.indexOf(v) === i)
                 .sort((a, b) => a - b);
 
-              const effectiveQty = customQty.trim()
+              const effectiveLots = customQty.trim()
                 ? parseInt(customQty.trim(), 10)
-                : selectedQty != null ? lotsToQty(selectedQty, lotSize) : null;
+                : selectedQty != null ? selectedQty : adminLots;
 
               return (
                 <>
@@ -285,14 +282,11 @@ export default function NotificationsScreen() {
                     {lotSize ? `  ·  Lot size: ${lotSize}` : ''}
                   </Text>
 
-                  <Text style={styles.qtyLabel}>
-                    {lotSize ? 'Select Lots' : 'Select Quantity'}
-                  </Text>
+                  <Text style={styles.qtyLabel}>Select Lots</Text>
 
-                  {/* Preset buttons (show lots; show actual qty below) */}
+                  {/* Preset buttons */}
                   <View style={styles.presets}>
                     {lotPresets.map((lots) => {
-                      const qty = lotsToQty(lots, lotSize);
                       const isAdmin = lots === adminLots;
                       const isActive = selectedQty === lots && !customQty;
                       return (
@@ -306,25 +300,22 @@ export default function NotificationsScreen() {
                           onPress={() => { setSelectedQty(lots); setCustomQty(''); }}
                         >
                           <Text style={[styles.presetText, isActive && styles.presetTextActive]}>
-                            {lotSize ? `${lots} lots` : lots}
-                            {'\n'}
-                            <Text style={{ fontSize: 10 }}>
-                              {lotSize ? `(${qty})` : ''}{isAdmin ? ' admin' : ''}
-                            </Text>
+                            {lots} {lots === 1 ? 'lot' : 'lots'}
+                            {isAdmin ? '\n(admin)' : ''}
                           </Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
 
-                  {/* Custom input — always raw quantity */}
+                  {/* Custom input in lots */}
                   <View style={styles.customRow}>
-                    <Text style={styles.customLabel}>Custom qty:</Text>
+                    <Text style={styles.customLabel}>Custom lots:</Text>
                     <TextInput
                       style={[styles.customInput, customQty ? styles.customInputActive : null]}
                       value={customQty}
                       onChangeText={(v) => { setCustomQty(v.replace(/[^0-9]/g, '')); setSelectedQty(null); }}
-                      placeholder={`e.g. ${lotsToQty(1, lotSize)}`}
+                      placeholder="e.g. 1"
                       placeholderTextColor={Colors.textMuted}
                       keyboardType="numeric"
                     />
@@ -339,7 +330,7 @@ export default function NotificationsScreen() {
                       onPress={handlePlaceOrder}
                     >
                       <Text style={styles.modalConfirmText}>
-                        Place {n.signal.transaction_type} · Qty {effectiveQty ?? '—'}
+                        Place {n.signal.transaction_type} · {effectiveLots ?? '—'} {effectiveLots === 1 ? 'Lot' : 'Lots'}
                       </Text>
                     </TouchableOpacity>
                   </View>

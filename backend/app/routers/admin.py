@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import datetime as dt
@@ -27,6 +27,7 @@ from ..scrip_lookup import list_symbols as scrip_list_symbols_fn
 from ..scrip_lookup import list_expiries as scrip_list_expiries_fn
 from ..scrip_lookup import list_strikes as scrip_list_strikes_fn
 from ..scrip_lookup import search_contracts as scrip_search_contracts_fn
+from ..scrip_lookup import get_lot_size_by_security_id
 from ..signal_parser import normalize_channel_name
 from ..schemas import (
     AdminAddCreditsRequest,
@@ -656,6 +657,13 @@ def _create_and_broadcast_signal(
             raise HTTPException(status_code=404, detail=f"Groups not found: {missing}")
         target_group_ids = req.group_ids
 
+    # Auto-resolve lot_size from scrip master by security_id if not supplied by client
+    resolved_lot_size = req.lot_size
+    if not resolved_lot_size:
+        lookup_lot = get_lot_size_by_security_id(req.security_id.strip())
+        if lookup_lot and lookup_lot > 0:
+            resolved_lot_size = lookup_lot
+
     signal = Signal(
         created_by_id=created_by_id,
         title=req.title.strip(),
@@ -664,7 +672,9 @@ def _create_and_broadcast_signal(
         transaction_type=req.transaction_type,
         product_type=req.product_type,
         order_type=req.order_type,
+        # quantity stores the number of LOTS; actual Dhan qty = quantity * lot_size
         quantity=req.quantity,
+        lot_size=resolved_lot_size,
         price=req.price,
         target_price=req.target_price,
         stop_loss_price=req.stop_loss_price,
@@ -805,7 +815,7 @@ async def _send_signal_to_telegram(signal_id: int) -> None:
             f"PRICE: {signal.price}",
             f"STOPLOSS: {signal.stop_loss_price}",
             f"TARGETS: {signal.target_price}",
-            f"QTY: {signal.quantity}",
+            f"LOTS: {signal.quantity}",
         ]
         if expiry:
             lines.append(f"EXPIRY: {expiry}")

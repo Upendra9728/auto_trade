@@ -110,7 +110,7 @@ export default function AdminSignalsScreen() {
         </View>
 
         <Text style={styles.title}>{s.title}</Text>
-        <Text style={styles.meta}>{s.exchange_segment} · Security {s.security_id} · Qty {s.quantity}</Text>
+        <Text style={styles.meta}>{s.exchange_segment} · Security {s.security_id} · {s.quantity} {s.quantity === 1 ? 'Lot' : 'Lots'}</Text>
 
         {s.total_notified !== undefined && (
           <View style={styles.progress}>

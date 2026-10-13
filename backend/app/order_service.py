@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import datetime as dt
 import logging
@@ -75,12 +75,18 @@ async def place_order_for_notification(
 
     client = DhanClient()
     try:
+        # Resolve the number of lots: user override (in lots) takes priority over the signal's lot count.
+        lots = quantity_override if quantity_override is not None else signal.quantity
+        # Compute the actual quantity to send to Dhan: lots × lot_size.
+        # lot_size is required on all new signals; fall back to 1 for legacy rows that pre-date this change.
+        lot_size = signal.lot_size if signal.lot_size and signal.lot_size > 0 else 1
+        actual_qty = lots * lot_size
         result = await client.place_super_order(
             dhan_client_id=cred.dhan_client_id,
             access_token=access_token,
             exchange_segment=signal.exchange_segment,
             security_id=signal.security_id,
-            quantity=quantity_override if quantity_override is not None else signal.quantity,
+            quantity=actual_qty,
             price=signal.price,
             target_price=signal.target_price,
             stop_loss_price=signal.stop_loss_price,
@@ -99,7 +105,8 @@ async def place_order_for_notification(
         notification.status = "placed"
         notification.dhan_order_id = order_id
         notification.placed_at = dt.datetime.utcnow()
-        notification.ordered_quantity = quantity_override if quantity_override is not None else signal.quantity
+        # Store actual qty (lots × lot_size) for audit — matches what Dhan received.
+        notification.ordered_quantity = actual_qty
         # Credits are debited only when the target leg is hit (see apply_live_status), not on placement.
         db.commit()
         logger.info(
